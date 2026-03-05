@@ -1,0 +1,72 @@
+# Conquer — Production Deployment (T437)
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Requires:
+#   - .env file with production secrets (see docs/DEPLOY.md)
+#   - Domain pointed to server IP for TLS
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conquer
+      POSTGRES_USER: conquer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./conquer-db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conquer -d conquer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  server:
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      DATABASE_URL: "postgresql://conquer:${POSTGRES_PASSWORD}@postgres:5432/conquer"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      RUST_LOG: "info,conquer_server=info"
+      CORS_ORIGIN: "https://${DOMAIN:?Set DOMAIN in .env}"
+      STATIC_DIR: "/app/dist"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - backend
+      - frontend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+    networks:
+      - frontend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backend:
+  frontend:

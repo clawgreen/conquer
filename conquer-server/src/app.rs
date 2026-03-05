@@ -1,19 +1,23 @@
 // conquer-server/src/app.rs — Application state, router, JWT extraction
+// Phase 7: static file serving, metrics endpoint, rate limiting
 
 use axum::{
-    extract::FromRequestParts,
+    extract::{FromRequestParts, State},
     http::{request::Parts, StatusCode, header},
     middleware,
-    routing::{delete, get, post, put},
-    Router,
+    routing::{delete, get, get_service, post, put},
+    Json, Router,
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tower_http::services::{ServeDir, ServeFile};
+use std::sync::Arc;
 
 use conquer_db::GameStore;
 use crate::config::ServerConfig;
 use crate::errors::ApiError;
 use crate::jwt::{Claims, JwtManager};
+use crate::metrics::{Metrics, MetricsSnapshot};
 use crate::routes;
 use crate::ws::ConnectionManager;
 
@@ -27,6 +31,7 @@ pub struct AppState {
     pub jwt: JwtManager,
     pub ws_manager: ConnectionManager,
     pub config: ServerConfig,
+    pub metrics: Arc<Metrics>,
 }
 
 // ============================================================
@@ -59,6 +64,26 @@ impl FromRequestParts<AppState> for Claims {
 // Router construction
 // ============================================================
 
+/// GET /api/metrics — server metrics (T453)
+async fn metrics_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let snapshot = state.metrics.snapshot();
+    let active_games = state.store.game_count().await;
+    let connected_players = state.ws_manager.total_connected_players().await;
+
+    Json(serde_json::json!({
+        "uptime_secs": snapshot.uptime_secs,
+        "total_requests": snapshot.total_requests,
+        "requests_per_minute": snapshot.requests_per_minute,
+        "active_connections": snapshot.active_connections,
+        "active_games": active_games,
+        "connected_players": connected_players,
+        "ws_messages_sent": snapshot.ws_messages_sent,
+        "ws_messages_received": snapshot.ws_messages_received,
+        "actions_processed": snapshot.actions_processed,
+        "turns_advanced": snapshot.turns_advanced,
+    }))
+}
+
 pub fn build_router(state: AppState) -> Router {
     // CORS (T278)
     let cors = CorsLayer::new()
@@ -68,8 +93,10 @@ pub fn build_router(state: AppState) -> Router {
 
     // API routes
     let api = Router::new()
-        // Health (T281)
+        // Health (T281, T439)
         .route("/health", get(routes::health::health_check))
+        // Metrics (T453)
+        .route("/metrics", get(metrics_handler))
         // Auth (T283-T284)
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/login", post(routes::auth::login))
@@ -134,11 +161,26 @@ pub fn build_router(state: AppState) -> Router {
         .route("/notifications/preferences", get(routes::notifications::get_preferences))
         .route("/notifications/preferences", put(routes::notifications::set_preferences));
 
-    Router::new()
+    let mut router = Router::new()
         .nest("/api", api)
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .layer(TraceLayer::new_for_http());
+
+    // Serve frontend static files (T435 — static file serving from Rust binary)
+    if let Some(ref static_dir) = state.config.static_dir {
+        let index_path = format!("{}/index.html", static_dir);
+        if std::path::Path::new(&index_path).exists() {
+            tracing::info!("Serving static files from {}", static_dir);
+            // Serve static files, with SPA fallback to index.html
+            router = router
+                .fallback_service(
+                    ServeDir::new(static_dir)
+                        .not_found_service(ServeFile::new(&index_path))
+                );
+        }
+    }
+
+    router.with_state(state)
 }
 
 // ============================================================
@@ -160,6 +202,7 @@ mod tests {
             jwt: JwtManager::new(&config.jwt_secret, config.jwt_expiry_hours),
             ws_manager: ConnectionManager::new(),
             config,
+            metrics: Arc::new(Metrics::new()),
         }
     }
 
@@ -177,6 +220,27 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_endpoint() {
+        let app = build_router(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let metrics: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(metrics["uptime_secs"].is_number());
+        assert!(metrics["active_games"].is_number());
+        assert!(metrics["connected_players"].is_number());
     }
 
     #[tokio::test]

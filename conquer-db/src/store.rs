@@ -210,6 +210,11 @@ impl GameStore {
     }
 
     /// List games, optionally filtered by status
+    /// Get total count of active games (T453)
+    pub async fn game_count(&self) -> usize {
+        self.games.read().await.len()
+    }
+
     pub async fn list_games(&self, status_filter: Option<GameStatus>) -> Vec<GameInfo> {
         let games = self.games.read().await;
         games

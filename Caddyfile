@@ -1,0 +1,30 @@
+# Conquer — Caddy reverse proxy with automatic TLS (T437)
+# Used by docker-compose.prod.yml
+# Set DOMAIN env var or replace {$DOMAIN} below
+
+{$DOMAIN} {
+    reverse_proxy server:3000
+
+    # WebSocket support
+    @websockets {
+        header Connection *Upgrade*
+        header Upgrade    websocket
+    }
+    reverse_proxy @websockets server:3000
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Gzip compression
+    encode gzip
+
+    log {
+        output stdout
+        format json
+    }
+}

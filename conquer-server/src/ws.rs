@@ -252,6 +252,26 @@ impl ConnectionManager {
             .map(|m| m.keys().copied().collect())
             .unwrap_or_default()
     }
+
+    /// Get total number of active game channels (T455)
+    pub async fn game_count(&self) -> usize {
+        self.channels.read().await.len()
+    }
+
+    /// Get total number of connected players across all games (T453)
+    pub async fn total_connected_players(&self) -> usize {
+        let presence = self.presence.read().await;
+        presence.values().map(|m| m.len()).sum()
+    }
+
+    /// Graceful shutdown — clear all channels (T455)
+    pub async fn shutdown(&self) {
+        let mut channels = self.channels.write().await;
+        channels.clear();
+        let mut presence = self.presence.write().await;
+        presence.clear();
+        tracing::info!("WebSocket connections closed");
+    }
 }
 
 #[cfg(test)]

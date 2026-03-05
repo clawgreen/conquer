@@ -1,397 +1,96 @@
-name: CI/CD Pipeline
+# Conquer — CI Workflow (T446-T449, T451)
+# Runs on every push and PR to main
+
+name: CI
 
 on:
   push:
-    branches: [ master ]
-    tags:
-      - 'v*'
+    branches: [main]
   pull_request:
-    branches: [ master ]
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  test:
-    name: Build and Test
+  rust-checks:
+    name: Rust Checks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy lints
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked || true
+
+      - name: Security audit
+        run: cargo audit || true
+        continue-on-error: true
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libncurses-dev build-essential make
+        run: npm ci
 
-      - name: Build project
-        run: |
-          # Test that the project builds correctly
-          cd gpl-release
-          make clean || true
-          make
+      - name: Type check
+        run: npx tsc --noEmit
 
-      - name: Verify executables
-        run: |
-          # Check that executables were created
-          cd gpl-release
-          ls -la conquer conqrun conqsort conqps
-          file conquer conqrun conqsort conqps
+      - name: Build
+        run: npm run build
 
-      - name: Basic functionality test
-        run: |
-          # Test that executables can run (help/version)
-          ./gpl-release/conquer -h || echo "conquer help test completed"
-          ./gpl-release/conqrun -h || echo "conqrun help test completed"
-
-  package-apk:
-    name: Build APK Package (Alpine/Melange)
-    needs: test
+  docker:
+    name: Docker Build Test
     runs-on: ubuntu-latest
-    # Run on all pushes to master, but only basic check on PRs
+    needs: [rust-checks, frontend]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build APK package with Melange
-        run: |
-          chmod +x scripts/build-melange.sh
-          scripts/build-melange.sh
-
-      - name: Verify APK package
-        run: |
-          # Check that the APK was created
-          echo "=== APK Package Verification ==="
-          find packages/ -name "*.apk" -type f -exec ls -lh {} \;
-
-          # Show package contents (APK-aware method)
-          APK_FILE=$(find packages/ -name "*.apk" | head -1)
-          if [ -n "$APK_FILE" ]; then
-            echo "=== APK Contents (first 20 files) ==="
-            # Use tar with error suppression and proper pipe handling
-            tar -tzf "$APK_FILE" 2>/dev/null | head -20 || {
-              echo "=== APK Contents (alternative method) ==="
-              # Alternative: just show basic structure
-              tar -tzf "$APK_FILE" 2>&1 | grep -v "APK-TOOLS.checksum" | head -20 | cat
-            }
-
-            echo "=== APK Metadata ==="
-            # Extract and show package info
-            tar -Oxzf "$APK_FILE" .PKGINFO 2>/dev/null | head -10 || echo "No .PKGINFO found"
-          fi
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
         with:
-          name: conquer-apk-${{ github.sha }}
-          path: packages/**/*.apk
-          retention-days: 90
-
-  package-deb:
-    name: Build DEB Package (Debian)
-    needs: test
-    runs-on: ubuntu-latest
-    # Note: Using Ubuntu runner but Docker provides Debian environment
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build DEB package
-        run: |
-          chmod +x scripts/build-debian.sh
-          scripts/build-debian.sh
-
-      - name: Verify DEB package
-        run: |
-          # Check that the DEB was created
-          echo "=== DEB Package Verification ==="
-          find packages/ -name "*.deb" -type f -exec ls -lh {} \;
-
-          # Show package info and contents
-          DEB_FILE=$(find packages/debian/ -name "*.deb" | head -1)
-          if [ -n "$DEB_FILE" ]; then
-            echo "=== Package Info ==="
-            dpkg-deb --info "$DEB_FILE"
-            echo ""
-            echo "=== Package Contents ==="
-            dpkg-deb --contents "$DEB_FILE" | head -20
-          fi
-
-      - name: Upload DEB artifacts
-        uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
-        with:
-          name: conquer-deb-${{ github.sha }}
-          path: packages/**/*.deb
-          retention-days: 90
-
-  create-tarball:
-    name: Create Source Tarball
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create source tarball
-        run: |
-          cd gpl-release
-          tar -czf ../conquer-${{ steps.get_version.outputs.VERSION }}.tar.gz \
-            --exclude='*.o' \
-            --exclude='*.a' \
-            --exclude='*.d' \
-            --exclude='.git*' \
-            .
-
-      - name: Verify tarball
-        run: |
-          echo "Created tarball:"
-          ls -lh conquer-*.tar.gz
-          echo "Tarball contents (first 20 files):"
-          tar -tzf conquer-*.tar.gz | head -20
-
-      - name: Upload source tarball
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-tarball
-          path: conquer-*.tar.gz
-          retention-days: 90
-
-  generate-checksums:
-    name: Generate Checksums
-    needs: [package-apk, package-deb, create-tarball]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Generate checksums
-        run: |
-          mkdir -p release-files
-
-          # Copy all files to release-files directory
-          find artifacts -type f \( -name "*.apk" -o -name "*.deb" -o -name "*.tar.gz" \) \
-            -exec cp {} release-files/ \;
-
-          # Generate checksums
-          cd release-files
-          sha256sum * > checksums.txt
-
-          echo "Generated checksums:"
-          cat checksums.txt
-
-      - name: Upload checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: checksums
-          path: release-files/checksums.txt
-          retention-days: 90
-
-  # Lightweight verification for PRs
-  verify-pr:
-    name: PR Package Verification
-    needs: [package-apk, package-deb]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: PR Build Summary
-        run: |
-          echo "✅ APK package build completed successfully"
-          echo "✅ DEB package build completed successfully"
-          echo ""
-          echo "This PR successfully builds both package formats."
-          echo "Full testing and artifact upload will occur when merged to master."
-
-  # Full integration testing for master branch and tags
-  test-packages:
-    name: Integration Testing
-    needs: [package-apk, package-deb]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        test: [deb-install, apk-inspect]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download DEB package
-        if: matrix.test == 'deb-install'
-        uses: actions/download-artifact@v4
-        with:
-          name: conquer-deb-${{ github.sha }}
-          path: packages/
-
-      - name: Test DEB package installation
-        if: matrix.test == 'deb-install'
-        run: |
-          # Find and install the DEB package
-          DEB_FILE=$(find packages/ -name "*.deb" | head -1)
-          if [ -n "$DEB_FILE" ]; then
-            echo "=== Testing DEB Installation ==="
-            echo "Package: $DEB_FILE"
-
-            # Install dependencies
-            sudo apt-get update
-            sudo apt-get install -y libncurses6 ncurses-base
-
-            # Install the package
-            sudo dpkg -i "$DEB_FILE" || true
-            sudo apt-get install -f -y
-
-            # Test installation
-            echo "=== Verifying Installation ==="
-            which conquer
-            which conqrun
-
-            # Test executables
-            conquer -h || echo "conquer help test completed"
-            conqrun -h || echo "conqrun help test completed"
-
-            # Show installed files and locations
-            echo "=== Installed Files ==="
-            dpkg -L conquer | grep -E "(bin|lib)" | head -10
-
-            # Verify file permissions
-            ls -la /usr/bin/conquer /usr/bin/conqrun
-            ls -la /usr/lib/conquer/
-          fi
-
-      - name: Download APK package
-        if: matrix.test == 'apk-inspect'
-        uses: actions/download-artifact@v4
-        with:
-          name: conquer-apk-${{ github.sha }}
-          path: packages/
-
-      - name: Inspect APK package
-        if: matrix.test == 'apk-inspect'
-        run: |
-          # Find and inspect the APK package
-          APK_FILE=$(find packages/ -name "*.apk" | head -1)
-          if [ -n "$APK_FILE" ]; then
-            echo "=== APK Package Inspection ==="
-            echo "Package: $APK_FILE"
-            echo "Size: $(ls -lh "$APK_FILE" | awk '{print $5}')"
-
-            # Extract contents to temporary directory
-            mkdir -p /tmp/apk-extract
-            cd /tmp/apk-extract
-
-            # Extract with error suppression
-            echo "=== Extracting APK ==="
-            tar -xzf "$APK_FILE" 2>/dev/null || {
-              echo "Standard extraction had warnings, trying alternative..."
-              tar -xzf "$APK_FILE" 2>&1 | grep -v "APK-TOOLS.checksum" || true
-            }
-
-            echo "=== APK Structure ==="
-            find . -type f | grep -E "(bin|lib)" | head -15
-
-            echo "=== Executables ==="
-            find . -name "conquer*" -type f -exec ls -la {} \; 2>/dev/null || true
-
-            echo "=== Game Data Files ==="
-            find . -path "*/lib/conquer/*" -type f -exec ls -la {} \; 2>/dev/null || true
-
-            echo "=== Package Metadata ==="
-            if [ -f ".PKGINFO" ]; then
-              echo "--- .PKGINFO ---"
-              head -10 .PKGINFO
-            fi
-          fi
-
-  release:
-    name: Publish GitHub Release
-    needs: [test-packages, generate-checksums]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: get_version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION_NUM=${VERSION#v}" >> $GITHUB_OUTPUT
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Organize release files
-        run: |
-          mkdir -p release-files
-
-          # Copy packages and checksums
-          find artifacts -type f \( -name "*.apk" -o -name "*.deb" -o -name "*.tar.gz" -o -name "checksums.txt" \) \
-            -exec cp {} release-files/ \;
-
-          echo "Release files:"
-          ls -lh release-files/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-files/*
-          generate_release_notes: true
-          body: |
-            ## Conquer ${{ steps.get_version.outputs.VERSION }}
-
-            Classic Unix strategy game - GPL v3 licensed version
-
-            ### Installation
-
-            **Debian/Ubuntu:**
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/conquer_${{ steps.get_version.outputs.VERSION_NUM }}_amd64.deb
-            sudo dpkg -i conquer_${{ steps.get_version.outputs.VERSION_NUM }}_amd64.deb
-            sudo apt-get install -f
-            ```
-
-            **Alpine Linux:**
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/conquer-4.12-r0.apk
-            sudo apk add --allow-untrusted conquer-4.12-r0.apk
-            ```
-
-            **Build from Source:**
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.VERSION }}/conquer-${{ steps.get_version.outputs.VERSION }}.tar.gz
-            tar -xzf conquer-${{ steps.get_version.outputs.VERSION }}.tar.gz
-            cd conquer-${{ steps.get_version.outputs.VERSION }}
-            make all OPTFLG="-std=gnu99 -D_GNU_SOURCE"
-            make install
-            ```
-
-            ### Verification
-
-            Download `checksums.txt` and verify your downloads:
-            ```bash
-            sha256sum -c checksums.txt
-            ```
-
-            ### What's Included
-
-            - Debian package (amd64): `conquer_${{ steps.get_version.outputs.VERSION_NUM }}_amd64.deb`
-            - Alpine package (x86_64): `conquer-4.12-r0.apk`
-            - Source tarball: `conquer-${{ steps.get_version.outputs.VERSION }}.tar.gz`
-            - SHA256 checksums: `checksums.txt`
-          draft: false
-          prerelease: false
+          context: .
+          push: false
+          tags: conquer:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
