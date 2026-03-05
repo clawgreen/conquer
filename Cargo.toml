@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "conquer-core",
+    "conquer-engine",
+    "conquer-server",
+    "conquer-db",
+    "conquer-oracle",
+]
+resolver = "2"
