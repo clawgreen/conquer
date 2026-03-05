@@ -5,6 +5,7 @@
 // Events: storms, plagues, revolts, discoveries, etc.
 
 use conquer_core::*;
+use conquer_core::tables::*;
 use crate::rng::ConquerRng;
 
 /// Event types
@@ -44,6 +45,7 @@ pub const REVOLT_CHANCE: i32 = 25;    // 25% /turn (PREVOLT in header.h)
 pub fn generate_random_event(
     rng: &mut ConquerRng,
     nation: &Nation,
+    nation_idx: usize,
     x: u8,
     y: u8,
     sector: &Sector,
@@ -56,9 +58,9 @@ pub fn generate_random_event(
         if rng.rand() % 100 < STORM_CHANCE {
             return Some(EventResult {
                 event_type: EventType::Storm,
-                affected_nation: Some(nation.id as u8),
-                affected_x: Some(x),
-                affected_y: Some(y),
+                affected_nation: Some(nation_idx as u8),
+                affected_x: Some(x as u8),
+                affected_y: Some(y as u8),
                 damage: 0,
                 message: format!("Storm strikes fleet at ({}, {})!", x, y),
             });
@@ -71,8 +73,8 @@ pub fn generate_random_event(
             return Some(EventResult {
                 event_type: EventType::Volcano,
                 affected_nation: None,
-                affected_x: Some(x),
-                affected_y: Some(y),
+                affected_x: Some(x as u8),
+                affected_y: Some(y as u8),
                 damage: 0,
                 message: format!("Volcano erupts at ({}, {})!", x, y),
             });
@@ -125,13 +127,14 @@ pub fn check_tax_revolt(
 /// Returns amount of gold lost
 pub fn process_revolt(
     nation: &mut Nation,
+    nation_idx: usize,
     gold_lost: i64,
 ) -> EventResult {
-    nation.tgold = nation.tgold.saturating_sub(gold_lost);
+    nation.treasury_gold = nation.treasury_gold.saturating_sub(gold_lost);
     
     EventResult {
         event_type: EventType::Revolt,
-        affected_nation: Some(nation.id as u8),
+        affected_nation: Some(nation_idx as u8),
         affected_x: None,
         affected_y: None,
         damage: gold_lost,
@@ -276,11 +279,9 @@ pub fn random_discovery(
     let mut gold_found = 0;
     
     // Based on altitude and vegetation
-    match sector.altitude {
-        Altitude::Mountain | Altitude::Hill => {
-            metal_found = rng.rand() % 10 + 1;
-        }
-        _ => {}
+    let alt = sector.altitude;
+    if alt == Altitude::Mountain as u8 || alt == Altitude::Hill as u8 {
+        metal_found = rng.rand() % 10 + 1;
     }
     
     // Check for gold based on trade good
@@ -297,11 +298,11 @@ pub fn random_discovery(
 
 /// Calculate food production bonus from good weather
 pub fn weather_bonus(
-    season: i32,
+    season: Season,
     vegetation: u8,
 ) -> i32 {
     // Summer bonus for farms
-    if season == SUMMER {
+    if season == Season::Summer {
         if vegetation == Vegetation::Good as u8 
             || vegetation == Vegetation::Wood as u8 {
             return 20; // 20% bonus
@@ -309,7 +310,7 @@ pub fn weather_bonus(
     }
     
     // Spring good for planting
-    if season == SPRING {
+    if season == Season::Spring {
         return 10;
     }
     
@@ -321,6 +322,8 @@ pub fn barbarian_raid(
     rng: &mut ConquerRng,
     sector: &mut Sector,
     nation_idx: u8,
+    sector_x: u8,
+    sector_y: u8,
 ) -> Option<EventResult> {
     // Check if sector can be raided (must have population or be near border)
     if sector.people < 100 {
@@ -342,12 +345,12 @@ pub fn barbarian_raid(
     Some(EventResult {
         event_type: EventType::Raid,
         affected_nation: Some(nation_idx),
-        affected_x: Some(sector.x),
-        affected_y: Some(sector.y),
+        affected_x: Some(sector_x),
+        affected_y: Some(sector_y),
         damage: stolen_gold,
         message: format!(
             "Barbarians raid sector ({}, {})! {} gold stolen!",
-            sector.x, sector.y, stolen_gold
+            sector_x, sector_y, stolen_gold
         ),
     })
 }
@@ -357,15 +360,16 @@ pub fn barbarian_raid(
 pub fn process_nation_events(
     rng: &mut ConquerRng,
     nation: &mut Nation,
+    nation_idx: usize,
     sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
 ) -> Vec<EventResult> {
     let mut results = Vec::new();
     
     // Check for tax revolt
-    if check_tax_revolt(rng, nation, nation.tgold, nation.tciv) {
+    if check_tax_revolt(rng, nation, nation.treasury_gold, nation.total_civ) {
         // Calculate gold lost (half of treasury)
-        let gold_lost = nation.tgold / 2;
-        results.push(process_revolt(nation, gold_lost));
+        let gold_lost = nation.treasury_gold / 2;
+        results.push(process_revolt(nation, nation_idx, gold_lost));
     }
     
     // Process each sector for random events
@@ -374,7 +378,12 @@ pub fn process_nation_events(
             let sector = &mut sectors[x as usize][y as usize];
             
             // Skip unowned sectors
-            if sector.owner != nation.id {
+            if sector.owner != nation_idx as u8 {
+                continue;
+            }
+            
+            // Check for barbarian raid
+            if let Some(raid_result) = barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8) {
                 continue;
             }
             
@@ -389,9 +398,9 @@ pub fn process_nation_events(
                 
                 results.push(EventResult {
                     event_type: EventType::Discovery,
-                    affected_nation: Some(nation.id as u8),
-                    affected_x: Some(x),
-                    affected_y: Some(y),
+                    affected_nation: Some(nation_idx as u8),
+                    affected_x: Some(x as u8),
+                    affected_y: Some(y as u8),
                     damage: 0,
                     message: format!(
                         "Discovery! +{} metal, +{} jewels at ({}, {})",
@@ -401,7 +410,7 @@ pub fn process_nation_events(
             }
             
             // Check for barbarian raid
-            if let Some(raid_result) = barbarian_raid(rng, sector, nation.id as u8) {
+            if let Some(raid_result) = barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8) {
                 results.push(raid_result);
             }
         }

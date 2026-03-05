@@ -6,6 +6,7 @@
 // Trade status: SELL, BUY, NOSALE (remove from market)
 
 use conquer_core::*;
+use conquer_core::tables::*;
 use crate::utils::*;
 
 /// Trade commodity types
@@ -78,7 +79,7 @@ pub fn is_army_tradable(nation: &Nation, army_idx: u8) -> bool {
     }
     
     let status = army.status;
-    if status == ArmyStatus::Traded as u8 || status == ArmyStatus::Onboard as u8 {
+    if status == ArmyStatus::Traded.to_value() || status == ArmyStatus::OnBoard.to_value() {
         return false;
     }
     
@@ -95,7 +96,7 @@ pub fn is_army_tradable(nation: &Nation, army_idx: u8) -> bool {
 }
 
 /// Check if land can be traded (valid for sale)
-pub fn can_trade_land(sct: &Sector, nation_id: u8, cap_x: u8, cap_y: u8) -> TradeResult {
+pub fn can_trade_land(sct: &Sector, sector_x: u8, sector_y: u8, nation_id: u8, cap_x: u8, cap_y: u8) -> TradeResult {
     // Check owner
     if sct.owner != nation_id {
         return TradeResult {
@@ -107,7 +108,7 @@ pub fn can_trade_land(sct: &Sector, nation_id: u8, cap_x: u8, cap_y: u8) -> Trad
     }
     
     // Check not capitol
-    if sct.x == cap_x && sct.y == cap_y {
+    if sector_x == cap_x && sector_y == cap_y {
         return TradeResult {
             success: false,
             seller_receives: 0,
@@ -196,7 +197,7 @@ pub fn army_trade_value(nation: &Nation, army_idx: u8) -> i64 {
     }
     
     let unit_type = army.unit_type;
-    let attack = unit_attack(unit_type as usize);
+    let attack = UNIT_ATTACK.get(unit_type as usize).copied().unwrap_or(0);
     
     let mut value = army.soldiers as i64 * 100 
         + army.soldiers as i64 * attack as i64;
@@ -232,11 +233,11 @@ pub fn set_aside_for_trade(nation: &mut Nation, commodity: u8, amount: i64, extr
     match commodity {
         TDGOLD => {
             if !is_up {
-                nation.tgold = nation.tgold.saturating_sub(amount);
+                nation.treasury_gold = nation.treasury_gold.saturating_sub(amount);
             }
         }
         TDFOOD => {
-            nation.tfood = nation.tfood.saturating_sub(amount);
+            nation.total_food = nation.total_food.saturating_sub(amount);
         }
         TDMETAL => {
             if !is_up {
@@ -254,14 +255,14 @@ pub fn set_aside_for_trade(nation: &mut Nation, commodity: u8, amount: i64, extr
         TDARMY => {
             if extra >= 0 && (extra as usize) < MAXARM {
                 let army = &mut nation.armies[extra as usize];
-                army.smove = 0;
-                army.status = ArmyStatus::Traded as u8;
+                army.movement = 0;
+                army.status = ArmyStatus::Traded.to_value();
             }
         }
         TDSHIP => {
             if extra >= 0 && (extra as usize) < MAXNAVY {
                 let navy = &mut nation.navies[extra as usize];
-                navy.smove = 0;
+                navy.movement = 0;
                 navy.commodity = TRADED as u8;
             }
         }
@@ -278,10 +279,10 @@ pub fn take_back_from_trade(nation: &mut Nation, commodity: u8, amount: i64, ext
     
     match commodity {
         TDGOLD => {
-            nation.tgold += amount;
+            nation.treasury_gold += amount;
         }
         TDFOOD => {
-            nation.tfood += amount;
+            nation.total_food += amount;
         }
         TDMETAL => {
             nation.metals += amount;
@@ -295,7 +296,7 @@ pub fn take_back_from_trade(nation: &mut Nation, commodity: u8, amount: i64, ext
         TDARMY => {
             if extra >= 0 && (extra as usize) < MAXARM {
                 let army = &mut nation.armies[extra as usize];
-                army.status = ArmyStatus::Defend as u8;
+                army.status = ArmyStatus::Defend.to_value();
             }
         }
         TDSHIP => {
@@ -320,7 +321,7 @@ pub fn execute_trade(
     match commodity {
         TDGOLD => {
             let received = amount * trade_cost(20) / 100;
-            buyer.tgold += received;
+            buyer.treasury_gold += received;
             TradeResult {
                 success: true,
                 seller_receives: amount,
@@ -330,7 +331,7 @@ pub fn execute_trade(
         }
         TDFOOD => {
             let received = amount * trade_cost(20) / 100;
-            buyer.tfood += received;
+            buyer.total_food += received;
             TradeResult {
                 success: true,
                 seller_receives: amount,
@@ -412,14 +413,14 @@ pub fn execute_trade(
             buyer_army.unit_type = seller_army.unit_type;
             buyer_army.x = buyer.cap_x;
             buyer_army.y = buyer.cap_y;
-            buyer_army.status = ArmyStatus::Defend as u8;
-            buyer_army.smove = 0;
+            buyer_army.status = ArmyStatus::Defend.to_value();
+            buyer_army.movement = 0;
             
             // Clear seller army
             let seller_army = &mut seller.armies[extra as usize];
             seller_army.soldiers = 0;
-            seller_army.smove = 0;
-            seller_army.status = ArmyStatus::Defend as u8;
+            seller_army.movement = 0;
+            seller_army.status = ArmyStatus::Defend.to_value();
             
             TradeResult {
                 success: true,
@@ -476,11 +477,11 @@ pub fn execute_trade(
             buyer_navy.x = seller_navy.x;
             buyer_navy.y = seller_navy.y;
             buyer_navy.commodity = 0;
-            buyer_navy.smove = 0;
+            buyer_navy.movement = 0;
             
             // Clear seller navy
             let seller_navy = &mut seller.navies[extra as usize];
-            seller_navy.smove = 0;
+            seller_navy.movement = 0;
             seller_navy.warships = 0;
             seller_navy.merchant = 0;
             seller_navy.galleys = 0;
@@ -530,10 +531,10 @@ pub fn get_trade_value(
 
 /// Check nation items for trade (process BUY entries at turn start)
 /// Matches C: checktrade() function
-pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation) {
+pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation, nation_idx: usize) {
     for deal in deals.iter_mut() {
         if deal.deal_type == NOSALE {
-            if deal.nation == nation.id as u8 {
+            if deal.nation == nation_idx as u8 {
                 // Take back the item
                 take_back_from_trade(
                     nation,
@@ -544,7 +545,7 @@ pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation) {
                 );
             }
         } else if deal.deal_type == SELL {
-            if deal.nation == nation.id as u8 {
+            if deal.nation == nation_idx as u8 {
                 // Set aside for trade
                 set_aside_for_trade(
                     nation,
@@ -555,7 +556,7 @@ pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation) {
                 );
             }
         } else if deal.deal_type == BUY {
-            if deal.nation == nation.id as u8 {
+            if deal.nation == nation_idx as u8 {
                 // Process purchase
                 set_aside_for_trade(
                     nation,

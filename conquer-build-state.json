@@ -3,7 +3,7 @@
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
   "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
-  "current_todo": "T227",
+  "current_todo": "T233",
   "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
     "T001",
@@ -212,7 +212,13 @@
     "T223",
     "T224",
     "T225",
-    "T226"
+    "T226",
+    "T227",
+    "T228",
+    "T229",
+    "T230",
+    "T231",
+    "T232"
   ],
   "skipped": [
     "T092",
@@ -239,9 +245,9 @@
   },
   "failed": [],
   "blocked": [],
-  "last_run": "2026-03-04T20:03:00-08:00",
-  "tests_total": 86,
-  "tests_passing": 86,
+  "last_run": "2026-03-04T20:51:00-08:00",
+  "tests_total": 99,
+  "tests_passing": 99,
   "oracle_seeds_passing": [
     42
   ],
@@ -280,8 +286,8 @@
         "turn",
         "nation"
       ],
-      "tests": 45,
-      "notes": "Sprint 2 complete (2D-2I). Combat, NPC AI, Monster AI, Magic (31 powers), Navy, Movement all ported. 86 tests passing. Sprint 3 modules scaffolded but disabled (API mismatch with conquer-core)."
+      "tests": 58,
+      "notes": "Sprint 3 progress: trade, diplomacy, events, commands, nation modules now enabled. 99 tests passing. turn.rs still disabled (needs more API fixes)."
     },
     "conquer-server": {
       "status": "scaffold",
@@ -309,6 +315,6 @@
     "worldgen_deterministic": "PASS \u2014 Same seed produces identical world in back-to-back runs",
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
-    "phase2_sprint3": "PARTIAL \u2014 trade.rs, diplomacy.rs, events.rs, commands.rs, nation.rs, turn.rs scaffolded but disabled due to API mismatch. Need to fix: tgold->treasury_gold, tciv->total_civ, tmil->total_mil, tsctrs->total_sectors, smove->movement, dipl_status->diplomacy Vec, Sector x/y removal, Nation id removal. Build passes 86 tests."
+    "phase2_sprint3": "PARTIAL — trade.rs, diplomacy.rs, events.rs, commands.rs, nation.rs now enabled and building. API fixes applied: tfood->total_food, ArmyStatus::X as u8 -> X.to_value(), unit_attack->UNIT_ATTACK[], Designation::None->NoDesig, sector x/y as parameters. turn.rs disabled - needs: run_world_combat, update_nation_economy, world m_aplus/m_dplus, world w_* fields. 99 tests passing."
   }
 }

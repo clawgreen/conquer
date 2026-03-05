@@ -28,13 +28,11 @@ pub mod magic;
 pub mod npc;
 pub mod monster;
 pub mod navy;
-
-// Sprint 3 modules - scaffolded but disabled due to API mismatch with conquer-core
-// pub mod trade;
-// pub mod diplomacy;
-// pub mod events;
-// pub mod commands;
+pub mod trade;
+pub mod diplomacy;
+pub mod events;
+pub mod commands;
 // pub mod turn;
-// pub mod nation;
+pub mod nation;
 
 pub use conquer_core;

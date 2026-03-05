@@ -10,6 +10,10 @@ use crate::combat::*;
 use crate::diplomacy::*;
 use crate::events::*;
 use crate::trade::*;
+use crate::utils::is_habitable;
+
+/// Navy movement default (based on C: ~4 for armies, navies vary)
+pub const NAVY_MOVE: u8 = 4;
 
 /// Turn update result
 #[derive(Debug, Clone)]
@@ -106,7 +110,7 @@ pub fn update_turn(
     // Check for destroyed nations
     for i in 1..MAXNTOTAL {
         if is_nation_active(&nations[i]) {
-            if nations[i].tciv < 100 && nations[i].tmil < takesector(nations[i].tciv) {
+            if nations[i].total_civ < 100 && nations[i].total_mil < takesector(nations[i].total_civ) {
                 // Destroy nation
                 events.push(format!("Nation {} has been destroyed!", nations[i].name));
                 destroy_nation(i, nations, sectors);
@@ -151,21 +155,21 @@ fn update_nation(
     let nation_idx = nation_id as usize;
     let nation = &mut nations[nation_idx];
     
-    let start_gold = nation.tgold;
-    let start_food = nation.tfood;
+    let start_gold = nation.treasury_gold;
+    let start_food = nation.total_food;
     let start_metals = nation.metals;
-    let start_civ = nation.tciv;
-    let start_sectors = nation.tsctrs;
+    let start_civ = nation.total_civ;
+    let start_sectors = nation.total_sectors;
     
     // Run nation economy
     update_nation_economy(nation, sectors, world.turn);
     
     // Calculate changes
-    let gold_change = nation.tgold - start_gold;
-    let food_change = nation.tfood - start_food;
+    let gold_change = nation.treasury_gold - start_gold;
+    let food_change = nation.total_food - start_food;
     let metal_change = nation.metals - start_metals;
-    let population_change = nation.tciv - start_civ;
-    let sectors_change = nation.tsctrs - start_sectors;
+    let population_change = nation.total_civ - start_civ;
+    let sectors_change = nation.total_sectors - start_sectors;
     
     NationUpdate {
         nation_id,
@@ -224,14 +228,14 @@ fn reset_military_movements(nations: &mut [Nation; MAXNTOTAL]) {
         // Reset army movements
         for army in nation.armies.iter_mut() {
             if army.soldiers > 0 {
-                army.smove = get_max_movement(army.unit_type, nation.powers);
+                army.movement = get_max_movement(army.unit_type, nation.powers);
             }
         }
         
         // Reset navy movements
         for navy in nation.navies.iter_mut() {
             if navy.has_ships() {
-                navy.smove = NAVY_MOVE;
+                navy.movement = NAVY_MOVE;
             }
         }
     }
@@ -300,9 +304,9 @@ fn update_sector_population(
     let base_growth = 10i64; // 10% base
     
     // Food affects growth
-    let food_needed = nation.tciv * 10 / 100; // Need 10% of population in food
+    let food_needed = nation.total_civ * 10 / 100; // Need 10% of population in food
     let food_ratio = if food_needed > 0 {
-        (nation.tfood * 100) / food_needed
+        (nation.total_food * 100) / food_needed
     } else {
         100
     };
@@ -371,12 +375,12 @@ fn calculate_scores(
         nation.score = score;
         
         // Add to world totals
-        total_gold += nation.tgold;
-        total_food += nation.tfood;
+        total_gold += nation.treasury_gold;
+        total_food += nation.total_food;
         total_metal += nation.metals;
-        total_civ += nation.tciv;
-        total_mil += nation.tmil;
-        total_sectors += nation.tsctrs;
+        total_civ += nation.total_civ;
+        total_mil += nation.total_mil;
+        total_sectors += nation.total_sectors;
     }
     
     // Update world totals
@@ -393,22 +397,22 @@ fn calculate_nation_score(nation: &Nation) -> i64 {
     let mut score: i64 = 0;
     
     // Gold worth 1 point per 1000
-    score += nation.tgold / 1000;
+    score += nation.treasury_gold / 1000;
     
     // Food worth 1 point per 1000
-    score += nation.tfood / 1000;
+    score += nation.total_food / 1000;
     
     // Metal worth 1 point per 100
     score += nation.metals / 100;
     
     // Civilians worth 1 point per 100
-    score += nation.tciv / 100;
+    score += nation.total_civ / 100;
     
     // Military worth 2 points per 100
-    score += nation.tmil * 2 / 100;
+    score += nation.total_mil * 2 / 100;
     
     // Sectors worth 10 points each
-    score += nation.tsctrs as i64 * 10;
+    score += nation.total_sectors as i64 * 10;
     
     // Active military units worth 5 points each
     for army in &nation.armies {
@@ -459,11 +463,11 @@ fn destroy_nation(
     
     // Mark as inactive
     nation.active = 0;
-    nation.tgold = 0;
-    nation.tfood = 0;
+    nation.treasury_gold = 0;
+    nation.total_food = 0;
     nation.metals = 0;
-    nation.tciv = 0;
-    nation.tmil = 0;
+    nation.total_civ = 0;
+    nation.total_mil = 0;
 }
 
 /// Check if nation is active
@@ -515,12 +519,12 @@ mod tests {
     #[test]
     fn test_calculate_nation_score() {
         let nation = Nation {
-            tgold: 10000,
-            tfood: 10000,
+            treasury_gold: 10000,
+            total_food: 10000,
             metals: 1000,
-            tciv: 5000,
-            tmil: 1000,
-            tsctrs: 10,
+            total_civ: 5000,
+            total_mil: 1000,
+            total_sectors: 10,
             ..Default::default()
         };
         

@@ -4,6 +4,7 @@
 //
 // Core command handlers that process player input
 use conquer_core::*;
+use conquer_core::tables::*;
 use crate::utils::*;
 
 /// Command result
@@ -19,14 +20,15 @@ pub struct CommandResult {
 /// Matches C: desg_ok() function
 pub fn validate_designation(
     nation: &Nation,
+    nation_idx: usize,
     sector: &Sector,
     new_designation: u8,
     print_error: bool,
 ) -> CommandResult {
-    let country = nation.id as u8;
+    let country = nation_idx as u8;
     
     // Check vegetation requirement
-    if new_designation != Designation::None as u8
+    if new_designation != Designation::NoDesig as u8
         && new_designation != Designation::Road as u8
         && new_designation != Designation::Fort as u8
         && new_designation != Designation::Stockade as u8
@@ -61,7 +63,7 @@ pub fn validate_designation(
                     success: false,
                     message: format!(
                         "Must first burn down city/capitol (designate as '{}')",
-                        Designation::Ruin as char
+                        Designation::Ruin.to_char()
                     ),
                     gold_cost: 0,
                     metal_cost: 0,
@@ -163,6 +165,8 @@ pub fn redesignation_cost(
 /// Matches C: draft() function
 pub fn draft_unit(
     nation: &mut Nation,
+    sector_x: u8,
+    sector_y: u8,
     sector: &Sector,
     unit_type: u8,
     num_soldiers: i64,
@@ -183,7 +187,7 @@ pub fn draft_unit(
     
     // Check gold
     let cost = enlist_cost(unit_type) * num_soldiers;
-    if nation.tgold < cost {
+    if nation.treasury_gold < cost {
         return CommandResult {
             success: false,
             message: "Not enough gold".to_string(),
@@ -212,15 +216,15 @@ pub fn draft_unit(
     
     // Create army
     let army = &mut nation.armies[army_idx as usize];
-    army.soldiers = num_soldiers as i32;
+    army.soldiers = num_soldiers;
     army.unit_type = unit_type;
-    army.x = sector.x;
-    army.y = sector.y;
-    army.status = ArmyStatus::Defend as u8;
-    army.smove = unit_move(unit_type as usize);
+    army.x = sector_x;
+    army.y = sector_y;
+    army.status = ArmyStatus::Defend.to_value();
+    army.movement = UNIT_MOVE.get(unit_type as usize).copied().unwrap_or(0) as u8;
     
     // Deduct gold
-    nation.tgold -= cost;
+    nation.treasury_gold -= cost;
     
     CommandResult {
         success: true,
@@ -234,10 +238,10 @@ pub fn draft_unit(
 /// Matches C: u_encost table
 pub fn enlist_cost(unit_type: u8) -> i64 {
     let idx = unit_type as usize;
-    if idx >= UNIT_TYPES.len() {
+    if idx >= UNIT_ENLIST_COST.len() {
         return 100; // Default
     }
-    UNIT_TYPES[idx] as i64
+    UNIT_ENLIST_COST[idx] as i64
 }
 
 /// Construct a fort in a sector
@@ -279,7 +283,7 @@ pub fn construct_fort(
     
     // Check if can afford (debt limit based on jewels)
     let max_debt = nation.jewels * 10;
-    if nation.tgold - cost < -max_debt {
+    if nation.treasury_gold - cost < -max_debt {
         return CommandResult {
             success: false,
             message: "you may not spend that much".to_string(),
@@ -289,7 +293,7 @@ pub fn construct_fort(
     }
     
     // Build fort
-    nation.tgold -= cost;
+    nation.treasury_gold -= cost;
     sector.fortress = sector.fortress.saturating_add(1);
     
     CommandResult {
@@ -385,7 +389,7 @@ pub fn construct_ship(
     };
     
     // Check gold
-    if nation.tgold < cost {
+    if nation.treasury_gold < cost {
         return CommandResult {
             success: false,
             message: "sorry - not enough talons".to_string(),
@@ -397,7 +401,7 @@ pub fn construct_ship(
     // Build ships (simplified)
     // Would need navy management
     
-    nation.tgold -= cost;
+    nation.treasury_gold -= cost;
     sector.people = sector.people.saturating_sub(crew_needed as i64);
     
     CommandResult {
@@ -428,12 +432,13 @@ pub enum ShipClass {
 /// Matches C: redesignate() with DROAD
 pub fn build_road(
     nation: &mut Nation,
+    nation_idx: usize,
     sector: &Sector,
     x: u8,
     y: u8,
 ) -> CommandResult {
     // Must own both sectors
-    if sector.owner != nation.id {
+    if sector.owner != nation_idx as u8 {
         return CommandResult {
             success: false,
             message: "You don't own that sector".to_string(),
@@ -454,7 +459,7 @@ pub fn build_road(
     
     // Cost
     let cost = DESCOST;
-    if nation.tgold < cost {
+    if nation.treasury_gold < cost {
         return CommandResult {
             success: false,
             message: "Not enough gold".to_string(),
@@ -463,7 +468,7 @@ pub fn build_road(
         };
     }
     
-    nation.tgold -= cost;
+    nation.treasury_gold -= cost;
     
     CommandResult {
         success: true,
@@ -476,12 +481,15 @@ pub fn build_road(
 /// Process a complete redesignation command
 pub fn execute_designation(
     nation: &mut Nation,
+    nation_idx: usize,
+    sector_x: u8,
+    sector_y: u8,
     sector: &mut Sector,
     new_designation: u8,
     is_god: bool,
 ) -> CommandResult {
     // Validate
-    let validation = validate_designation(nation, sector, new_designation, true);
+    let validation = validate_designation(nation, nation_idx, sector, new_designation, true);
     if !validation.success {
         return validation;
     }
@@ -501,7 +509,7 @@ pub fn execute_designation(
     
     // Check gold (god is free)
     let actual_gold_cost = if is_god { 0 } else { gold_cost };
-    if nation.tgold < actual_gold_cost {
+    if nation.treasury_gold < actual_gold_cost {
         return CommandResult {
             success: false,
             message: "Not enough gold".to_string(),
@@ -511,7 +519,7 @@ pub fn execute_designation(
     }
     
     // Execute
-    nation.tgold -= actual_gold_cost;
+    nation.treasury_gold -= actual_gold_cost;
     nation.metals = nation.metals.saturating_sub(metal_cost);
     sector.designation = new_designation;
     
@@ -523,8 +531,8 @@ pub fn execute_designation(
         // Would need sectors access
         
         // Set new capitol
-        nation.cap_x = sector.x;
-        nation.cap_y = sector.y;
+        nation.cap_x = sector_x;
+        nation.cap_y = sector_y;
     }
     
     CommandResult {
@@ -550,7 +558,7 @@ pub fn send_tribute(
         };
     }
     
-    if from.tgold < amount {
+    if from.treasury_gold < amount {
         return CommandResult {
             success: false,
             message: "Not enough gold".to_string(),
@@ -559,7 +567,7 @@ pub fn send_tribute(
         };
     }
     
-    from.tgold -= amount;
+    from.treasury_gold -= amount;
     // Would add to recipient
     
     CommandResult {

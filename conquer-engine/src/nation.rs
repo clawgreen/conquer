@@ -3,6 +3,21 @@
 // T271-T276: Nation creation, new nation formation, nation initialization
 //
 use conquer_core::*;
+use crate::utils::is_habitable;
+use crate::diplomacy::DIPL_UNMET;
+
+/// PC nation active status values (from C data.h)
+pub const PC_GOOD: u8 = 1;
+pub const PC_NEUTRAL: u8 = 2;
+pub const PC_EVIL: u8 = 3;
+
+/// NPC nation type values (from C data.h)
+pub const GOOD_0FREE: u8 = 4;
+pub const NPC_PIRATE: u8 = 18;
+pub const NPC_NOMAD: u8 = 20;
+pub const NPC_SAVAGE: u8 = 21;
+pub const ISOLATIONIST: u8 = 16;
+pub const NPC_FIRST: u8 = GOOD_0FREE;
 
 /// Result of nation creation
 #[derive(Debug, Clone)]
@@ -56,7 +71,7 @@ pub fn create_nation(
     }
     
     // Validate location
-    if start_x >= MAPX || start_y >= MAPY {
+    if start_x as usize >= MAPX || start_y as usize >= MAPY {
         return NationCreationResult {
             success: false,
             nation_id: 0,
@@ -114,31 +129,19 @@ fn init_new_nation(
     start_y: u8,
 ) {
     // Set basic info
-    nation.id = nation.id; // Keep existing ID
+    // Note: nation index is set by the caller, not stored in Nation
     
     // Name
-    let name_bytes = name.as_bytes();
-    for (i, &b) in name_bytes.iter().take(NAMELTH).enumerate() {
-        nation.name[i] = b as i8;
-    }
-    nation.name[name_bytes.len().min(NAMELTH)] = 0;
+    nation.name = name.to_string();
     
     // Leader
-    let leader_bytes = leader.as_bytes();
-    for (i, &b) in leader_bytes.iter().take(LEADERLTH).enumerate() {
-        nation.leader[i] = b as i8;
-    }
-    nation.leader[leader_bytes.len().min(LEADERLTH)] = 0;
+    nation.leader = leader.to_string();
     
     // Password
-    let pass_bytes = password.as_bytes();
-    for (i, &b) in pass_bytes.iter().take(PASSLTH).enumerate() {
-        nation.passwd[i] = b as i8;
-    }
-    nation.passwd[pass_bytes.len().min(PASSLTH)] = 0;
+    nation.password = password.to_string();
     
     // Race
-    nation.race = race as u8;
+    nation.race = race.to_char();
     
     // Starting location
     nation.cap_x = start_x;
@@ -153,8 +156,8 @@ fn init_new_nation(
     };
     
     // Starting gold and resources (based on MAXPTS = 65)
-    nation.tgold = 10000; // Starting gold
-    nation.tfood = 5000;  // Starting food
+    nation.treasury_gold = 10000; // Starting gold
+    nation.total_food = 5000;  // Starting food
     nation.metals = 500;   // Starting metal
     nation.jewels = 100;   // Starting jewels
     
@@ -162,14 +165,14 @@ fn init_new_nation(
     nation.powers = 0;
     
     // Spell points
-    nation.spellpts = 0;
+    nation.spell_points = 0;
     
     // Population
-    nation.tciv = 1000; // Starting civilians
-    nation.tmil = 0;
+    nation.total_civ = 1000; // Starting civilians
+    nation.total_mil = 0;
     
     // Max movement
-    nation.maxmove = 10;
+    nation.max_move = 10;
     
     // Reproduction rate
     nation.repro = 10;
@@ -181,8 +184,8 @@ fn init_new_nation(
     nation.class = class as i16;
     
     // Attack/defense bonuses
-    nation.aplus = 0;
-    nation.dplus = 0;
+    nation.attack_plus = 0;
+    nation.defense_plus = 0;
     
     // Initialize armies to empty
     for army in nation.armies.iter_mut() {
@@ -190,8 +193,8 @@ fn init_new_nation(
         army.unit_type = 0;
         army.x = 0;
         army.y = 0;
-        army.status = ArmyStatus::Defend as u8;
-        army.smove = 0;
+        army.status = ArmyStatus::Defend.to_value();
+        army.movement = 0;
     }
     
     // Initialize navies to empty
@@ -201,7 +204,7 @@ fn init_new_nation(
         navy.galleys = 0;
         navy.x = 0;
         navy.y = 0;
-        navy.smove = 0;
+        navy.movement = 0;
         navy.crew = 0;
         navy.people = 0;
         navy.commodity = 0;
@@ -209,12 +212,9 @@ fn init_new_nation(
     }
     
     // Initialize diplomatic status
+    // Initialize diplomacy - self is Neutral (0), others are Unmet
     for i in 0..MAXNTOTAL {
-        nation.dipl_status[i] = if i == nation.id as usize {
-            0
-        } else {
-            DIPL_UNMET
-        };
+        nation.diplomacy[i] = if i == 0 { 0 } else { DIPL_UNMET };
     }
     
     // Tax rate
@@ -227,8 +227,8 @@ fn init_new_nation(
     nation.inflation = 0;
     
     // Sectors
-    nation.tsctrs = 0;
-    nation.tships = 0;
+    nation.total_sectors = 0;
+    nation.total_ships = 0;
     
     // Popularity
     nation.popularity = 50;
@@ -274,7 +274,7 @@ pub fn default_starting_points() -> StartingPoints {
         food: 5000,
         metal: 500,
         jewels: 100,
-        power_points: MAXPTS,
+        power_points: MAXPTS as i32,
     }
 }
 
@@ -297,13 +297,13 @@ pub fn allocate_starting_points(
             return Err(format!("Already have power {:?}", power));
         }
         
-        nation.powers |= power as i64;
+        nation.powers |= power.bits();
         remaining -= cost;
     }
     
     // Apply resources
-    nation.tgold += points.gold;
-    nation.tfood += points.food;
+    nation.treasury_gold += points.gold;
+    nation.total_food += points.food;
     nation.metals += points.metal;
     nation.jewels += points.jewels;
     
@@ -342,7 +342,7 @@ fn power_cost(power: Power) -> i32 {
         Power::DESTROYER => 5,
         Power::VAMPIRE => 5,
         Power::SUMMON => 4,
-        Power::WIZARD => 5,
+        Power::WYZARD => 5,
         Power::SORCERER => 5,
         _ => 3,
     }
@@ -387,8 +387,8 @@ pub fn find_starting_location(
             
             if score > best_score {
                 best_score = score;
-                best_x = x;
-                best_y = y;
+                best_x = x as u8;
+                best_y = y as u8;
             }
         }
     }
@@ -495,8 +495,8 @@ pub fn init_npc_nation(
     // (would copy name, leader, etc.)
     
     // Set resources
-    nation.tgold = gold;
-    nation.tfood = food;
+    nation.treasury_gold = gold;
+    nation.total_food = food;
     nation.metals = metal;
     nation.jewels = jewels;
     
@@ -507,7 +507,7 @@ pub fn init_npc_nation(
     // Assign starting sector
     // Would call assign_starting_sector
     
-    Some(nation)
+    Some(nation_id)
 }
 
 /// NPC nation types

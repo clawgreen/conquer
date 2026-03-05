@@ -74,18 +74,19 @@ pub fn break_jihad_cost() -> i64 {
 /// Updates both directions
 pub fn set_diplomatic_status(
     nation1: &mut Nation,
+    nation1_idx: usize,
     nation2_idx: usize,
     status: u8,
 ) {
     if nation2_idx < MAXNTOTAL {
-        nation1.dipl_status[nation2_idx] = status;
+        nation1.diplomacy[nation2_idx] = status;
     }
 }
 
 /// Get diplomatic status from one nation toward another
 pub fn get_diplomatic_status(nation: &Nation, other_idx: usize) -> u8 {
     if other_idx < MAXNTOTAL {
-        nation.dipl_status[other_idx]
+        nation.diplomacy[other_idx]
     } else {
         DIPL_UNMET
     }
@@ -95,22 +96,22 @@ pub fn get_diplomatic_status(nation: &Nation, other_idx: usize) -> u8 {
 /// All nations start as UNMET
 pub fn init_diplomatic_status(nation: &mut Nation) {
     for i in 0..MAXNTOTAL {
-        nation.dipl_status[i] = DIPL_UNMET;
+        nation.diplomacy[i] = DIPL_UNMET;
     }
 }
 
 /// Verify diplomatic status is valid (called at turn start)
 /// Matches C: verify_ntn() function
-pub fn verify_diplomatic_status(nation: &mut Nation) -> Vec<String> {
+pub fn verify_diplomatic_status(nation: &mut Nation, nation_idx: usize) -> Vec<String> {
     let mut errors = Vec::new();
     
     // NPC_PEASANT and above must always be at WAR
     if nation.active >= NPC_PEASANT as u8 {
         for i in 0..MAXNTOTAL {
-            if nation.dipl_status[i] != DIPL_WAR {
+            if nation.diplomacy[i] != DIPL_WAR {
                 // Set to WAR if not already
-                if i != nation.id as usize {
-                    nation.dipl_status[i] = DIPL_WAR;
+                if i != nation_idx {
+                    nation.diplomacy[i] = DIPL_WAR;
                 }
             }
         }
@@ -121,12 +122,12 @@ pub fn verify_diplomatic_status(nation: &mut Nation) -> Vec<String> {
     
     // Check for invalid status (greater than JIHAD)
     for i in 0..MAXNTOTAL {
-        if nation.dipl_status[i] > DIPL_JIHAD {
+        if nation.diplomacy[i] > DIPL_JIHAD {
             errors.push(format!(
                 "Invalid diplomatic status {} with nation {}",
-                nation.dipl_status[i], i
+                nation.diplomacy[i], i
             ));
-            nation.dipl_status[i] = DIPL_WAR;
+            nation.diplomacy[i] = DIPL_WAR;
         }
     }
     
@@ -195,27 +196,27 @@ pub fn diplomatic_strength(status: u8) -> i32 {
 }
 
 /// Meet a new nation (set from UNMET to NEUTRAL)
-pub fn meet_nation(nation: &mut Nation, other_idx: usize) {
-    if other_idx < MAXNTOTAL {
-        if nation.dipl_status[other_idx] == DIPL_UNMET {
-            nation.dipl_status[other_idx] = DIPL_NEUTRAL;
+pub fn meet_nation(nation: &mut Nation, nation_idx: usize, other_idx: usize) {
+    if other_idx < MAXNTOTAL && other_idx != nation_idx {
+        if nation.diplomacy[other_idx] == DIPL_UNMET {
+            nation.diplomacy[other_idx] = DIPL_NEUTRAL;
         }
     }
 }
 
 /// Declare war on a nation
-pub fn declare_war(nation: &mut Nation, target_idx: usize) -> bool {
-    if target_idx >= MAXNTOTAL || target_idx == nation.id as usize {
+pub fn declare_war(nation: &mut Nation, nation_idx: usize, target_idx: usize) -> bool {
+    if target_idx >= MAXNTOTAL || target_idx == nation_idx {
         return false;
     }
     
     // Can't declare war on own nation
     // Check if already at jihad
-    if nation.dipl_status[target_idx] == DIPL_JIHAD {
+    if nation.diplomacy[target_idx] == DIPL_JIHAD {
         return false;
     }
     
-    nation.dipl_status[target_idx] = DIPL_WAR;
+    nation.diplomacy[target_idx] = DIPL_WAR;
     true
 }
 
@@ -225,13 +226,13 @@ pub fn propose_peace(nation: &mut Nation, target_idx: usize) -> bool {
         return false;
     }
     
-    let current = nation.dipl_status[target_idx];
+    let current = nation.diplomacy[target_idx];
     if current < DIPL_HOSTILE {
         return false; // Not hostile
     }
     
     // Peace proposal accepted - move to neutral
-    nation.dipl_status[target_idx] = DIPL_NEUTRAL;
+    nation.diplomacy[target_idx] = DIPL_NEUTRAL;
     true
 }
 
@@ -249,6 +250,7 @@ pub fn default_new_nation_status() -> u8 {
 /// Called during NPC turn processing
 pub fn update_npc_diplomacy(
     npc: &mut Nation,
+    npc_idx: usize,
     other: &Nation,
     other_idx: usize,
     _world_turn: i32,
@@ -256,10 +258,10 @@ pub fn update_npc_diplomacy(
     // NPCs make treaties based on various factors
     // This is a simplified version
     
-    let current = npc.dipl_status[other_idx];
+    let current = npc.diplomacy[other_idx];
     
     // Don't change status with self
-    if other.id == npc.id {
+    if other_idx == npc_idx {
         return;
     }
     
@@ -270,16 +272,16 @@ pub fn update_npc_diplomacy(
     
     // Check if other nation is a monster nation - always WAR
     if other.active >= NPC_PEASANT as u8 {
-        npc.dipl_status[other_idx] = DIPL_WAR;
+        npc.diplomacy[other_idx] = DIPL_WAR;
         return;
     }
     
     // Check relation based on other nation's status toward this one
-    let other_status = other.dipl_status[npc.id as usize];
+    let other_status = other.diplomacy[npc_idx];
     
     // Mirror enemy relations
     if other_status == DIPL_WAR || other_status == DIPL_JIHAD {
-        npc.dipl_status[other_idx] = DIPL_WAR;
+        npc.diplomacy[other_idx] = DIPL_WAR;
     }
     // If allied with someone who is hostile to this nation, become hostile
     else if other_status >= DIPL_ALLIED && current < DIPL_HOSTILE {
