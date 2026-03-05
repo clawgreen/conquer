@@ -321,90 +321,90 @@ The original C code is the **source of truth**. Before porting anything to Rust,
 
 ### 2D: Combat (`combat.c`)
 
-- **T158** — Port `combat()` — main combat resolution
-- **T159** — Port `fight()` — individual battle resolution between armies
-- **T160** — Port `att_setup()` — attacker setup
-- **T161** — Port `att_base()` — base attack value calculation
-- **T162** — Port `att_bonus()` — attack bonuses (terrain, magic, unit type)
-- **T163** — Port `atkattr()` — attacker attributes
-- **T164** — Port `defattr()` — defender attributes
-- **T165** — Port `MAXLOSS` (60%) cap on casualties per battle
-- **T166** — Port `TAKESECTOR` formula — `min(500, max(75, tciv/350))` soldiers needed to capture
-- **T167** — Port `takeover()` — sector capture logic
-- **T168** — Port `retreat()`, `fdxyretreat()` — retreat mechanics
-- **T169** — Port `flee()` — army fleeing logic
-- **T170** — Port `navalcbt()` — naval combat resolution
-- **T171** — Port `reduce()` — army reduction after combat
-- **T172** — Port `sackem()` — sacking captured cities
-- **T173** — Port siege mechanics: `SIEGE`, `SIEGED` status, fortress effects (`FORTSTR`, `TOWNSTR`, `CITYSTR`)
-- **T174** — Port sortie mechanics: `SORTIE` status — quick attacks from cities
-- **T175** — Write snapshot tests: set up known combat scenarios → resolve → compare casualties and state against C oracle
+- [x] **T158** — Port `combat()` — main combat resolution
+- [x] **T159** — Port `fight()` — individual battle resolution between armies
+- [x] **T160** — Port `att_setup()` — attacker setup
+- [x] **T161** — Port `att_base()` — base attack value calculation
+- [x] **T162** — Port `att_bonus()` — attack bonuses (terrain, magic, unit type)
+- [x] **T163** — Port `atkattr()` — attacker attributes
+- [x] **T164** — Port `defattr()` — defender attributes
+- [x] **T165** — Port `MAXLOSS` (60%) cap on casualties per battle
+- [x] **T166** — Port `TAKESECTOR` formula — `min(500, max(75, tciv/350))` soldiers needed to capture
+- [x] **T167** — Port `takeover()` — sector capture logic
+- [x] **T168** — Port `retreat()`, `fdxyretreat()` — retreat mechanics
+- [x] **T169** — Port `flee()` — army fleeing logic
+- [x] **T170** — Port `navalcbt()` — naval combat resolution
+- [x] **T171** — Port `reduce()` — army reduction after combat
+- [x] **T172** — Port `sackem()` — sacking captured cities
+- [x] **T173** — Port siege mechanics: `SIEGE`, `SIEGED` status, fortress effects (`FORTSTR`, `TOWNSTR`, `CITYSTR`)
+- [x] **T174** — Port sortie mechanics: `SORTIE` status — quick attacks from cities
+- [x] **T175** — Write snapshot tests: set up known combat scenarios → resolve → compare casualties and state against C oracle
 
 ### 2E: NPC AI (`npc.c`)
 
-- **T176** — Port `nationrun()` — main NPC decision loop
-- **T177** — Port `n_atpeace()` — peaceful NPC behavior
-- **T178** — Port `n_trespass()` — NPC response to trespassing
-- **T179** — Port `n_people()` — NPC population management
-- **T180** — Port `n_toofar()` — NPC army recall when too far from capitol (`NPCTOOFAR`)
-- **T181** — Port `n_unowned()` — NPC expansion into unowned territory
-- **T182** — Port `npcredes()` — NPC sector redesignation logic
-- **T183** — Port `cheat()` — NPC cheating for competitiveness (`#ifdef CHEAT`)
-- **T184** — Port `pceattr()` — NPC peace attributes
-- **T185** — Port NPC strategy system: expansionist (0/2/4/6 free sectors) vs isolationist
-- **T186** — Port alignment-based NPC behavior (good/neutral/evil)
-- **T187** — Write snapshot tests: advance NPC-only game 10 turns → compare all NPC states against C oracle
+- [x] **T176** — Port `nationrun()` — main NPC decision loop
+- [x] **T177** — Port `n_atpeace()` — peaceful NPC behavior
+- [x] **T178** — Port `n_trespass()` — NPC response to trespassing
+- [x] **T179** — Port `n_people()` — NPC population management
+- [x] **T180** — Port `n_toofar()` — NPC army recall when too far from capitol (`NPCTOOFAR`)
+- [x] **T181** — Port `n_unowned()` — NPC expansion into unowned territory
+- [x] **T182** — Port `npcredes()` — NPC sector redesignation logic
+- [x] **T183** — Port `cheat()` — NPC cheating for competitiveness (`#ifdef CHEAT`)
+- [x] **T184** — Port `pceattr()` — NPC peace attributes
+- [x] **T185** — Port NPC strategy system: expansionist (0/2/4/6 free sectors) vs isolationist
+- [x] **T186** — Port alignment-based NPC behavior (good/neutral/evil)
+- [x] **T187** — Write snapshot tests: advance NPC-only game 10 turns → compare all NPC states against C oracle
 
 ### 2F: Monster AI (`npc.c` monster functions)
 
-- **T188** — Port `do_pirate()` — pirate nation behavior
-- **T189** — Port `do_nomad()` — nomad nation behavior
-- **T190** — Port `do_savage()` — savage nation behavior
-- **T191** — Port `do_lizard()` — lizard nation behavior
-- **T192** — Port `monster()` — monster respawn logic (`#ifdef MORE_MONST`)
-- **T193** — Port `peasant_revolt()` — peasant revolt generation
-- **T194** — Port `other_revolt()` — other revolt types
-- **T195** — Write snapshot tests for monster/revolt behavior
+- [x] **T188** — Port `do_pirate()` — pirate nation behavior
+- [x] **T189** — Port `do_nomad()` — nomad nation behavior
+- [x] **T190** — Port `do_savage()` — savage nation behavior
+- [x] **T191** — Port `do_lizard()` — lizard nation behavior
+- [x] **T192** — Port `monster()` — monster respawn logic (`#ifdef MORE_MONST`)
+- [x] **T193** — Port `peasant_revolt()` — peasant revolt generation
+- [x] **T194** — Port `other_revolt()` — other revolt types
+- [x] **T195** — Write snapshot tests for monster/revolt behavior
 
 ### 2G: Magic System (`magic.c`)
 
-- **T196** — Port `domagic()` — main spell casting entry point
-- **T197** — Port `wizardry()` — wizard-specific spells
-- **T198** — Port `getmagic()` — magic point calculation
-- **T199** — Port `getmgkcost()` — spell cost calculation
-- **T200** — Port `removemgk()` — remove magic effects
-- **T201** — Port `exenewmgk()` — execute new magic power acquisition
-- **T202** — Port all power effects: Military powers (`WARRIOR` through `MA_MONST`), Civilian powers (`SLAVER` through `ROADS`), Magical powers (`THE_VOID` through `SORCERER`)
-- **T203** — Port `MAGATT` and `MAGDEF` status effects on combat
-- **T204** — Port orc takeover mechanic (`ORCTAKE`, `TAKEPOINTS`)
-- **T205** — Write snapshot tests for magic scenarios against C oracle
+- [x] **T196** — Port `domagic()` — main spell casting entry point
+- [x] **T197** — Port `wizardry()` — wizard-specific spells
+- [x] **T198** — Port `getmagic()` — magic point calculation
+- [x] **T199** — Port `getmgkcost()` — spell cost calculation
+- [x] **T200** — Port `removemgk()` — remove magic effects
+- [x] **T201** — Port `exenewmgk()` — execute new magic power acquisition
+- [x] **T202** — Port all power effects: Military powers (`WARRIOR` through `MA_MONST`), Civilian powers (`SLAVER` through `ROADS`), Magical powers (`THE_VOID` through `SORCERER`)
+- [x] **T203** — Port `MAGATT` and `MAGDEF` status effects on combat
+- [x] **T204** — Port orc takeover mechanic (`ORCTAKE`, `TAKEPOINTS`)
+- [x] **T205** — Write snapshot tests for magic scenarios against C oracle
 
 ### 2H: Navy (`navy.c`)
 
-- **T206** — Port naval movement logic — speed calculation from ship types (`N_WSPD`, `N_GSPD`, `N_MSPD`, `N_SIZESPD`)
-- **T207** — Port `loadfleet()` — army loading/unloading with `N_CITYCOST` movement penalty
-- **T208** — Port ship construction: `WARSHPCOST`, `MERSHPCOST`, `GALSHPCOST` — cost and resource requirements
-- **T209** — Port ship bitfield packing: light/medium/heavy stored as 5-bit fields in `u16` warships/merchant/galleys
-- **T210** — Port `fltships()`, `fltspeed()`, `flthold()`, `fltghold()`, `fltwhold()`, `fltmhold()` — fleet calculation functions
-- **T211** — Port `addwships()`, `addmships()`, `addgships()`, `subwships()`, `submships()`, `subgships()` — ship count modification
-- **T212** — Port storm mechanics: `PSTORM` % chance, `LONGTRIP` attrition
-- **T213** — Port `SHIPMAINT` maintenance costs
-- **T214** — Port crew mechanics: `SHIPCREW` full strength, crew effects on combat
-- **T215** — Write snapshot tests for naval operations against C oracle
+- [x] **T206** — Port naval movement logic — speed calculation from ship types (`N_WSPD`, `N_GSPD`, `N_MSPD`, `N_SIZESPD`)
+- [x] **T207** — Port `loadfleet()` — army loading/unloading with `N_CITYCOST` movement penalty
+- [x] **T208** — Port ship construction: `WARSHPCOST`, `MERSHPCOST`, `GALSHPCOST` — cost and resource requirements
+- [x] **T209** — Port ship bitfield packing: light/medium/heavy stored as 5-bit fields in `u16` warships/merchant/galleys
+- [x] **T210** — Port `fltships()`, `fltspeed()`, `flthold()`, `fltghold()`, `fltwhold()`, `fltmhold()` — fleet calculation functions
+- [x] **T211** — Port `addwships()`, `addmships()`, `addgships()`, `subwships()`, `submships()`, `subgships()` — ship count modification
+- [x] **T212** — Port storm mechanics: `PSTORM` % chance, `LONGTRIP` attrition
+- [x] **T213** — Port `SHIPMAINT` maintenance costs
+- [x] **T214** — Port crew mechanics: `SHIPCREW` full strength, crew effects on combat
+- [x] **T215** — Write snapshot tests for naval operations against C oracle
 
 ### 2I: Movement (`move.c`)
 
-- **T216** — Port army movement logic — terrain-based movement costs
-- **T217** — Port `movecost[][]` grid calculation
-- **T218** — Port `coffmap()` / `offmap()` — edge-of-map handling
-- **T219** — Port group movement: `GENERAL` status, groups always attack mode
-- **T220** — Port `ONBOARD` status — armies on ships
-- **T221** — Port flying movement: `FLIGHT` status, `flightcost()`
-- **T222** — Port `combinearmies()` — merge armies in same sector
-- **T223** — Port `splitarmy()` — divide army
-- **T224** — Port `reducearmy()` — reduce army size
-- **T225** — Port `adjarm()` — adjust army properties
-- **T226** — Write snapshot tests for movement scenarios
+- [x] **T216** — Port army movement logic — terrain-based movement costs
+- [x] **T217** — Port `movecost[][]` grid calculation
+- [x] **T218** — Port `coffmap()` / `offmap()` — edge-of-map handling
+- [x] **T219** — Port group movement: `GENERAL` status, groups always attack mode
+- [x] **T220** — Port `ONBOARD` status — armies on ships
+- [x] **T221** — Port flying movement: `FLIGHT` status, `flightcost()`
+- [x] **T222** — Port `combinearmies()` — merge armies in same sector
+- [x] **T223** — Port `splitarmy()` — divide army
+- [x] **T224** — Port `reducearmy()` — reduce army size
+- [x] **T225** — Port `adjarm()` — adjust army properties
+- [x] **T226** — Write snapshot tests for movement scenarios
 
 ### 2J: Trade (`trade.c`)
 
