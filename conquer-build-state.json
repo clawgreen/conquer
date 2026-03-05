@@ -3,7 +3,7 @@
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
   "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
-  "current_todo": "T234",
+  "current_todo": "T237",
   "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
     "T001",
@@ -219,7 +219,10 @@
     "T230",
     "T231",
     "T232",
-    "T233"
+    "T233",
+    "T234",
+    "T235",
+    "T236"
   ],
   "skipped": [
     "T092",
