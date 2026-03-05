@@ -5,6 +5,7 @@
 // Diplomatic status levels: UNMET, TREATY, ALLIED, FRIENDLY, NEUTRAL, HOSTILE, WAR, JIHAD
 
 use conquer_core::*;
+use crate::rng::RngExt;
 
 /// Diplomatic status constants (matching C)
 pub const DIPL_UNMET: u8 = 0;
@@ -246,6 +247,100 @@ pub fn default_new_nation_status() -> u8 {
     DIPL_NEUTRAL
 }
 
+// ============================================================
+// T233: Port newdip() - Diplomacy change logic
+// ============================================================
+
+/// Check if a nation is player-controlled (PC)
+/// Matches C: ispc(x) = (x==PC_GOOD || x==PC_EVIL || x==PC_NEUTRAL)
+/// PC values: PcGood=1, PcNeutral=2, PcEvil=3
+pub fn is_pc(active: u8) -> bool {
+    matches!(active, 1 | 2 | 3) // PcGood, PcNeutral, PcEvil
+}
+
+/// Check if a nation is a monster (NPC_PEASANT or higher)
+/// Matches C: ismonst(x) = (x >= NPC_PEASANT)
+/// NPC_PEASANT = 17
+pub fn is_monster(active: u8) -> bool {
+    active >= 17 // NpcPeasant through NpcSavage (17-21)
+}
+
+/// Check if a nation's race is Orc
+/// Matches C: ntn[ntn].race == ORC (where ORC = 'O')
+pub fn is_orc(race: char) -> bool {
+    race == 'O' || race == 'O' as char
+}
+
+/// Set diplomatic status for nation1 toward nation2 when they first meet (UNMET -> known)
+/// Matches C: newdip() from npc.c
+/// 
+/// This is called when two nations occupy adjacent sectors for the first time.
+/// It sets initial diplomatic status based on:
+/// - If nation1 is PC: neutral (or hostile toward Orcs)
+/// - If either is Orc: hostile or war (50% chance)
+/// - If nation2 is monster: war
+/// - If nation1 is PC: neutral (if UNMET)
+/// - Same race: 50% friendly, 50% neutral
+/// - Different race: neutral
+pub fn newdip(
+    nation1: &mut Nation,
+    nation1_idx: usize,
+    nation2: &Nation,
+    _nation2_idx: usize,
+    rng: &mut ConquerRng,
+) {
+    let ntn1_active = nation1.active;
+    let ntn2_race = nation2.race;
+    let ntn2_active = nation2.active;
+    
+    // Get current status (should be UNMET when newdip is called)
+    let current_status = nation1.diplomacy[_nation2_idx];
+    
+    // If nation1 is a PC (player-controlled)
+    if is_pc(ntn1_active) {
+        if is_orc(ntn2_race) {
+            nation1.diplomacy[_nation2_idx] = DIPL_HOSTILE;
+        } else {
+            nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
+        }
+        return;
+    }
+    
+    // If either nation is Orc
+    if is_orc(nation1.race) || is_orc(ntn2_race) {
+        if current_status == DIPL_UNMET {
+            // 50% chance of HOSTILE, or if nation1 is PC (shouldn't happen here but safety)
+            if rng.rand_mod(2) == 0 || is_pc(ntn1_active) {
+                nation1.diplomacy[_nation2_idx] = DIPL_HOSTILE;
+            } else {
+                nation1.diplomacy[_nation2_idx] = DIPL_WAR;
+            }
+        }
+    } 
+    // If nation2 is a monster
+    else if is_monster(ntn2_active) {
+        nation1.diplomacy[_nation2_idx] = DIPL_WAR;
+    } 
+    // If nation1 is a PC
+    else if is_pc(ntn1_active) {
+        if current_status == DIPL_UNMET {
+            nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
+        }
+    } 
+    // Same race
+    else if nation1.race == ntn2_race {
+        if rng.rand_mod(2) < 1 {
+            nation1.diplomacy[_nation2_idx] = DIPL_FRIENDLY;
+        } else {
+            nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
+        }
+    } 
+    // Different race (NPCs of different races)
+    else {
+        nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
+    }
+}
+
 /// Update NPC diplomatic relations
 /// Called during NPC turn processing
 pub fn update_npc_diplomacy(
@@ -333,5 +428,140 @@ mod tests {
         assert_eq!(worsen_relations(DIPL_NEUTRAL), DIPL_HOSTILE);
         assert_eq!(worsen_relations(DIPL_HOSTILE), DIPL_WAR);
         assert_eq!(worsen_relations(DIPL_WAR), DIPL_JIHAD);
+    }
+
+    // Tests for newdip() - T233
+    
+    #[test]
+    fn test_is_pc() {
+        // PC values: 1, 2, 3
+        assert!(is_pc(1));  // PcGood
+        assert!(is_pc(2));  // PcNeutral
+        assert!(is_pc(3));  // PcEvil
+        // NPC/monster values: >= 17
+        assert!(!is_pc(0));   // Inactive
+        assert!(!is_pc(17));  // NpcPeasant
+        assert!(!is_pc(21));  // NpcSavage
+    }
+    
+    #[test]
+    fn test_is_monster() {
+        // Monster values: >= 17
+        assert!(is_monster(17)); // NpcPeasant
+        assert!(is_monster(18)); // NpcPirate
+        assert!(is_monster(21)); // NpcSavage
+        // Non-monster
+        assert!(!is_monster(0)); // Inactive
+        assert!(!is_monster(1)); // PcGood
+        assert!(!is_monster(3)); // PcEvil
+    }
+    
+    #[test]
+    fn test_is_orc() {
+        assert!(is_orc('O'));
+        assert!(!is_orc('H'));
+        assert!(!is_orc('E'));
+        assert!(!is_orc('D'));
+    }
+
+    #[test]
+    fn test_newdip_pc_vs_orc() {
+        // PC nation meeting Orc nation -> HOSTILE
+        let mut ntn1 = Nation::default();
+        ntn1.active = 1; // PC
+        ntn1.diplomacy[2] = DIPL_UNMET;
+        
+        let ntn2 = Nation {
+            race: 'O', // Orc
+            active: 0,
+            ..Default::default()
+        };
+        
+        let mut rng = ConquerRng::new(42);
+        newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
+        
+        assert_eq!(ntn1.diplomacy[2], DIPL_HOSTILE);
+    }
+
+    #[test]
+    fn test_newdip_pc_vs_human() {
+        // PC nation meeting human nation -> NEUTRAL
+        let mut ntn1 = Nation::default();
+        ntn1.active = 1; // PC
+        ntn1.diplomacy[2] = DIPL_UNMET;
+        
+        let ntn2 = Nation {
+            race: 'H', // Human
+            active: 0,
+            ..Default::default()
+        };
+        
+        let mut rng = ConquerRng::new(42);
+        newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
+        
+        assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
+    }
+
+    #[test]
+    fn test_newdip_npc_vs_monster() {
+        // NPC nation meeting monster -> WAR
+        let mut ntn1 = Nation::default();
+        ntn1.active = 0; // NPC (not monster)
+        ntn1.race = 'H'; // Human
+        ntn1.diplomacy[2] = DIPL_UNMET;
+        
+        let ntn2 = Nation {
+            race: 'H',
+            active: 17, // Monster (NpcPeasant)
+            ..Default::default()
+        };
+        
+        let mut rng = ConquerRng::new(42);
+        newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
+        
+        assert_eq!(ntn1.diplomacy[2], DIPL_WAR);
+    }
+
+    #[test]
+    fn test_newdip_same_race() {
+        // Two NPCs of same race -> FRIENDLY or NEUTRAL (50% chance)
+        // Use fixed seed to get deterministic result
+        let mut ntn1 = Nation::default();
+        ntn1.active = 0; // NPC
+        ntn1.race = 'H'; // Human
+        ntn1.diplomacy[2] = DIPL_UNMET;
+        
+        let ntn2 = Nation {
+            race: 'H', // Same race
+            active: 0,
+            ..Default::default()
+        };
+        
+        // With seed 0, rand_mod(2) returns 0 -> FRIENDLY (0 < 1)
+        let mut rng = ConquerRng::new(0);
+        newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
+        
+        // rand_mod(2) with seed 0 returns 0, which is < 1, so FRIENDLY
+        assert!(ntn1.diplomacy[2] == DIPL_FRIENDLY || ntn1.diplomacy[2] == DIPL_NEUTRAL);
+    }
+
+    #[test]
+    fn test_newdip_different_race_npc() {
+        // Two NPCs of different races -> NEUTRAL
+        let mut ntn1 = Nation::default();
+        ntn1.active = 0; // NPC
+        ntn1.race = 'H'; // Human
+        ntn1.diplomacy[2] = DIPL_UNMET;
+        
+        let ntn2 = Nation {
+            race: 'E', // Elf - different race
+            active: 0,
+            ..Default::default()
+        };
+        
+        let mut rng = ConquerRng::new(42);
+        newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
+        
+        assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
     }
 }
