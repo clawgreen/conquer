@@ -112,10 +112,8 @@ fn create_seeded_world(seed: u32) -> (GameState, ConquerRng) {
     create_world(&mut state, &mut rng, 30); // 30% water like C default
     state.world.turn = 1;
 
-    // Place NPC nations (matching C's populate() reading from nations file)
-    place_npc_nations(&mut state, &mut rng);
-
-    // Recount totals from sectors
+    // NPC nations are now placed by create_world -> raw_materials -> place_npc_nations
+    // Just recount totals to ensure consistency
     recount_nation_totals(&mut state);
     (state, rng)
 }

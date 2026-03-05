@@ -737,6 +737,21 @@ fn raw_materials(state: &mut GameState, rng: &mut ConquerRng) {
     // Populate monster nations
     populate_monsters(state, rng);
 
+    // Place NPC nations from nations file
+    place_npc_nations(state, rng);
+
+    // Recount total_mil for all nations from their armies (Fix 3: monster total_mil)
+    for i in 1..NTOTAL {
+        if state.nations[i].active == 0 { continue; }
+        let mut mil = 0i64;
+        for army in &state.nations[i].armies {
+            if army.soldiers > 0 && army.unit_type < UnitType::MIN_LEADER {
+                mil += army.soldiers;
+            }
+        }
+        state.nations[i].total_mil = mil;
+    }
+
     // Set mercenary pool
     state.world.merc_mil = ST_MMEN;
     state.world.merc_aplus = ST_MATT;
@@ -1063,6 +1078,397 @@ fn populate_monsters(state: &mut GameState, rng: &mut ConquerRng) {
                 ntn.armies[armynum].movement = 10;
                 armynum += 1;
             }
+        }
+    }
+}
+
+/// NPC nation definition from gpl-release/nations file.
+/// Fields: name, leader, race, mark, location, aplus, dplus, maxmove, tgold, tmil, points, repro, alignment, xloc, yloc, class
+struct NpcDef {
+    name: &'static str,
+    leader: &'static str,
+    race: char,
+    mark: char,
+    location: char,
+    aplus: i16,
+    dplus: i16,
+    maxmove: u8,
+    tgold: i64,
+    tmil: i64,
+    points: i32,
+    repro: u8,
+    alignment: char,
+    class: i16,
+}
+
+/// Class costs from C: Classcost[] = { 0, 0, 0, 4, 2, 2, 2, 6, 4, 4, 2 }
+const CLASS_COSTS: [i32; 11] = [0, 0, 0, 4, 2, 2, 2, 6, 4, 4, 2];
+
+/// Hardcoded NPC nations from gpl-release/nations file
+const NPC_DEFS: [NpcDef; 15] = [
+    NpcDef { name: "argos",   leader: "The_Ed",  race: 'H', mark: 'A', location: 'F', aplus: 10, dplus: 10, maxmove: 9,  tgold: 50000,  tmil: 1000, points: 60, repro: 8,  alignment: 'i', class: 1 },
+    NpcDef { name: "anorian", leader: "Anudil",   race: 'E', mark: 'a', location: 'F', aplus: 30, dplus: 40, maxmove: 8,  tgold: 70000,  tmil: 1500, points: 60, repro: 8,  alignment: 'g', class: 3 },
+    NpcDef { name: "bobland", leader: "Dogon",    race: 'O', mark: 'B', location: 'G', aplus: 20, dplus: 0,  maxmove: 6,  tgold: 12000,  tmil: 1500, points: 70, repro: 12, alignment: 'i', class: 9 },
+    NpcDef { name: "darboth", leader: "balrog",   race: 'O', mark: 'D', location: 'R', aplus: 0,  dplus: 0,  maxmove: 7,  tgold: 70000,  tmil: 1500, points: 70, repro: 12, alignment: 'e', class: 8 },
+    NpcDef { name: "edland",  leader: "Debbra",   race: 'H', mark: 'E', location: 'R', aplus: 10, dplus: 15, maxmove: 12, tgold: 30000,  tmil: 1000, points: 60, repro: 8,  alignment: 'g', class: 1 },
+    NpcDef { name: "fung",    leader: "Fungus",   race: 'E', mark: 'F', location: 'G', aplus: 10, dplus: 40, maxmove: 8,  tgold: 50000,  tmil: 1000, points: 70, repro: 8,  alignment: 'i', class: 1 },
+    NpcDef { name: "goldor",  leader: "Train",    race: 'D', mark: 'G', location: 'F', aplus: 10, dplus: 15, maxmove: 8,  tgold: 30000,  tmil: 1000, points: 70, repro: 8,  alignment: 'n', class: 2 },
+    NpcDef { name: "haro",    leader: "Cesear",   race: 'H', mark: 'H', location: 'R', aplus: 10, dplus: 10, maxmove: 9,  tgold: 30000,  tmil: 1500, points: 60, repro: 7,  alignment: 'i', class: 1 },
+    NpcDef { name: "jodoba",  leader: "Ganalf",   race: 'H', mark: 'J', location: 'R', aplus: 10, dplus: 10, maxmove: 2,  tgold: 30000,  tmil: 1500, points: 60, repro: 8,  alignment: 'n', class: 3 },
+    NpcDef { name: "muldor",  leader: "Gilur",    race: 'D', mark: 'M', location: 'F', aplus: 10, dplus: 30, maxmove: 6,  tgold: 160000, tmil: 1500, points: 70, repro: 9,  alignment: 'n', class: 1 },
+    NpcDef { name: "tokus",   leader: "Sumu",     race: 'H', mark: 'T', location: 'R', aplus: 10, dplus: 10, maxmove: 8,  tgold: 30000,  tmil: 1000, points: 60, repro: 8,  alignment: 'e', class: 1 },
+    NpcDef { name: "woooo",   leader: "Nastus",   race: 'O', mark: 'W', location: 'F', aplus: 10, dplus: 10, maxmove: 10, tgold: 60000,  tmil: 3500, points: 75, repro: 11, alignment: 'e', class: 10 },
+    NpcDef { name: "frika",   leader: "Frik",     race: 'D', mark: 'f', location: 'F', aplus: 10, dplus: 10, maxmove: 8,  tgold: 50000,  tmil: 1200, points: 60, repro: 10, alignment: 'n', class: 1 },
+    NpcDef { name: "amazon",  leader: "Diana",    race: 'E', mark: 'X', location: 'F', aplus: 10, dplus: 10, maxmove: 8,  tgold: 50000,  tmil: 1200, points: 60, repro: 10, alignment: 'e', class: 2 },
+    NpcDef { name: "sahara",  leader: "Barbar",   race: 'H', mark: 'S', location: 'F', aplus: 10, dplus: 10, maxmove: 8,  tgold: 50000,  tmil: 1200, points: 60, repro: 10, alignment: 'i', class: 4 },
+];
+
+/// Calculate startcost for an NPC nation — matches C startcost() exactly
+/// C: startcost() in newlogin.c
+fn calc_startcost(def: &NpcDef, turn: i16) -> i32 {
+    let mut pts: f64 = 0.0;
+    // tciv is 0 at this point (gets set AFTER startcost)
+    // pts += tciv / ONLPOP  => 0
+    pts += def.tgold as f64 / 100_000.0;   // ONLGOLD = 100000
+    pts += def.tmil as f64 / 900.0;        // ONLSOLD = 900
+    
+    if def.race == 'O' {
+        pts += (def.aplus as f64 * 2.0) / 10.0;    // ONLATTACK = 10, ORC doubles attack
+        pts += (def.dplus as f64 * 2.0) / 10.0;    // ORC doubles defense
+        pts += (def.repro as f64 * 3.0) / 2.0;     // ONLREPCOST=3, ONLREPRO_ORC=2
+    } else {
+        pts += def.aplus as f64 / 10.0;
+        pts += def.dplus as f64 / 10.0;
+        pts += (def.repro as f64 * 3.0) / 1.0;     // ONLREPCOST=3, ONLREPRO=1
+    }
+    pts += def.maxmove as f64 / 2.0;   // ONLMOVE = 2
+    
+    if def.location == 'F' { pts += 1.0; }         // ONLLOCCOST = 1
+    else if def.location == 'G' { pts += 2.0; }
+    
+    // C: points -= (TURN-1) / LATESTART;  (INTEGER division before float subtraction)
+    // At world creation TURN=0 or 1: (0-1)/2=0 (int), (1-1)/2=0 (int). No bonus.
+    let latestart_bonus = ((turn as i32 - 1) / 2) as f64;  // LATESTART=2
+    pts -= latestart_bonus;
+    
+    pts += 1.0;  // round up
+    pts as i32
+}
+
+/// Map alignment char to NationStrategy active value
+fn alignment_to_strategy(align: char) -> u8 {
+    match align {
+        'g' => NationStrategy::Good0Free as u8,
+        'n' => NationStrategy::Neutral0Free as u8,
+        'e' => NationStrategy::Evil0Free as u8,
+        'i' => NationStrategy::Isolationist as u8,
+        _ => NationStrategy::Neutral0Free as u8,
+    }
+}
+
+/// Class powers from C: Classpow[]
+fn class_powers(class: i16) -> i64 {
+    match class {
+        0 => 0,   // C_NPC
+        1 => 0,   // C_KING
+        2 => 0,   // C_EMPEROR
+        3 => Power::SUMMON.bits(),      // C_WIZARD
+        4 => Power::RELIGION.bits(),    // C_PRIEST
+        5 => Power::SAILOR.bits(),      // C_PIRATE
+        6 => Power::URBAN.bits(),       // C_TRADER
+        7 => (Power::WARRIOR | Power::CAPTAIN | Power::WARLORD).bits(),  // C_WARLORD
+        8 => Power::DESTROYER.bits(),   // C_DEMON
+        9 => (Power::MI_MONST | Power::AV_MONST | Power::MA_MONST).bits(), // C_DRAGON
+        10 => Power::THE_VOID.bits(),   // C_SHADOW
+        _ => 0,
+    }
+}
+
+/// Racial bonus from C populate() — matches exactly
+fn racial_power(race: char) -> i64 {
+    match race {
+        'H' => Power::WARRIOR.bits(),
+        'E' => Power::THE_VOID.bits(),
+        'D' => Power::MINER.bits(),
+        'O' => Power::MI_MONST.bits(),
+        _ => Power::WARRIOR.bits(),  // C default for unknown races
+    }
+}
+
+/// Place NPC nations on the map — matches C populate() NPC section.
+/// Reads hardcoded NPC_DEFS (from gpl-release/nations), calculates starting
+/// resources using doclass/startcost formulas, and places them with place() logic.
+fn place_npc_nations(state: &mut GameState, rng: &mut ConquerRng) {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let numsects = map_x * map_y;
+    
+    // Calculate max NPC nations to place (from C: numsects/NPC)
+    let max_npcs = numsects / (NPC as usize);
+    let num_to_place = max_npcs.min(NPC_DEFS.len());
+    
+    // Find first available nation slot (after god, before monsters)
+    // Monsters are in last 4 slots (NTOTAL-4..NTOTAL-1)
+    let monster_start = NTOTAL - 4;
+    
+    for def_idx in 0..num_to_place {
+        let def = &NPC_DEFS[def_idx];
+        
+        // Find next available slot
+        let nation_idx = match (1..monster_start).find(|&i| state.nations[i].active == 0) {
+            Some(idx) => idx,
+            None => break, // No more slots
+        };
+        
+        // Calculate starting civilians
+        let class_cost = CLASS_COSTS.get(def.class as usize).copied().unwrap_or(0);
+        
+        // C_WARLORD + HUMAN gets 2/3 cost
+        let effective_class_cost = if def.class == 7 && def.race == 'H' {
+            class_cost * 2 / 3
+        } else {
+            class_cost
+        };
+        
+        let start_cost = calc_startcost(def, state.world.turn);
+        let remaining = def.points - effective_class_cost - start_cost;
+        
+        if remaining < 1 {
+            continue; // Not enough points
+        }
+        
+        let tciv = 1000 * remaining as i64;
+        let tfood = tciv * 3;
+        
+        // Set up nation
+        let ntn = &mut state.nations[nation_idx];
+        ntn.name = def.name.to_string();
+        ntn.leader = def.leader.to_string();
+        ntn.race = def.race;
+        ntn.mark = def.mark;
+        ntn.location = def.location;
+        ntn.attack_plus = def.aplus;
+        ntn.defense_plus = def.dplus;
+        ntn.max_move = def.maxmove;
+        ntn.treasury_gold = def.tgold;
+        ntn.total_mil = def.tmil;
+        ntn.total_civ = tciv;
+        ntn.total_food = tfood;
+        ntn.repro = def.repro as i8;
+        ntn.class = def.class;
+        ntn.metals = 10000;
+        ntn.jewels = 10000;
+        ntn.active = alignment_to_strategy(def.alignment);
+        
+        // Set powers
+        ntn.powers = class_powers(def.class) | racial_power(def.race);
+        
+        // att_setup defaults
+        ntn.farm_ability = 10;
+        ntn.poverty = 95;
+        ntn.popularity = 50;
+        ntn.reputation = 50;
+        ntn.prestige = 50;
+        ntn.eat_rate = 25;
+        ntn.tax_rate = 10;
+        ntn.charity = 0;
+        ntn.knowledge = 10;
+        if Power::has_power(ntn.powers, Power::MINER) {
+            ntn.mine_ability = 25;
+        } else {
+            ntn.mine_ability = 10;
+        }
+        
+        // spoilrate will be calculated by att_base after placement (default 30 for 0 cities/granaries)
+        ntn.spoil_rate = 30;
+        
+        // Calculate number of leaders
+        let numleaders = if def.class == 6 || def.class <= 3 { 5 } else { 7 };
+        
+        // Find location using place() logic
+        // For NPCs (isnotpc), t=1 always
+        let t = 1;
+        
+        // Try to find a good location
+        let mut best_x = 0usize;
+        let mut best_y = 0usize;
+        let mut best_score = -1i32;
+        
+        // Search for good starting location (like C place())
+        for attempt in 0..500 {
+            let cx = (rng.rand() % map_x as i32) as usize;
+            let cy = (rng.rand() % map_y as i32) as usize;
+            
+            let sct = &state.sectors[cx][cy];
+            if sct.owner != 0 { continue; }
+            if sct.altitude == Altitude::Water as u8 { continue; }
+            
+            // Score location: prefer habitable sectors with good vegetation
+            let mut score = 0i32;
+            let food_val = tofood(sct, None);
+            score += food_val as i32 * 10;
+            
+            // Count habitable unowned neighbors
+            let mut good_neighbors = 0;
+            for di in -1i32..=1 {
+                for dj in -1i32..=1 {
+                    if di == 0 && dj == 0 { continue; }
+                    let nx = cx as i32 + di;
+                    let ny = cy as i32 + dj;
+                    if on_map(nx, ny, map_x as i32, map_y as i32) {
+                        let ns = &state.sectors[nx as usize][ny as usize];
+                        if ns.owner == 0 && ns.altitude != Altitude::Water as u8 {
+                            good_neighbors += 1;
+                            score += tofood(ns, None) as i32;
+                        }
+                    }
+                }
+            }
+            
+            // Location quality matching
+            match def.location {
+                'G' => { if good_neighbors < 6 { continue; } }  // GREAT: need lots of room
+                'F' => { if good_neighbors < 3 { continue; } }  // FAIR: need some room
+                _ => { if good_neighbors < 1 { continue; } }    // RANDOM: just need 1
+            }
+            
+            score += good_neighbors * 5;
+            
+            if score > best_score {
+                best_score = score;
+                best_x = cx;
+                best_y = cy;
+            }
+            
+            // Good enough for RANDOM placement
+            if def.location == 'R' && score > 20 { break; }
+            // Good enough for FAIR
+            if def.location == 'F' && score > 40 && attempt > 50 { break; }
+        }
+        
+        if best_score < 0 {
+            // Couldn't find a spot, skip
+            state.nations[nation_idx].active = 0;
+            continue;
+        }
+        
+        // Place capitol
+        state.sectors[best_x][best_y].owner = nation_idx as u8;
+        state.sectors[best_x][best_y].designation = Designation::Capitol as u8;
+        state.sectors[best_x][best_y].people = tciv;
+        
+        state.nations[nation_idx].cap_x = best_x as u8;
+        state.nations[nation_idx].cap_y = best_y as u8;
+        
+        // Expand to surrounding sectors (t=1 for NPCs)
+        if t >= 1 {
+            let people_per_sector = tciv / 12;
+            let mut expanded = 0i64;
+            
+            for di in -1i32..=1 {
+                for dj in -1i32..=1 {
+                    if di == 0 && dj == 0 { continue; }
+                    let nx = best_x as i32 + di;
+                    let ny = best_y as i32 + dj;
+                    if !on_map(nx, ny, map_x as i32, map_y as i32) { continue; }
+                    let nx = nx as usize;
+                    let ny = ny as usize;
+                    
+                    if state.sectors[nx][ny].owner != 0 { continue; }
+                    if state.sectors[nx][ny].altitude == Altitude::Water as u8 { continue; }
+                    
+                    state.sectors[nx][ny].owner = nation_idx as u8;
+                    state.sectors[nx][ny].people = people_per_sector;
+                    
+                    // Designate based on what's best
+                    let food_val = tofood(&state.sectors[nx][ny], None);
+                    if food_val >= DESFOOD {
+                        state.sectors[nx][ny].designation = Designation::Farm as u8;
+                    }
+                    
+                    expanded += people_per_sector;
+                }
+            }
+            
+            // Subtract expanded pop from capitol
+            state.sectors[best_x][best_y].people = tciv - expanded;
+        }
+        
+        // Place armies
+        let dflt_unit = defaultunit(&state.nations[nation_idx]);
+        let leader_type = getleader(def.class);
+        
+        // First: garrison army in capitol (P_ASOLD = tmil / MILINCAP)
+        let mut armynum = 0usize;
+        let garrison_size = def.tmil / MILINCAP;
+        let mut soldiers_left = def.tmil - garrison_size;
+        
+        if armynum < MAXARM {
+            let ntn = &mut state.nations[nation_idx];
+            ntn.armies[armynum].x = best_x as u8;
+            ntn.armies[armynum].y = best_y as u8;
+            ntn.armies[armynum].soldiers = garrison_size;
+            ntn.armies[armynum].unit_type = dflt_unit;
+            ntn.armies[armynum].status = ArmyStatus::Garrison.to_value();
+            ntn.armies[armynum].movement = 0;
+            armynum += 1;
+        }
+        
+        // Calculate army size for remaining soldiers
+        let army_size = if soldiers_left > 0 && (MAXARM - numleaders as usize - 1) > 0 {
+            soldiers_left / (MAXARM - numleaders as usize - 1) as i64
+        } else {
+            0
+        };
+        let army_size = army_size.max(75);
+        
+        // Place remaining armies
+        while armynum < MAXARM && soldiers_left > 0 {
+            let size = soldiers_left.min(army_size);
+            let ntn = &mut state.nations[nation_idx];
+            ntn.armies[armynum].x = best_x as u8;
+            ntn.armies[armynum].y = best_y as u8;
+            ntn.armies[armynum].soldiers = size;
+            ntn.armies[armynum].unit_type = dflt_unit;
+            ntn.armies[armynum].status = ArmyStatus::Attack.to_value();
+            ntn.armies[armynum].movement = (def.maxmove * UNIT_MOVE.get((dflt_unit % UTYPE) as usize).copied().unwrap_or(10) as u8) / 10;
+            armynum += 1;
+            soldiers_left -= size;
+        }
+        
+        // Place leaders (last numleaders army slots get leader units)
+        let mut leaders_placed = 0;
+        while armynum < MAXARM && leaders_placed < numleaders {
+            let ntn = &mut state.nations[nation_idx];
+            ntn.armies[armynum].x = best_x as u8;
+            ntn.armies[armynum].y = best_y as u8;
+            ntn.armies[armynum].soldiers = 100;
+            ntn.armies[armynum].unit_type = leader_type;
+            ntn.armies[armynum].status = ArmyStatus::Attack.to_value();
+            ntn.armies[armynum].movement = (def.maxmove * UNIT_MOVE.get((leader_type % UTYPE) as usize).copied().unwrap_or(10) as u8) / 10;
+            armynum += 1;
+            leaders_placed += 1;
+        }
+        
+        // Recalculate sector count
+        let mut sector_count = 0i16;
+        for x in 0..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner == nation_idx as u8 {
+                    sector_count += 1;
+                }
+            }
+        }
+        state.nations[nation_idx].total_sectors = sector_count;
+        
+        // Set diplomacy based on alignment
+        for j in 1..NTOTAL {
+            if j == nation_idx { continue; }
+            if !NationStrategy::from_value(state.nations[j].active).map_or(false, |s| s != NationStrategy::Inactive) {
+                continue;
+            }
+            state.nations[nation_idx].diplomacy[j] = DiplomaticStatus::Unmet as u8;
+            state.nations[j].diplomacy[nation_idx] = DiplomaticStatus::Unmet as u8;
         }
     }
 }

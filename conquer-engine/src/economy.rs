@@ -255,6 +255,7 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
     }
 
     // Post-sector update: run spreadsheet for each nation, calculate poverty/inflation
+    // C uses isntn() for per-nation spreadsheet (active 1..16)
     for country in 1..NTOTAL {
         let ntn = &state.nations[country];
         if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
@@ -424,7 +425,7 @@ pub fn updcomodities(state: &mut GameState, _rng: &mut ConquerRng) {
 }
 
 /// updmil() — reset military movement, upkeep, siege mechanics.
-/// Simplified version matching core C logic for movement and maintenance.
+/// C uses isntn() = active 1..16, excluding monsters.
 pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
     for country in 1..NTOTAL {
         let ntn = &state.nations[country];
