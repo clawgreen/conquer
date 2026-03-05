@@ -32,7 +32,7 @@ pub mod trade;
 pub mod diplomacy;
 pub mod events;
 pub mod commands;
-// pub mod turn;
+pub mod turn;
 pub mod nation;
 
 pub use conquer_core;

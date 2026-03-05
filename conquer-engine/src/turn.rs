@@ -12,6 +12,48 @@ use crate::events::*;
 use crate::trade::*;
 use crate::utils::is_habitable;
 
+/// Wrapper for run_combat that accepts separate parameters
+/// Matches C: combat()
+fn run_world_combat(
+    world: &mut World,
+    nations: &mut [Nation; MAXNTOTAL],
+    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    rng: &mut ConquerRng,
+) {
+    // Convert to GameState format for run_combat
+    let map_x = world.map_x as usize;
+    let map_y = world.map_y as usize;
+    
+    let mut state = GameState::new(map_x, map_y);
+    state.world = world.clone();
+    
+    // Convert [Nation; MAXNTOTAL] to Vec<Nation>
+    state.nations = nations.iter().cloned().collect();
+    
+    // Convert [[Sector; MAPY]; MAPX] to Vec<Vec<Sector>>
+    state.sectors = sectors.iter()
+        .map(|row| row.iter().cloned().collect())
+        .collect();
+    
+    // Run combat
+    let _results = run_combat(&mut state, rng);
+    
+    // Copy back
+    *world = state.world;
+    for (i, nation) in state.nations.iter().enumerate() {
+        if i < MAXNTOTAL {
+            nations[i] = nation.clone();
+        }
+    }
+    for (i, row) in state.sectors.iter().enumerate() {
+        for (j, sector) in row.iter().enumerate() {
+            if i < MAPX as usize && j < MAPY as usize {
+                sectors[i][j] = sector.clone();
+            }
+        }
+    }
+}
+
 /// Navy movement default (based on C: ~4 for armies, navies vary)
 pub const NAVY_MOVE: u8 = 4;
 
@@ -95,7 +137,7 @@ pub fn update_turn(
     events.push("Generating random events...".to_string());
     for i in 1..MAXNTOTAL {
         if is_nation_active(&nations[i]) {
-            process_nation_events(rng, &mut nations[i], sectors);
+            process_nation_events(rng, &mut nations[i], i, sectors);
         }
     }
     
@@ -123,8 +165,8 @@ pub fn update_turn(
     
     // Mercenary increase (5% chance)
     if rng.rand() % 20 == 0 {
-        world.m_aplus += 1;
-        world.m_dplus += 1;
+        world.merc_aplus += 1;
+        world.merc_dplus += 1;
         events.push("Mercenary bonuses increased!".to_string());
     }
     
@@ -136,10 +178,10 @@ pub fn update_turn(
     calculate_tradegood_bonus(nations);
     
     TurnResult {
-        turn: current_turn,
+        turn: current_turn as i32,
         nation_updates,
         events,
-        new_turn: world.turn,
+        new_turn: world.turn as i32,
     }
 }
 
@@ -162,7 +204,7 @@ fn update_nation(
     let start_sectors = nation.total_sectors;
     
     // Run nation economy
-    update_nation_economy(nation, sectors, world.turn);
+    update_nation_economy(nation_idx, nation, sectors, world.turn);
     
     // Calculate changes
     let gold_change = nation.treasury_gold - start_gold;
@@ -241,9 +283,74 @@ fn reset_military_movements(nations: &mut [Nation; MAXNTOTAL]) {
     }
 }
 
+/// Update a single nation's economy
+/// Simplified version - applies basic economy processing
+fn update_nation_economy(
+    nation_idx: usize,
+    nation: &mut Nation,
+    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    turn: i16,
+) {
+    // Process each sector the nation owns
+    for x in 0..MAPX {
+        for y in 0..MAPY {
+            let sector = &mut sectors[x as usize][y as usize];
+            
+            if sector.owner as usize != nation_idx {
+                continue;
+            }
+            
+            // Process based on designation
+            match sector.designation as char {
+                'F' | 'f' => {
+                    // Farm - produce food
+                    let food_prod = sector.people * 5 / 100; // 5% production
+                    nation.total_food += food_prod;
+                }
+                'M' | 'm' => {
+                    // Mine - produce metal
+                    if sector.metal > 0 {
+                        let metal_prod = sector.people * sector.metal as i64 / 10;
+                        nation.metals += metal_prod;
+                    }
+                }
+                'C' | 'c' => {
+                    // City - produce gold
+                    let gold_prod = sector.people * 10 / 100;
+                    nation.treasury_gold += gold_prod;
+                }
+                'T' | 't' => {
+                    // Town - produce gold
+                    let gold_prod = sector.people * 5 / 100;
+                    nation.treasury_gold += gold_prod;
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    // Apply military upkeep
+    let mil_cost = nation.total_mil * 2;
+    nation.treasury_gold -= mil_cost;
+    
+    // Apply food consumption
+    let food_needed = nation.total_civ * 10 / 100 + nation.total_mil * 5 / 100;
+    if nation.total_food >= food_needed {
+        nation.total_food -= food_needed;
+    } else {
+        nation.total_food = 0;
+        // Starvation - lose civilians
+        nation.total_civ = (nation.total_civ * 9) / 10;
+    }
+    
+    // Inflation
+    nation.inflation = ((nation.inflation as i64 + 100) * 101 / 100) as i16;
+}
+
 /// Get maximum movement for a unit type
 fn get_max_movement(unit_type: u8, powers: i64) -> u8 {
-    let r#move = unit_move(unit_type as usize);
+    use conquer_core::tables::UNIT_MOVE;
+    let r#move = UNIT_MOVE[unit_type as usize];
     
     // CAVALRY power bonus
     if Power::has_power(powers, Power::CAVALRY) {
@@ -275,7 +382,7 @@ fn update_all_sectors(
             }
             
             // Update population
-            update_sector_population(sector, nations, world.turn, rng);
+            update_sector_population(sector, nations, world.turn as i32, rng);
             
             // Update production
             update_sector_production(sector, nations);
@@ -380,16 +487,16 @@ fn calculate_scores(
         total_metal += nation.metals;
         total_civ += nation.total_civ;
         total_mil += nation.total_mil;
-        total_sectors += nation.total_sectors;
+        total_sectors += nation.total_sectors as i32;
     }
     
     // Update world totals
-    world.w_gold = total_gold;
-    world.w_food = total_food;
-    world.w_metal = total_metal;
-    world.w_civ = total_civ;
-    world.w_mil = total_mil;
-    world.w_sctrs = total_sectors as i64;
+    world.world_gold = total_gold;
+    world.world_food = total_food;
+    world.world_metal = total_metal;
+    world.world_civ = total_civ;
+    world.world_mil = total_mil;
+    world.world_sectors = total_sectors as i64;
 }
 
 /// Calculate individual nation score
