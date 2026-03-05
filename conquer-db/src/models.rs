@@ -111,9 +111,14 @@ pub struct ChatMessage {
     pub id: Uuid,
     pub game_id: Uuid,
     pub sender_nation_id: Option<u8>,
+    /// Sender display: "NationName (LeaderName)" or "SYSTEM"
+    pub sender_name: String,
     pub channel: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
+    /// true for system-generated messages (turn advance, diplomacy, etc.)
+    #[serde(default)]
+    pub is_system: bool,
 }
 
 // ============================================================

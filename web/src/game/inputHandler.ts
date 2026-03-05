@@ -25,6 +25,7 @@ export type GameAction =
   | { type: 'magic' }
   | { type: 'font_increase' }
   | { type: 'font_decrease' }
+  | { type: 'toggle_chat' }
   | { type: 'noop' };
 
 export class InputHandler {
@@ -110,6 +111,9 @@ export class InputHandler {
     if (key === 'N' && shift) return { type: 'show_news' };
     if (key === 'B' && shift) return { type: 'show_budget' };
     if (key === '?') return { type: 'show_help' };
+
+    // Chat toggle (T400)
+    if (key === 't' || key === 'T') return { type: 'toggle_chat' };
 
     // Font size
     if (key === '+' || key === '=') return { type: 'font_increase' };

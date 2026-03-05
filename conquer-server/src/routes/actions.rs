@@ -122,9 +122,20 @@ pub async fn end_turn(
     // Check if all players done → auto advance
     if state.store.all_players_done(game_id).await? {
         let new_turn = state.store.run_turn(game_id).await?;
+        // Broadcast turn end + system chat message (T394)
         state.ws_manager.broadcast(game_id, ServerMessage::TurnEnd {
             old_turn: new_turn - 1,
             new_turn,
+        }).await;
+        let season = ["Winter", "Spring", "Summer", "Fall"][(new_turn % 4) as usize];
+        let year = (new_turn as i32 + 3) / 4;
+        state.ws_manager.broadcast(game_id, ServerMessage::ChatMessage {
+            sender_nation_id: None,
+            sender_name: "SYSTEM".to_string(),
+            channel: "public".to_string(),
+            content: format!("━━━ Turn {} ({}, Year {}) has begun ━━━", new_turn, season, year),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            is_system: true,
         }).await;
         return Ok(Json(serde_json::json!({
             "status": "turn_advanced",
@@ -151,6 +162,18 @@ pub async fn run_turn(
     state.ws_manager.broadcast(game_id, ServerMessage::TurnEnd {
         old_turn: new_turn - 1,
         new_turn,
+    }).await;
+
+    // Broadcast system chat message (T394)
+    let season = ["Winter", "Spring", "Summer", "Fall"][(new_turn % 4) as usize];
+    let year = (new_turn as i32 + 3) / 4;
+    state.ws_manager.broadcast(game_id, ServerMessage::ChatMessage {
+        sender_nation_id: None,
+        sender_name: "SYSTEM".to_string(),
+        channel: "public".to_string(),
+        content: format!("━━━ Turn {} ({}, Year {}) has begun ━━━", new_turn, season, year),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        is_system: true,
     }).await;
 
     Ok(Json(TurnAdvanceResponse {

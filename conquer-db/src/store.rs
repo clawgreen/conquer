@@ -298,6 +298,29 @@ impl GameStore {
         game.info.player_count = game.players.len();
         game.info.updated_at = Utc::now();
 
+        // System message: nation joined (T395)
+        let race_name = match race {
+            'H' => "Human", 'E' => "Elf", 'D' => "Dwarf", 'O' => "Orc",
+            'L' => "Lizard", 'P' => "Pirate", 'S' => "Savage", 'N' => "Nomad",
+            _ => "Unknown",
+        };
+        let class_name = match class {
+            0 => "Monster", 1 => "King", 2 => "Emperor", 3 => "Wizard",
+            4 => "Priest", 5 => "Pirate", 6 => "Trader", 7 => "Warlord",
+            _ => "Adventurer",
+        };
+        let sys_msg = ChatMessage {
+            id: Uuid::new_v4(),
+            game_id,
+            sender_nation_id: None,
+            sender_name: "SYSTEM".to_string(),
+            channel: "public".to_string(),
+            content: format!("⚔ The nation of {} ({} {}) has entered the world!", nation_name, race_name, class_name),
+            created_at: Utc::now(),
+            is_system: true,
+        };
+        game.chat_messages.push(sys_msg);
+
         Ok(player)
     }
 
@@ -478,6 +501,21 @@ impl GameStore {
             timestamp: Utc::now(),
         });
 
+        // System message: turn advance (T394)
+        let season = ["Winter", "Spring", "Summer", "Fall"][(new_turn % 4) as usize];
+        let year = (new_turn as i32 + 3) / 4;
+        let sys_msg = ChatMessage {
+            id: Uuid::new_v4(),
+            game_id,
+            sender_nation_id: None,
+            sender_name: "SYSTEM".to_string(),
+            channel: "public".to_string(),
+            content: format!("━━━ Turn {} ({}, Year {}) has begun ━━━", new_turn, season, year),
+            created_at: Utc::now(),
+            is_system: true,
+        };
+        game.chat_messages.push(sys_msg);
+
         Ok(new_turn)
     }
 
@@ -501,10 +539,11 @@ impl GameStore {
     }
 
     // ========================================================
-    // Chat operations
+    // Chat operations (T388-T399)
     // ========================================================
 
-    /// Send a chat message
+    /// Send a chat message with rate limiting (T393)
+    /// Returns Err if rate limited (max 5 messages per 10 seconds per nation)
     pub async fn send_chat(
         &self,
         game_id: Uuid,
@@ -516,19 +555,85 @@ impl GameStore {
         let game = games.get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
+        // Rate limiting: max 5 messages in 10 seconds per nation (T393)
+        if let Some(nid) = sender_nation_id {
+            let now = Utc::now();
+            let window = chrono::Duration::seconds(10);
+            let recent_count = game.chat_messages.iter()
+                .filter(|m| m.sender_nation_id == Some(nid) && !m.is_system)
+                .filter(|m| now.signed_duration_since(m.created_at) < window)
+                .count();
+            if recent_count >= 5 {
+                return Err(DbError::InvalidState("Rate limited: too many messages".to_string()));
+            }
+        }
+
+        // Build sender name
+        let sender_name = match sender_nation_id {
+            Some(nid) if (nid as usize) < game.state.nations.len() => {
+                let n = &game.state.nations[nid as usize];
+                if n.name.is_empty() {
+                    format!("Nation {}", nid)
+                } else {
+                    format!("{} ({})", n.name, n.leader)
+                }
+            }
+            Some(nid) => format!("Nation {}", nid),
+            None => "SYSTEM".to_string(),
+        };
+
         let msg = ChatMessage {
             id: Uuid::new_v4(),
             game_id,
             sender_nation_id,
+            sender_name,
             channel: channel.to_string(),
             content: content.to_string(),
             created_at: Utc::now(),
+            is_system: sender_nation_id.is_none(),
         };
         game.chat_messages.push(msg.clone());
+
+        // Ring buffer: keep max 1000 messages per game (configurable history)
+        if game.chat_messages.len() > 1000 {
+            game.chat_messages.drain(..game.chat_messages.len() - 1000);
+        }
+
         Ok(msg)
     }
 
-    /// Get chat messages with pagination
+    /// Send a system message (no rate limiting) (T394-T399)
+    pub async fn send_system_message(
+        &self,
+        game_id: Uuid,
+        channel: &str,
+        content: &str,
+    ) -> Result<ChatMessage, DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        let msg = ChatMessage {
+            id: Uuid::new_v4(),
+            game_id,
+            sender_nation_id: None,
+            sender_name: "SYSTEM".to_string(),
+            channel: channel.to_string(),
+            content: content.to_string(),
+            created_at: Utc::now(),
+            is_system: true,
+        };
+        game.chat_messages.push(msg.clone());
+
+        // Ring buffer
+        if game.chat_messages.len() > 1000 {
+            game.chat_messages.drain(..game.chat_messages.len() - 1000);
+        }
+
+        Ok(msg)
+    }
+
+    /// Get chat messages with pagination (T392)
     pub async fn get_chat(
         &self,
         game_id: Uuid,
@@ -548,6 +653,88 @@ impl GameStore {
         msgs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         msgs.truncate(limit);
         Ok(msgs)
+    }
+
+    /// Get chat messages visible to a specific nation (T389-T390)
+    /// Public channel: visible to all. Private channels (nation_X_Y): visible to X and Y only.
+    pub async fn get_chat_for_nation(
+        &self,
+        game_id: Uuid,
+        nation_id: u8,
+        channel: &str,
+        limit: usize,
+        before: Option<DateTime<Utc>>,
+    ) -> Result<Vec<ChatMessage>, DbError> {
+        // Validate the nation can see this channel
+        if channel != "public" && !Self::nation_can_see_channel(nation_id, channel) {
+            return Err(DbError::Unauthorized("Cannot access this channel".to_string()));
+        }
+        self.get_chat(game_id, channel, limit, before).await
+    }
+
+    /// Check if a nation can see a private channel (public for WS handler)
+    /// Private channels are named "nation_X_Y" where X < Y
+    pub fn nation_can_see_channel_pub(nation_id: u8, channel: &str) -> bool {
+        Self::nation_can_see_channel(nation_id, channel)
+    }
+
+    /// Check if a nation can see a private channel
+    /// Private channels are named "nation_X_Y" where X < Y
+    fn nation_can_see_channel(nation_id: u8, channel: &str) -> bool {
+        if channel == "public" {
+            return true;
+        }
+        // Parse "nation_X_Y" format
+        let parts: Vec<&str> = channel.split('_').collect();
+        if parts.len() == 3 && parts[0] == "nation" {
+            if let (Ok(a), Ok(b)) = (parts[1].parse::<u8>(), parts[2].parse::<u8>()) {
+                return nation_id == a || nation_id == b;
+            }
+        }
+        false
+    }
+
+    /// Get the canonical channel name for a private nation-to-nation channel
+    /// Always orders nation IDs so smaller is first: "nation_1_3" not "nation_3_1"
+    pub fn private_channel_name(nation_a: u8, nation_b: u8) -> String {
+        let (lo, hi) = if nation_a < nation_b { (nation_a, nation_b) } else { (nation_b, nation_a) };
+        format!("nation_{}_{}", lo, hi)
+    }
+
+    /// List available channels for a nation in a game
+    pub async fn list_channels_for_nation(
+        &self,
+        game_id: Uuid,
+        nation_id: u8,
+    ) -> Result<Vec<String>, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        let mut channels = vec!["public".to_string()];
+        // Find all private channels this nation participates in
+        let mut seen = std::collections::HashSet::new();
+        for msg in &game.chat_messages {
+            if Self::nation_can_see_channel(nation_id, &msg.channel) && msg.channel != "public" {
+                if seen.insert(msg.channel.clone()) {
+                    channels.push(msg.channel.clone());
+                }
+            }
+        }
+        Ok(channels)
+    }
+
+    /// Get connected nation IDs for a game (for presence tracking) (T405)
+    /// Note: actual presence is tracked via WebSocket connections;
+    /// this returns player nation_ids for the game
+    pub async fn get_player_nation_ids(
+        &self,
+        game_id: Uuid,
+    ) -> Result<Vec<u8>, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        Ok(game.players.iter().map(|p| p.nation_id).collect())
     }
 
     // ========================================================
@@ -1168,6 +1355,72 @@ mod tests {
 
         let private = store.get_chat(game.id, "nation_1_2", 50, None).await.unwrap();
         assert_eq!(private.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_chat_rate_limiting() {
+        let store = GameStore::new();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+
+        // Send 5 messages — should all succeed
+        for i in 0..5 {
+            store.send_chat(game.id, Some(1), "public", &format!("msg {}", i)).await.unwrap();
+        }
+        // 6th should be rate limited
+        let result = store.send_chat(game.id, Some(1), "public", "spam").await;
+        assert!(result.is_err());
+
+        // System messages bypass rate limiting
+        store.send_system_message(game.id, "public", "System msg").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_private_channels() {
+        let store = GameStore::new();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+
+        let channel = GameStore::private_channel_name(3, 1);
+        assert_eq!(channel, "nation_1_3"); // sorted
+
+        store.send_chat(game.id, Some(1), &channel, "Hello nation 3").await.unwrap();
+
+        // Nation 1 can see it
+        let msgs = store.get_chat_for_nation(game.id, 1, &channel, 50, None).await.unwrap();
+        assert_eq!(msgs.len(), 1);
+
+        // Nation 3 can see it
+        let msgs = store.get_chat_for_nation(game.id, 3, &channel, 50, None).await.unwrap();
+        assert_eq!(msgs.len(), 1);
+
+        // Nation 2 cannot
+        let result = store.get_chat_for_nation(game.id, 2, &channel, 50, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_system_messages() {
+        let store = GameStore::new();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+
+        let msg = store.send_system_message(game.id, "public", "Turn 2 has begun").await.unwrap();
+        assert!(msg.is_system);
+        assert_eq!(msg.sender_name, "SYSTEM");
+        assert!(msg.sender_nation_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_chat_sender_name() {
+        let store = GameStore::new();
+        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+
+        // Send from the joined nation (nation_id from join)
+        let players = store.list_players(game.id).await.unwrap();
+        let nid = players[0].nation_id;
+        let msg = store.send_chat(game.id, Some(nid), "public", "Hello!").await.unwrap();
+        assert!(msg.sender_name.contains("Gondor"));
+        assert!(msg.sender_name.contains("Aragorn"));
     }
 
     #[tokio::test]

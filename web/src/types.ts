@@ -227,6 +227,16 @@ export interface JoinGameResponse {
 // WebSocket Message Types (matching ws.rs)
 // ============================================================
 
+// Chat message type for display
+export interface ChatMessageData {
+  sender_nation_id: number | null;
+  sender_name: string;
+  channel: string;
+  content: string;
+  timestamp: string;
+  is_system: boolean;
+}
+
 export type ServerMessage =
   | { type: 'map_update'; data: { sectors?: unknown } }
   | { type: 'nation_update'; data: { nation_id: number; data?: unknown } }
@@ -236,7 +246,9 @@ export type ServerMessage =
   | { type: 'turn_end'; data: { old_turn: number; new_turn: number } }
   | { type: 'player_joined'; data: { nation_id: number; nation_name: string; race: string } }
   | { type: 'player_done'; data: { nation_id: number; nation_name: string } }
-  | { type: 'chat_message'; data: { sender_nation_id: number | null; channel: string; content: string; timestamp: string } }
+  | { type: 'chat_message'; data: ChatMessageData }
+  | { type: 'chat_history'; data: { channel: string; messages: ChatMessageData[] } }
+  | { type: 'presence_update'; data: { nation_id: number; status: string } }
   | { type: 'system_message'; data: { content: string } }
   | { type: 'pong'; data: null }
   | { type: 'error'; data: { message: string } };
@@ -244,6 +256,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: 'action'; data: { action: unknown } }
   | { type: 'chat_send'; data: { channel: string; content: string } }
+  | { type: 'chat_history_request'; data: { channel: string; before?: string; limit: number } }
   | { type: 'ping'; data: null };
 
 // ============================================================

@@ -3,7 +3,7 @@
 
 import {
   GameInfo, Nation, MapResponse, Sector, ArmyInfo, NavyInfo,
-  PublicNationInfo, ScoreEntry, NewsEntry,
+  PublicNationInfo, ScoreEntry, NewsEntry, ChatMessageData,
   DisplayMode, HighlightMode,
 } from '../types';
 
@@ -44,6 +44,15 @@ export interface GameState {
   waitingForPlayers: boolean;
   isDone: boolean;
 
+  // Chat state (Phase 5)
+  chatMessages: Record<string, ChatMessageData[]>; // channel -> messages
+  chatChannel: string;           // current active channel
+  chatChannels: string[];        // available channels
+  chatInput: string;             // current input text
+  chatOpen: boolean;             // panel visible?
+  chatUnread: Record<string, number>; // channel -> unread count
+  onlineNations: Set<number>;    // nation IDs currently connected
+
   // Connection
   connected: boolean;
 }
@@ -76,6 +85,13 @@ export function createInitialState(): GameState {
     notifications: [],
     waitingForPlayers: false,
     isDone: false,
+    chatMessages: { public: [] },
+    chatChannel: 'public',
+    chatChannels: ['public'],
+    chatInput: '',
+    chatOpen: false,
+    chatUnread: {},
+    onlineNations: new Set(),
     connected: false,
   };
 }

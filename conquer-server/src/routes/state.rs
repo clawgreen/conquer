@@ -1,8 +1,8 @@
-// conquer-server/src/routes/state.rs — Game state endpoints (T296-T304)
+// conquer-server/src/routes/state.rs — Game state endpoints (T296-T304, T392)
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use conquer_core::*;
@@ -200,4 +200,94 @@ pub async fn get_budget(
     let nation_id = resolve_nation(&state, &claims, game_id).await?;
     let budget = state.store.get_budget(game_id, nation_id).await?;
     Ok(Json(budget))
+}
+
+// ============================================================
+// Chat endpoints (T392)
+// ============================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ChatQuery {
+    /// Channel name: "public" or "nation_X_Y"
+    #[serde(default = "default_channel")]
+    pub channel: String,
+    /// Pagination: get messages before this ISO timestamp
+    pub before: Option<String>,
+    /// Max messages to return (default 50, max 100)
+    #[serde(default = "default_chat_limit")]
+    pub limit: Option<usize>,
+}
+
+fn default_channel() -> String { "public".to_string() }
+fn default_chat_limit() -> Option<usize> { Some(50) }
+
+#[derive(Debug, Serialize)]
+pub struct ChatResponse {
+    pub messages: Vec<ChatMessageResponse>,
+    pub channel: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChatMessageResponse {
+    pub id: String,
+    pub sender_nation_id: Option<u8>,
+    pub sender_name: String,
+    pub channel: String,
+    pub content: String,
+    pub timestamp: String,
+    pub is_system: bool,
+}
+
+/// GET /api/games/:id/chat — Chat history with pagination (T392)
+pub async fn get_chat(
+    State(state): State<AppState>,
+    claims: Claims,
+    Path(game_id): Path<Uuid>,
+    Query(query): Query<ChatQuery>,
+) -> Result<Json<ChatResponse>, ApiError> {
+    let nation_id = resolve_nation(&state, &claims, game_id).await?;
+    let limit = query.limit.unwrap_or(50).min(100);
+    let before = query.before
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|d| d.with_timezone(&chrono::Utc));
+
+    let msgs = state.store.get_chat_for_nation(
+        game_id, nation_id, &query.channel, limit, before,
+    ).await?;
+
+    let messages: Vec<ChatMessageResponse> = msgs.into_iter().map(|m| ChatMessageResponse {
+        id: m.id.to_string(),
+        sender_nation_id: m.sender_nation_id,
+        sender_name: m.sender_name,
+        channel: m.channel,
+        content: m.content,
+        timestamp: m.created_at.to_rfc3339(),
+        is_system: m.is_system,
+    }).collect();
+
+    Ok(Json(ChatResponse {
+        channel: query.channel,
+        messages,
+    }))
+}
+
+/// GET /api/games/:id/chat/channels — List available channels for the player
+pub async fn get_chat_channels(
+    State(state): State<AppState>,
+    claims: Claims,
+    Path(game_id): Path<Uuid>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let nation_id = resolve_nation(&state, &claims, game_id).await?;
+    let channels = state.store.list_channels_for_nation(game_id, nation_id).await?;
+    Ok(Json(channels))
+}
+
+/// GET /api/games/:id/presence — Online players (T405)
+pub async fn get_presence(
+    State(state): State<AppState>,
+    _claims: Claims,
+    Path(game_id): Path<Uuid>,
+) -> Result<Json<Vec<u8>>, ApiError> {
+    let online = state.ws_manager.get_online_nations(game_id).await;
+    Ok(Json(online))
 }

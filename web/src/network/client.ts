@@ -4,7 +4,7 @@
 import {
   AuthResponse, GameInfo, MapResponse, Nation, ArmyInfo, NavyInfo,
   PublicNationInfo, ScoreEntry, NewsEntry, JoinGameResponse,
-  ServerMessage, ClientMessage,
+  ServerMessage, ClientMessage, ChatMessageData,
 } from '../types';
 
 const API_BASE = '/api';
@@ -135,6 +135,30 @@ export class GameClient {
 
   async runTurn(gameId: string): Promise<unknown> {
     return this.request<unknown>('POST', `/games/${gameId}/run-turn`);
+  }
+
+  // ============ Chat (T392) ============
+
+  async getChatHistory(gameId: string, channel: string = 'public', before?: string, limit: number = 50): Promise<{ channel: string; messages: ChatMessageData[] }> {
+    const params = new URLSearchParams({ channel, limit: String(limit) });
+    if (before) params.set('before', before);
+    return this.request<{ channel: string; messages: ChatMessageData[] }>('GET', `/games/${gameId}/chat?${params}`);
+  }
+
+  async getChatChannels(gameId: string): Promise<string[]> {
+    return this.request<string[]>('GET', `/games/${gameId}/chat/channels`);
+  }
+
+  async getPresence(gameId: string): Promise<number[]> {
+    return this.request<number[]>('GET', `/games/${gameId}/presence`);
+  }
+
+  sendChatMessage(channel: string, content: string): void {
+    this.sendWs({ type: 'chat_send', data: { channel, content } });
+  }
+
+  requestChatHistory(channel: string, before?: string, limit: number = 50): void {
+    this.sendWs({ type: 'chat_history_request', data: { channel, before, limit } });
   }
 
   // ============ WebSocket ============

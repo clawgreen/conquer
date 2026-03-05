@@ -128,6 +128,26 @@ pub async fn join_game(
         race: req.race,
     }).await;
 
+    // Broadcast system chat message (T395)
+    let race_name = match req.race {
+        'H' => "Human", 'E' => "Elf", 'D' => "Dwarf", 'O' => "Orc",
+        'L' => "Lizard", 'P' => "Pirate", 'S' => "Savage", 'N' => "Nomad",
+        _ => "Unknown",
+    };
+    let class_name = match req.class {
+        0 => "Monster", 1 => "King", 2 => "Emperor", 3 => "Wizard",
+        4 => "Priest", 5 => "Pirate", 6 => "Trader", 7 => "Warlord",
+        _ => "Adventurer",
+    };
+    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::ChatMessage {
+        sender_nation_id: None,
+        sender_name: "SYSTEM".to_string(),
+        channel: "public".to_string(),
+        content: format!("⚔ The nation of {} ({} {}) has entered the world!", req.nation_name, race_name, class_name),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        is_system: true,
+    }).await;
+
     Ok(Json(JoinGameResponse {
         nation_id: player.nation_id,
         game_id: game_id.to_string(),

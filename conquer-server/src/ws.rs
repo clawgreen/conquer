@@ -61,12 +61,24 @@ pub enum ServerMessage {
         nation_id: u8,
         nation_name: String,
     },
-    /// Chat message
+    /// Chat message (T388)
     ChatMessage {
         sender_nation_id: Option<u8>,
+        sender_name: String,
         channel: String,
         content: String,
         timestamp: String,
+        is_system: bool,
+    },
+    /// Chat history response (sent on connect or request)
+    ChatHistory {
+        channel: String,
+        messages: Vec<ChatHistoryEntry>,
+    },
+    /// Player presence update (T405)
+    PresenceUpdate {
+        nation_id: u8,
+        status: String, // "online", "offline"
     },
     /// System message
     SystemMessage {
@@ -80,6 +92,17 @@ pub enum ServerMessage {
     },
 }
 
+/// A single chat message entry for history payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatHistoryEntry {
+    pub sender_nation_id: Option<u8>,
+    pub sender_name: String,
+    pub channel: String,
+    pub content: String,
+    pub timestamp: String,
+    pub is_system: bool,
+}
+
 /// Messages sent from client to server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -89,14 +112,24 @@ pub enum ClientMessage {
     Action {
         action: conquer_core::actions::Action,
     },
-    /// Send a chat message
+    /// Send a chat message (T388)
     ChatSend {
         channel: String,
         content: String,
     },
+    /// Request chat history for a channel
+    ChatHistoryRequest {
+        channel: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+        #[serde(default = "default_chat_limit")]
+        limit: usize,
+    },
     /// Ping
     Ping,
 }
+
+fn default_chat_limit() -> usize { 50 }
 
 // ============================================================
 // Connection Manager (T314)
@@ -116,17 +149,27 @@ impl GameChannel {
     }
 }
 
+/// Per-connection metadata for presence tracking (T405)
+#[derive(Debug, Clone)]
+pub struct ConnectedPlayer {
+    pub nation_id: u8,
+    pub connected_at: std::time::Instant,
+}
+
 /// Manages WebSocket connections across all games
 #[derive(Clone)]
 pub struct ConnectionManager {
     /// game_id -> broadcast channel
     channels: Arc<RwLock<HashMap<Uuid, GameChannel>>>,
+    /// game_id -> set of connected nation_ids (for presence)
+    presence: Arc<RwLock<HashMap<Uuid, HashMap<u8, usize>>>>, // nation_id -> connection count
 }
 
 impl ConnectionManager {
     pub fn new() -> Self {
         ConnectionManager {
             channels: Arc::new(RwLock::new(HashMap::new())),
+            presence: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -170,6 +213,35 @@ impl ConnectionManager {
     pub async fn broadcast_to_nation(&self, game_id: Uuid, _nation_id: u8, msg: ServerMessage) {
         self.broadcast(game_id, msg).await;
     }
+
+    /// Register a player connection (T405 presence)
+    pub async fn player_connected(&self, game_id: Uuid, nation_id: u8) {
+        let mut presence = self.presence.write().await;
+        let game_presence = presence.entry(game_id).or_insert_with(HashMap::new);
+        let count = game_presence.entry(nation_id).or_insert(0);
+        *count += 1;
+    }
+
+    /// Unregister a player connection (T405 presence)
+    pub async fn player_disconnected(&self, game_id: Uuid, nation_id: u8) {
+        let mut presence = self.presence.write().await;
+        if let Some(game_presence) = presence.get_mut(&game_id) {
+            if let Some(count) = game_presence.get_mut(&nation_id) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    game_presence.remove(&nation_id);
+                }
+            }
+        }
+    }
+
+    /// Get online nation IDs for a game (T405)
+    pub async fn get_online_nations(&self, game_id: Uuid) -> Vec<u8> {
+        let presence = self.presence.read().await;
+        presence.get(&game_id)
+            .map(|m| m.keys().copied().collect())
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -191,6 +263,25 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("player_joined"));
         assert!(json.contains("Gondor"));
+
+        let msg = ServerMessage::ChatMessage {
+            sender_nation_id: Some(1),
+            sender_name: "Gondor (Aragorn)".to_string(),
+            channel: "public".to_string(),
+            content: "Hello!".to_string(),
+            timestamp: "2026-03-05T00:00:00Z".to_string(),
+            is_system: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("chat_message"));
+        assert!(json.contains("sender_name"));
+
+        let msg = ServerMessage::PresenceUpdate {
+            nation_id: 1,
+            status: "online".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("presence_update"));
     }
 
     #[test]
@@ -202,6 +293,10 @@ mod tests {
         let json = r#"{"type":"chat_send","data":{"channel":"public","content":"Hello!"}}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert!(matches!(msg, ClientMessage::ChatSend { .. }));
+
+        let json = r#"{"type":"chat_history_request","data":{"channel":"public","limit":50}}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, ClientMessage::ChatHistoryRequest { .. }));
     }
 
     #[tokio::test]

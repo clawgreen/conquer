@@ -66,7 +66,7 @@ pub async fn ws_upgrade(
         .into_response()
 }
 
-/// Handle a WebSocket connection
+/// Handle a WebSocket connection (enhanced for Phase 5 chat)
 async fn handle_ws(
     socket: WebSocket,
     state: AppState,
@@ -74,6 +74,14 @@ async fn handle_ws(
     nation_id: u8,
 ) {
     let (mut sender, mut receiver) = socket.split();
+
+    // Register presence (T405)
+    state.ws_manager.player_connected(game_id, nation_id).await;
+    // Broadcast presence to other players
+    state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
+        nation_id,
+        status: "online".to_string(),
+    }).await;
 
     // Subscribe to game broadcasts
     let mut broadcast_rx = state.ws_manager.subscribe(game_id).await;
@@ -130,15 +138,55 @@ async fn handle_ws(
                                 let _ = store.submit_action(game_id, nation_id, action).await;
                             }
                             ClientMessage::ChatSend { channel, content } => {
-                                // Store and broadcast chat
-                                if let Ok(msg) = store.send_chat(
+                                // Validate channel access for private channels (T390)
+                                if channel != "public" && !conquer_db::GameStore::nation_can_see_channel_pub(nation_id, &channel) {
+                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
+                                        message: "Cannot send to this channel".to_string(),
+                                    }).await;
+                                    continue;
+                                }
+                                // Store and broadcast chat (T388)
+                                match store.send_chat(
                                     game_id, Some(nation_id), &channel, &content,
                                 ).await {
-                                    ws_mgr.broadcast(game_id, ServerMessage::ChatMessage {
-                                        sender_nation_id: Some(nation_id),
-                                        channel: msg.channel,
-                                        content: msg.content,
-                                        timestamp: msg.created_at.to_rfc3339(),
+                                    Ok(msg) => {
+                                        ws_mgr.broadcast(game_id, ServerMessage::ChatMessage {
+                                            sender_nation_id: Some(nation_id),
+                                            sender_name: msg.sender_name,
+                                            channel: msg.channel,
+                                            content: msg.content,
+                                            timestamp: msg.created_at.to_rfc3339(),
+                                            is_system: false,
+                                        }).await;
+                                    }
+                                    Err(e) => {
+                                        ws_mgr.broadcast(game_id, ServerMessage::Error {
+                                            message: format!("Chat error: {}", e),
+                                        }).await;
+                                    }
+                                }
+                            }
+                            ClientMessage::ChatHistoryRequest { channel, before, limit } => {
+                                // Validate channel access
+                                if channel != "public" && !conquer_db::GameStore::nation_can_see_channel_pub(nation_id, &channel) {
+                                    continue;
+                                }
+                                let before_dt = before.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&chrono::Utc)));
+                                let limit = limit.min(100);
+                                if let Ok(msgs) = store.get_chat(game_id, &channel, limit, before_dt).await {
+                                    let entries: Vec<crate::ws::ChatHistoryEntry> = msgs.into_iter().map(|m| {
+                                        crate::ws::ChatHistoryEntry {
+                                            sender_nation_id: m.sender_nation_id,
+                                            sender_name: m.sender_name,
+                                            channel: m.channel,
+                                            content: m.content,
+                                            timestamp: m.created_at.to_rfc3339(),
+                                            is_system: m.is_system,
+                                        }
+                                    }).collect();
+                                    ws_mgr.broadcast(game_id, ServerMessage::ChatHistory {
+                                        channel,
+                                        messages: entries,
                                     }).await;
                                 }
                             }
@@ -159,4 +207,12 @@ async fn handle_ws(
         _ = &mut send_task => recv_task.abort(),
         _ = &mut recv_task => send_task.abort(),
     }
+
+    // Unregister presence (T405)
+    state.ws_manager.player_disconnected(game_id, nation_id).await;
+    // Broadcast offline status
+    state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
+        nation_id,
+        status: "offline".to_string(),
+    }).await;
 }

@@ -6,6 +6,7 @@ import { GameClient } from '../network/client';
 import { GameState, createInitialState, buildOccupied } from '../state/gameState';
 import { renderMap, screenSize } from './mapView';
 import { renderSidePanel, renderBottomPanel } from '../ui/sidePanel';
+import { ChatPanel } from '../ui/chatPanel';
 import { InputHandler, GameAction } from './inputHandler';
 import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
@@ -15,6 +16,7 @@ export class GameScreen {
   private term: TerminalRenderer;
   private client: GameClient;
   private input: InputHandler;
+  private chatPanel: ChatPanel;
   private state: GameState;
   private animFrame: number = 0;
   private statusMessage: string = '';
@@ -40,6 +42,9 @@ export class GameScreen {
 
     // Input handler
     this.input = new InputHandler((action) => this.handleAction(action));
+
+    // Chat panel (Phase 5: T400)
+    this.chatPanel = new ChatPanel(parent, this.client, this.state);
 
     // WebSocket
     this.client.onMessage((msg) => this.handleWsMessage(msg));
@@ -91,9 +96,35 @@ export class GameScreen {
         this.centerOn(nation.cap_x, nation.cap_y);
       }
 
-      this.setStatus(`Welcome, ${nation.name}! Turn ${gameInfo.current_turn}`);
+      this.setStatus(`Welcome, ${nation.name}! Turn ${gameInfo.current_turn} — Press T for chat`);
+
+      // Load initial chat data (Phase 5)
+      this.loadChatData();
     } catch (e) {
       this.setStatus(`Error loading game: ${(e as Error).message}`);
+    }
+  }
+
+  private async loadChatData(): Promise<void> {
+    if (!this.state.gameId) return;
+    try {
+      // Load presence
+      const online = await this.client.getPresence(this.state.gameId);
+      this.chatPanel.setPresence(online);
+
+      // Load channels
+      const channels = await this.client.getChatChannels(this.state.gameId);
+      this.state.chatChannels = channels.length > 0 ? channels : ['public'];
+
+      // Load public chat history
+      const history = await this.client.getChatHistory(this.state.gameId, 'public');
+      if (history.messages.length > 0) {
+        this.chatPanel.onChatHistory('public', history.messages);
+      }
+
+      this.chatPanel.updateNations();
+    } catch {
+      // Chat data is non-critical
     }
   }
 
@@ -234,6 +265,10 @@ export class GameScreen {
         this.setStatus('Magic: not yet implemented in frontend');
         break;
 
+      case 'toggle_chat':
+        this.chatPanel.toggle();
+        break;
+
       case 'font_increase':
         this.term.setFontSize(this.term.fontSize + 1);
         this.handleResize();
@@ -295,7 +330,7 @@ export class GameScreen {
 
   private showHelp(): void {
     this.setStatus(
-      'Keys: arrows/hjkl=move  Tab=next army  d/v/c/f/r/m/M/D/p/J/i/n=display  o/a/y/L/s/x=highlight  E=end turn  ?=help  +/-=font'
+      'Keys: arrows/hjkl=move  Tab=army  d/v/c/f/r/m/M/D/p/J/i/n=display  o/a/y/L/s/x=hl  T=chat  E=end turn  ?=help  +/-=font'
     );
   }
 
@@ -314,10 +349,32 @@ export class GameScreen {
 
       case 'player_joined':
         this.addNotification(`${msg.data.nation_name} (${msg.data.race}) has joined!`);
+        // Refresh nations list for chat panel
+        if (this.state.gameId) {
+          this.client.getNations(this.state.gameId).then(nations => {
+            this.state.publicNations = nations;
+            this.chatPanel.updateNations();
+          });
+        }
         break;
 
       case 'player_done':
         this.addNotification(`${msg.data.nation_name} has ended their turn`);
+        break;
+
+      case 'chat_message':
+        // Route to chat panel (T388)
+        this.chatPanel.onChatMessage(msg.data);
+        break;
+
+      case 'chat_history':
+        // Route history to chat panel
+        this.chatPanel.onChatHistory(msg.data.channel, msg.data.messages);
+        break;
+
+      case 'presence_update':
+        // Route to chat panel (T405)
+        this.chatPanel.onPresenceUpdate(msg.data.nation_id, msg.data.status);
         break;
 
       case 'system_message':
@@ -387,6 +444,7 @@ export class GameScreen {
   destroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
     this.input.destroy();
+    this.chatPanel.destroy();
     this.term.destroy();
     this.client.disconnectWebSocket();
     this.canvas.remove();
