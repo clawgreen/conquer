@@ -6,6 +6,7 @@
 
 use conquer_core::*;
 use conquer_core::tables::*;
+use conquer_core::enums::{Season, Altitude, Vegetation};
 use crate::rng::ConquerRng;
 
 /// Event types
@@ -33,6 +34,17 @@ pub struct EventResult {
     pub affected_y: Option<u8>,
     pub damage: i64,
     pub message: String,
+}
+
+/// Disaster report output from wdisaster()
+/// Contains formatted output for console, news, and mail
+#[derive(Debug, Clone, Default)]
+pub struct DisasterReport {
+    pub console_output: String,
+    pub news_output: String,
+    pub news_details: Option<String>,
+    pub mail_message: Option<String>,
+    pub is_pc: bool,
 }
 
 /// Chance constants
@@ -353,6 +365,98 @@ pub fn barbarian_raid(
             sector_x, sector_y, stolen_gold
         ),
     })
+}
+
+/// Report a weather disaster event
+/// Ported from C: wdisaster() in randeven.c
+/// 
+/// This function formats and reports disaster events to:
+/// - Console output
+/// - News file (returned as string)
+/// - Mail message (for PC nations, returned as string)
+/// 
+/// Parameters:
+/// - nation: The affected nation
+/// - nation_idx: Nation index
+/// - x, y: Location coordinates (-1 if not location-specific)
+/// - damage_percent: Damage severity percentage (0-100)
+/// - event_name: Name of the event (e.g., "volcano erupted", "peasant revolt")
+/// - event_details: Optional additional details about the event
+/// - season: Current season for the mail message
+/// - year: Current year for the mail message
+pub fn wdisaster(
+    nation: &Nation,
+    nation_idx: usize,
+    x: i32,
+    y: i32,
+    damage_percent: i32,
+    event_name: &str,
+    event_details: Option<&str>,
+    season: Season,
+    year: i32,
+) -> DisasterReport {
+    let is_pc = matches!(
+        nation.active,
+        1 | 2 | 3
+    ); // PC_GOOD=1, PC_NEUTRAL=2, PC_EVIL=3
+    
+    let season_name = match season {
+        Season::Winter => "Winter",
+        Season::Spring => "Spring",
+        Season::Summer => "Summer",
+        Season::Fall => "Fall",
+    };
+    
+    // Console/news output
+    let console_output = format!("\t{} in {}", event_name, nation.name);
+    
+    // News output
+    let news_output = format!("1.\t{} in {}", event_name, nation.name);
+    
+    // Mail message (only for PC nations)
+    let mail_message = if is_pc {
+        let mut msg = format!(
+            "MESSAGE FROM CONQUER\n\nAn event occurs within your nation ({})\n{} during the {} of Year {},\n",
+            nation.name, event_name, season_name, year
+        );
+        
+        if x >= 0 && y >= 0 {
+            msg.push_str(&format!(" centered around location {}, {}.\n", x, y));
+        }
+        
+        if damage_percent > 0 {
+            msg.push_str(&format!("Damage was estimated at about {}% in severity.\n", damage_percent));
+        }
+        
+        if let Some(details) = event_details {
+            if !details.is_empty() {
+                msg.push_str(&format!("\t{}\n", details));
+            }
+        }
+        
+        Some(msg)
+    } else {
+        None
+    };
+    
+    // Event details in news (if provided)
+    let news_details = event_details.map(|details| {
+        format!("1.\tevent in {} -->{}", nation.name, details)
+    });
+    
+    DisasterReport {
+        console_output,
+        news_output,
+        news_details,
+        mail_message,
+        is_pc,
+    }
+}
+
+/// Check if a nation is player-controlled
+/// Matches C: ispc() macro
+pub fn is_pc_nation(active: u8) -> bool {
+    matches!(active, 1 | 2 | 3)
 }
 
 /// Process random events for a nation
@@ -700,5 +804,145 @@ mod event_tests {
         assert_eq!(format!("{:?}", EventType::Plague), "Plague");
         assert_eq!(format!("{:?}", EventType::Revolt), "Revolt");
         assert_eq!(format!("{:?}", EventType::Volcano), "Volcano");
+    }
+
+    #[test]
+    fn test_wdisaster_pc_nation() {
+        let nation = Nation {
+            name: "Test Kingdom".to_string(),
+            active: 1, // PC_GOOD
+            cap_x: 10,
+            cap_y: 10,
+            ..Default::default()
+        };
+        
+        let report = wdisaster(
+            &nation,
+            1,
+            10,
+            10,
+            50,
+            "volcano erupted",
+            Some("devastating damage"),
+            Season::Summer,
+            100,
+        );
+        
+        assert!(report.is_pc);
+        assert!(report.console_output.contains("volcano erupted"));
+        assert!(report.console_output.contains("Test Kingdom"));
+        assert!(report.news_output.contains("volcano erupted"));
+        assert!(report.mail_message.is_some());
+        let mail = report.mail_message.unwrap();
+        assert!(mail.contains("Test Kingdom"));
+        assert!(mail.contains("Summer"));
+        assert!(mail.contains("Year 100"));
+        assert!(mail.contains("50%"));
+    }
+
+    #[test]
+    fn test_wdisaster_npc_nation() {
+        let nation = Nation {
+            name: "NPC Empire".to_string(),
+            active: 20, // NPC_Savage
+            cap_x: 5,
+            cap_y: 5,
+            ..Default::default()
+        };
+        
+        let report = wdisaster(
+            &nation,
+            2,
+            5,
+            5,
+            100,
+            "peasant revolt",
+            None,
+            Season::Spring,
+            50,
+        );
+        
+        assert!(!report.is_pc);
+        assert!(report.console_output.contains("peasant revolt"));
+        assert!(report.console_output.contains("NPC Empire"));
+        // NPC nations don't get mail
+        assert!(report.mail_message.is_none());
+    }
+
+    #[test]
+    fn test_wdisaster_no_location() {
+        let nation = Nation {
+            name: "Test Nation".to_string(),
+            active: 2, // PC_NEUTRAL
+            ..Default::default()
+        };
+        
+        let report = wdisaster(
+            &nation,
+            1,
+            -1,
+            -1,
+            0,
+            "unexpected bounty",
+            Some("found treasure"),
+            Season::Fall,
+            25,
+        );
+        
+        assert!(report.is_pc);
+        assert!(report.mail_message.is_some());
+        let mail = report.mail_message.unwrap();
+        // Should not mention location when x/y are -1
+        assert!(!mail.contains("centered around"));
+    }
+
+    #[test]
+    fn test_wdisaster_no_damage_percent() {
+        let nation = Nation {
+            name: "Small Kingdom".to_string(),
+            active: 3, // PC_EVIL
+            ..Default::default()
+        };
+        
+        let report = wdisaster(
+            &nation,
+            1,
+            15,
+            20,
+            0,
+            "barbarian raid",
+            None,
+            Season::Winter,
+            75,
+        );
+        
+        assert!(report.is_pc);
+        let mail = report.mail_message.unwrap();
+        // When damage_percent is 0, should not mention damage
+        assert!(!mail.contains("Damage was estimated"));
+    }
+
+    #[test]
+    fn test_is_pc_nation() {
+        // PC nations
+        assert!(is_pc_nation(1)); // PC_GOOD
+        assert!(is_pc_nation(2)); // PC_NEUTRAL
+        assert!(is_pc_nation(3)); // PC_EVIL
+        
+        // NPC nations
+        assert!(!is_pc_nation(0));   // Inactive
+        assert!(!is_pc_nation(4));   // Good0Free
+        assert!(!is_pc_nation(17));  // NpcPeasant
+        assert!(!is_pc_nation(20));  // NpcSavage
+    }
+
+    #[test]
+    fn test_disaster_report_default() {
+        let report = DisasterReport::default();
+        assert!(report.console_output.is_empty());
+        assert!(report.news_output.is_empty());
+        assert!(report.news_details.is_none());
+        assert!(report.mail_message.is_none());
+        assert!(!report.is_pc);
     }
 }

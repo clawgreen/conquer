@@ -3,7 +3,8 @@
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
   "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
-  "current_todo": "T240",
+  "current_todo": "T241",
+  "playtest_completed": "2026-03-04T22:06:00-08:00",
   "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
     "T001",
@@ -225,7 +226,8 @@
     "T236",
     "T237",
     "T238",
-    "T239"
+    "T239",
+    "T240"
   ],
   "skipped": [
     "T092",
@@ -252,9 +254,9 @@
   },
   "failed": [],
   "blocked": [],
-  "last_run": "2026-03-04T22:01:00-08:00",
-  "tests_total": 145,
-  "tests_passing": 145,
+  "last_run": "2026-03-04T22:21:00-08:00",
+  "tests_total": 156,
+  "tests_passing": 156,
   "oracle_seeds_passing": [
     42
   ],
@@ -293,8 +295,8 @@
         "turn",
         "nation"
       ],
-      "tests": 104,
-      "notes": "Sprint 3 progress: trade, diplomacy (22 new tests), events (15 new tests), commands, nation, turn modules now enabled. 145 tests passing. turn.rs now enabled with run_world_combat wrapper and update_nation_economy."
+      "tests": 110,
+      "notes": "Sprint 3 progress: trade, diplomacy (22 new tests), events (21 new tests), commands, nation, turn modules now enabled. 156 tests total. turn.rs now enabled with run_world_combat wrapper and update_nation_economy. T240: wdisaster() ported with 6 new tests."
     },
     "conquer-server": {
       "status": "scaffold",
@@ -318,10 +320,19 @@
     "oracle_json_loading": "PASS \u2014 Full oracle snapshot loads into Rust GameState",
     "enum_roundtrips": "PASS \u2014 All enums round-trip correctly against oracle data",
     "data_tables": "PASS \u2014 All C array values verified in Rust",
-    "cargo_test": "PASS \u2014 56/56 tests across all crates",
+    "cargo_test": "PASS \u2014 156 tests across all crates (36 core + 110 engine + 5 playtest + 1 oracle-tests + 4 oracle-tests)",
+    "wdisaster_port": "PASS \u2014 T240: wdisaster() ported from randeven.c with full feature parity (console, news, mail reporting for PC nations)",
+    "playtest_10turn": "PASS \u2014 10 turns seed 42, no panics, 15/19 nations survive, economy diverges from C (see docs/KNOWN-BUGS.md)",
+    "playtest_multiseed": "PASS \u2014 seeds 42/123/999 x 5 turns each, no panics",
+    "playtest_deterministic": "PASS \u2014 same seed produces identical results",
+    "playtest_economy": "PASS \u2014 economy produces resource changes each turn",
+    "playtest_scores": "PASS \u2014 scores change over 3 turns",
     "worldgen_deterministic": "PASS \u2014 Same seed produces identical world in back-to-back runs",
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
-    "phase2_sprint3": "IN PROGRESS — T238+T239 (diplomacy+events snapshot tests) complete. 145 tests passing total. Next: T240 (weather disasters)"
+    "phase2_sprint3": "IN PROGRESS — T240 (wdisaster) complete. 156 tests passing total. Playtest PASS.",
+    "playtest_status": "PASS — 5/5 integration tests. Engine runs 10 turns without panics. Economy diverges from C (simplified stub). See docs/KNOWN-BUGS.md",
+    "mapx_mapy_fix": "FIXED — changed MAPX/MAPY from 30 to 32 to match C default map size",
+    "unit_type_bounds_fix": "FIXED — get_max_movement() now bounds-checks unit_type against UNIT_MOVE table"
   }
 }
