@@ -239,7 +239,7 @@
   },
   "failed": [],
   "blocked": [],
-  "last_run": "2026-03-04T19:15:00-08:00",
+  "last_run": "2026-03-04T20:03:00-08:00",
   "tests_total": 86,
   "tests_passing": 86,
   "oracle_seeds_passing": [
@@ -272,10 +272,16 @@
         "magic",
         "npc",
         "monster",
-        "navy"
+        "navy",
+        "trade",
+        "diplomacy",
+        "events",
+        "commands",
+        "turn",
+        "nation"
       ],
       "tests": 45,
-      "notes": "Sprint 2 complete (2D-2I). Combat, NPC AI, Monster AI, Magic (31 powers), Navy, Movement all ported. 86 tests passing. 4,789 new lines of Rust."
+      "notes": "Sprint 2 complete (2D-2I). Combat, NPC AI, Monster AI, Magic (31 powers), Navy, Movement all ported. 86 tests passing. Sprint 3 modules scaffolded but disabled (API mismatch with conquer-core)."
     },
     "conquer-server": {
       "status": "scaffold",
@@ -303,6 +309,6 @@
     "worldgen_deterministic": "PASS \u2014 Same seed produces identical world in back-to-back runs",
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
-    "phase2_sprint3": "IN_PROGRESS — trade.rs, diplomacy.rs, events.rs, commands.rs, nation.rs, turn.rs scaffolded. API mismatch with conquer-core blocks full integration. Build passes 86 tests."
+    "phase2_sprint3": "PARTIAL \u2014 trade.rs, diplomacy.rs, events.rs, commands.rs, nation.rs, turn.rs scaffolded but disabled due to API mismatch. Need to fix: tgold->treasury_gold, tciv->total_civ, tmil->total_mil, tsctrs->total_sectors, smove->movement, dipl_status->diplomacy Vec, Sector x/y removal, Nation id removal. Build passes 86 tests."
   }
 }
