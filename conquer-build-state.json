@@ -2,9 +2,9 @@
   "current_phase": 2,
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
-  "current_sprint": "Sprint 2 complete (2D-2I), 2J next",
-  "completed_at": null,
+  "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
   "current_todo": "T227",
+  "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
     "T001",
     "T002",
@@ -303,6 +303,6 @@
     "worldgen_deterministic": "PASS \u2014 Same seed produces identical world in back-to-back runs",
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
-    "phase2_sprint2": "COMPLETE \u2014 combat.rs, npc.rs, monster.rs, magic.rs, navy.rs, movement.rs all building and tested. 86/86 tests."
+    "phase2_sprint3": "IN_PROGRESS — trade.rs, diplomacy.rs, events.rs, commands.rs, nation.rs, turn.rs scaffolded. API mismatch with conquer-core blocks full integration. Build passes 86 tests."
   }
 }

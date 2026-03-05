@@ -4,6 +4,8 @@
 
 /// Max number of nations (player + NPC + monster)
 pub const NTOTAL: usize = 35;
+/// Max number of nations - alias for array sizing (from C: MAXNTOTAL)
+pub const MAXNTOTAL: usize = NTOTAL;
 /// Points for players to buy stuff with at start
 pub const MAXPTS: i16 = 65;
 /// Maximum number of armies per nation
@@ -324,6 +326,47 @@ pub const NUMCLASS: usize = 11;
 pub const UTYPE: u8 = 75;
 /// Two times UTYPE — offset for monster types
 pub const TWOUTYPE: u8 = 150;
+
+/// Minimum value of a monster unit type (from C: MINMONSTER = 45+TWOUTYPE)
+pub const MINMONSTER: u8 = 45 + TWOUTYPE as i32 as u8;
+/// Maximum value of a monster unit type
+pub const MAXMONSTER: u8 = 199;
+
+// ============================================================
+// Army/Navy Status Types
+// ============================================================
+
+/// Indicates an army that has been traded (from C: TRADED = 4)
+pub const TRADED: u8 = 4;
+
+// ============================================================
+// Nation Status Types
+// ============================================================
+
+/// PEASANT REVOLT TYPE NATIONS (from C: NPC_PEASANT = 17)
+pub const NPC_PEASANT: u8 = 17;
+
+// ============================================================
+// Seasons
+// ============================================================
+
+/// Spring season (from C: SPRING = 1)
+pub const SPRING: u8 = 1;
+/// Summer season (from C: SUMMER = 2)
+pub const SUMMER: u8 = 2;
+/// Fall season (from C: FALL = 3)
+pub const FALL: u8 = 3;
+/// Winter season (from C: WINTER = 4)
+pub const WINTER: u8 = 4;
+
+// ============================================================
+// Map Dimensions
+// ============================================================
+
+/// Map X dimension - set at world creation (runtime value)
+pub const MAPX: usize = 30;
+/// Map Y dimension - set at world creation (runtime value)
+pub const MAPY: usize = 30;
 
 // ============================================================
 // Miscellaneous
