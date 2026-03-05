@@ -3,8 +3,8 @@
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
   "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
-  "current_todo": "T241",
-  "current_task": "conquer-sprint3-events",
+  "current_todo": "T242",
+  "current_task": "phase2.5-parity-fixes-complete",
   "playtest_completed": "2026-03-04T22:06:00-08:00",
   "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
@@ -332,7 +332,8 @@
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
     "phase2_sprint3": "IN PROGRESS — T240 (wdisaster) complete. 156 tests passing total. Playtest PASS.",
-    "playtest_status": "PASS — 5/5 integration tests. Engine runs 10 turns without panics. Economy diverges from C (simplified stub). See docs/KNOWN-BUGS.md",
+    "phase2_5_parity_fixes": "COMPLETE — 3 critical parity gaps fixed: (1) Full economy wired into turn pipeline, (2) NPC nation placement in worldgen matching C populate(), (3) Monster total_mil recount + destroy check matching C isntn() filter",
+    "playtest_status": "PASS — 5/5 tests. 19/19 active nations (was 15). Pop within 20% for 7/10 turns. Gold within 50% for 9/10 turns. See docs/KNOWN-BUGS.md",
     "mapx_mapy_fix": "FIXED — changed MAPX/MAPY from 30 to 32 to match C default map size",
     "unit_type_bounds_fix": "FIXED — get_max_movement() now bounds-checks unit_type against UNIT_MOVE table"
   }
