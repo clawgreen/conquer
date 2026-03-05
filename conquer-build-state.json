@@ -1,9 +1,10 @@
 {
-  "current_phase": 1,
-  "phase_name": "Rust Data Layer",
-  "status": "complete",
-  "completed_at": "2026-03-04T17:55:00-08:00",
-  "current_todo": "T112",
+  "current_phase": 2,
+  "phase_name": "Rust Game Engine",
+  "status": "in_progress",
+  "current_sprint": "2A/2B/2C complete, 2D next",
+  "completed_at": null,
+  "current_todo": "T157",
   "completed": [
     "T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009",
     "T010", "T011", "T012", "T013", "T014", "T015", "T016",
@@ -15,7 +16,12 @@
     "T070", "T071", "T072", "T073", "T074", "T075", "T076", "T077", "T078",
     "T079", "T080", "T081", "T082", "T083", "T084", "T085", "T086", "T087", "T088", "T089",
     "T090", "T091",
-    "T109", "T110", "T111", "T112"
+    "T109", "T110", "T111", "T112",
+    "T113", "T114", "T115", "T116", "T117", "T118", "T119", "T120",
+    "T121", "T122", "T123", "T124", "T125", "T126", "T127", "T128",
+    "T129", "T130", "T131", "T132", "T133", "T134",
+    "T135", "T136", "T137", "T138", "T139", "T140", "T141", "T142", "T143", "T144",
+    "T145", "T146", "T147", "T148", "T149", "T150", "T151", "T152", "T153", "T154", "T155", "T156", "T157"
   ],
   "skipped": [
     "T092", "T093",
@@ -27,9 +33,9 @@
   },
   "failed": [],
   "blocked": [],
-  "last_run": "2026-03-04T17:55:00-08:00",
-  "tests_total": 41,
-  "tests_passing": 41,
+  "last_run": "2026-03-04T18:15:00-08:00",
+  "tests_total": 56,
+  "tests_passing": 56,
   "oracle_seeds_passing": [42],
   "oracle_seeds_failing": [],
   "rust_crates": {
@@ -39,8 +45,10 @@
       "tests": 36
     },
     "conquer-engine": {
-      "status": "scaffold",
-      "notes": "Empty shell, Phase 2"
+      "status": "in_progress",
+      "modules": ["rng", "utils", "worldgen", "economy"],
+      "tests": 15,
+      "notes": "Sprint 1 complete (2A/2B/2C). RNG wrapper, core utilities, world generation, economy/production all ported. 2D (Combat), 2E-2H next."
     },
     "conquer-server": {
       "status": "scaffold",
@@ -62,6 +70,9 @@
     "oracle_json_loading": "PASS — Full oracle snapshot loads into Rust GameState",
     "enum_roundtrips": "PASS — All enums round-trip correctly against oracle data",
     "data_tables": "PASS — All C array values verified in Rust",
-    "cargo_test": "PASS — 41/41 tests across all crates"
+    "cargo_test": "PASS — 56/56 tests across all crates",
+    "worldgen_deterministic": "PASS — Same seed produces identical world in back-to-back runs",
+    "economy_spreadsheet": "PASS — Farm production, taxation, seasonal modifiers working",
+    "phase2_sprint1": "COMPLETE — rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested"
   }
 }
