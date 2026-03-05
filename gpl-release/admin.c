@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include "header.h"
 #include "data.h"
+#include "headless.h"
 
 /*Declarations*/
 char	*getpass();
@@ -75,9 +76,7 @@ char **argv;
 	int realuser, l;
 	register int i,j;
 	char *name;
-#ifndef __STDC__
-	void srand();
-#endif
+	/* srand is now provided by conquer_rand.h macro */
 	int getopt();
 	long time();
 	/* mflag = make world, a=add player, x=execute, p=print */
@@ -90,7 +89,15 @@ char **argv;
 
 	umask (MASK);
 	mflag = aflag = xflag = rflag = 0;
-	srand((unsigned) time((long *) 0));
+	{
+		const char *seed_env = getenv("CONQUER_SEED");
+		if (seed_env && seed_env[0]) {
+			srand((unsigned)atol(seed_env));
+			fprintf(stderr, "[rng] Using seed: %s\n", seed_env);
+		} else {
+			srand((unsigned) time((long *) 0));
+		}
+	}
 	strcpy(datadir,"");
 	strcpy(cq_opts,"");
 	name = string;
@@ -249,19 +256,24 @@ char **argv;
 			sleep(1);
 		}
 #else
-		/* check for god permissions */
-		if(realuser!=(getpwnam(LOGIN))->pw_uid) {
+		/* check for god permissions (skip in headless mode) */
+		if(!conquer_is_headless() && realuser!=(getpwnam(LOGIN))->pw_uid) {
 			printf("Sorry -- you can not create a world\n");
 			printf("you need to be logged in as %s.\n",LOGIN);
 			exit(FAIL);
 		}
 
-		/* check if datafile already exists*/
+		/* check if datafile already exists (auto-remove in headless mode) */
 		if(access(datafile,00) == 0) {
-			printf("ABORTING: File %s exists\n",datafile);
-			printf("\tthis means that a game is in progress. To proceed, you must remove \n");
-			printf("\tthe existing data file. This will, of course, destroy that game.\n\n");
-			exit(FAIL);
+			if (conquer_is_headless()) {
+				fprintf(stderr, "[headless] Removing existing datafile %s\n", datafile);
+				unlink(datafile);
+			} else {
+				printf("ABORTING: File %s exists\n",datafile);
+				printf("\tthis means that a game is in progress. To proceed, you must remove \n");
+				printf("\tthe existing data file. This will, of course, destroy that game.\n\n");
+				exit(FAIL);
+			}
 		}
 #endif /* REMAKE */
 
@@ -296,7 +308,14 @@ char **argv;
 		if( TURN > LASTADD ){
 			printf("more than %d turns have passed since game start!\n", LASTADD);
 			printf("permission of game administrator required\n");
-			if(strncmp(crypt(getpass("\nwhat is conquer super user password:"),SALT),ntn[0].passwd,PASSLTH)!=0)
+			if (conquer_is_headless()) {
+				/* In headless mode, use CONQUER_PASSWORD env var */
+				const char *hpass = conquer_get_password();
+				if(strncmp(crypt(hpass,SALT),ntn[0].passwd,PASSLTH)!=0) {
+					printf("sorry... headless password mismatch\n");
+					exit(FAIL);
+				}
+			} else if(strncmp(crypt(getpass("\nwhat is conquer super user password:"),SALT),ntn[0].passwd,PASSLTH)!=0)
 			{
 				printf("sorry...\n");
 				exit(FAIL);
@@ -334,7 +353,8 @@ char **argv;
 
 	if (xflag) {	/* update the game */
 #ifndef OGOD
-		if ((realuser != (getpwnam(LOGIN))->pw_uid ) &&
+		if (!conquer_is_headless() &&
+		    (realuser != (getpwnam(LOGIN))->pw_uid ) &&
 		  ((pwent=getpwnam(ntn[0].leader)) == NULL ||
 		  realuser != pwent->pw_uid )) {
 			printf("sorry -- your uid is invalid for updating\n");
@@ -347,7 +367,8 @@ char **argv;
 		}
 #endif /* OGOD */
 #ifdef RUNSTOP
-		/* check if any players are on */
+		/* check if any players are on (skip in headless mode) */
+		if (!conquer_is_headless()) {
 		for (i=0;i<NTOTAL;i++) {
 			sprintf(string,"%s%d",isonfile,i);
 			if(check_lock(string,FALSE)==TRUE) {
@@ -356,9 +377,10 @@ char **argv;
 				exit(FAIL);
 			}
 		}
+		}
 #endif /* RUNSTOP */
 		sprintf(string,"%sup",isonfile);
-		if(check_lock(string,TRUE)==TRUE) {
+		if(!conquer_is_headless() && check_lock(string,TRUE)==TRUE) {
 			printf("Another update is still executing.\n");
 			printf("Update aborted.\n");
 			exit(FAIL);

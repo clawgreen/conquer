@@ -28,6 +28,7 @@
 #include <pwd.h>
 #include <unistd.h>
 #include "header.h"
+#include "headless.h"
 #include "data.h"
 
 #define HALF 2
@@ -93,6 +94,53 @@ int	rflag;		/* TRUE if you wish to read in a map from mapfiles */
 	struct passwd *getpwnam();
 	int i,valid;
 
+	/* ===== HEADLESS MODE: skip all curses interaction ===== */
+	if (conquer_is_headless()) {
+		const char *hpass = conquer_get_password();
+		fprintf(stderr, "[headless] World generation starting (datadir=%s)\n", datadir);
+
+		/* flush out beginning input */
+		sprintf(newstring,"rm -f %s* %s* %s* %s* %s %s 2> /dev/null",
+			exefile, msgfile, newsfile, isonfile, tradefile, timefile);
+		system(newstring);
+
+		zeroworld();
+
+		/* set password from env */
+		strncpy(passwd, hpass, PASSLTH);
+		passwd[PASSLTH] = '\0';
+		strncpy(ntn[0].passwd, crypt(passwd, SALT), PASSLTH);
+		(void) strncpy(ntn[0].leader, "god", LEADERLTH);
+		ntn[0].leader[LEADERLTH] = '\0';
+
+		/* set map size from env */
+		world.mapx = conquer_get_mapx();
+		world.mapy = conquer_get_mapy();
+		fprintf(stderr, "[headless] Map: %dx%d, Water: ", (int)world.mapx, (int)world.mapy);
+
+		getspace();
+
+		pwater = conquer_get_water();
+		fprintf(stderr, "%d%%\n", pwater);
+
+		if (rflag == FALSE) createworld();
+		else readmap();
+		rawmaterials();
+
+		verifydata(__FILE__, __LINE__);
+		writedata();
+
+		sprintf(newstring, "%s0", newsfile);
+		if ((fm = fopen(newstring, "w")) != (FILE *)NULL) {
+			fprintf(fm, "1\tIMPORTANT WORLD NEWS\n");
+			fprintf(fm, "5\tGLOBAL ANNOUNCEMENTS\n");
+			fclose(fm);
+		}
+		fprintf(stderr, "[headless] World generation complete\n");
+		return;
+	}
+
+	/* ===== NORMAL (interactive curses) MODE ===== */
 	/* conquer makeworld information */
 	newinit();
 	sprintf(newstring, "Datadir: %s", datadir);
@@ -1161,20 +1209,28 @@ populate()
 	}
 
 #ifdef NPC
-	mvaddstr(14,0,"Do you want NPC nations in this campaign? (y or n)");
-	clrtoeol();
-	refresh();
-	while( ((i=getch()) != 'y')&&(i != 'n') ) ;
+	if (conquer_is_headless()) {
+		i = 'y';  /* default: include NPC nations */
+	} else {
+		mvaddstr(14,0,"Do you want NPC nations in this campaign? (y or n)");
+		clrtoeol();
+		refresh();
+		while( ((i=getch()) != 'y')&&(i != 'n') ) ;
+	}
 	if( i!='y' ) {
 		newmsg("OK; no NPC nations used");
 		sleep(1);
 		return;
 	}
 	if((fp=fopen(npcsfile,"r"))==NULL) {
-		mvaddstr(14,0,"Do you wish to use default NPC nations file (y or n)?");
-		clrtoeol();
-		refresh();
-		while( ((i=getchar()) != 'y')&&(i != 'n') ) ;
+		if (conquer_is_headless()) {
+			i = 'y';  /* default: use default NPC file */
+		} else {
+			mvaddstr(14,0,"Do you wish to use default NPC nations file (y or n)?");
+			clrtoeol();
+			refresh();
+			while( ((i=getchar()) != 'y')&&(i != 'n') ) ;
+		}
 		if( i=='y'){
 			sprintf(line,"%s/%s",DEFAULTDIR,npcsfile);
 			if ((fp=fopen(line,"r"))==NULL) {

@@ -3,3 +3,5 @@ conqsort
 conqps
 conqrun
 conquer
+oracle/oracle
+snapshots/*.json

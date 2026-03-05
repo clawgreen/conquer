@@ -28,6 +28,7 @@
 #include <pwd.h>
 #include "patchlevel.h"
 #include "header.h"
+#include "headless.h"
 #include "data.h"
 #include "newlogin.h"
 
@@ -164,6 +165,14 @@ char	*string;
 void
 newinit()
 {
+	if (conquer_is_headless()) {
+		/* Initialize curses with null output so curses calls don't crash */
+		FILE *fnull = fopen("/dev/null", "w");
+		if (fnull) {
+			newterm(NULL, fnull, fopen("/dev/null", "r"));
+		}
+		return;
+	}
 	initscr();
 	/* check terminal size */
 	if (COLS<80 || LINES<24) {
@@ -181,6 +190,7 @@ newinit()
 void
 newreset()
 {
+	if (conquer_is_headless()) return;
 	clear();
 	refresh();
 	nocrmode();
@@ -201,6 +211,7 @@ void
 newmsg(str)
 	char *str;
 {
+	if (conquer_is_headless()) { fprintf(stderr, "[info] %s\n", str); return; }
 	mvaddstr(LINES-1,0,str);
 	clrtoeol();
 	refresh();
@@ -211,6 +222,7 @@ void
 newerror(str)
 	char *str;
 {
+	if (conquer_is_headless()) { fprintf(stderr, "[error] %s\n", str); return; }
 	mvaddstr(LINES-1, 0, str);
 	clrtoeol();
 	mvaddstr(LINES-1, COLS-16, "PRESS ANY KEY");
@@ -240,6 +252,7 @@ errorbar(str1,str2)
 	char *str1,*str2;
 {
 	int i;
+	if (conquer_is_headless()) { fprintf(stderr, "[bar] %s | %s\n", str1, str2); return; }
 	move(LINES-4,0);
 	standout();
 	for(i=0;i<COLS-1;i++)

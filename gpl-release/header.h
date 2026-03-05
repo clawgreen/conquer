@@ -396,4 +396,7 @@
  * 7. Compatible with existing data files and save games
  */
 
+/* Include portable seeded RNG to replace platform rand()/srand() */
+#include "conquer_rand.h"
+
 #endif /* CONQUER_HEADER_H */

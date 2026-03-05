@@ -50,7 +50,7 @@ EXEDIR = $(PREFIX)/bin
 # Base compiler definitions
 #CDEFS = -DDEFAULTDIR=\"$(DEFAULT)\" -DEXEDIR=\"$(EXEDIR)\"
 # This change has been introduced for proper packaging
-CDEFS = -DDEFAULTDIR=\"/usr/lib/conquer\" -DEXEDIR=\"/usr/bin\"
+CDEFS = -DDEFAULTDIR=\"$(DEFAULT)\" -DEXEDIR=\"$(EXEDIR)\"
 CDEFS += -DVERSION=\"$(VERSION)\" -DPATCHLEVEL=\"$(PATCHLEVEL)\"
 CDEFS += -DLOGIN=\"$(shell whoami)\"
 

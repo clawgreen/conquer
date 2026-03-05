@@ -1,0 +1,106 @@
+{
+  "phase": 0,
+  "phase_name": "Build & Oracle",
+  "status": "complete",
+  "completed_at": "2026-03-04T16:30:00-08:00",
+  "platform": {
+    "os": "macOS",
+    "arch": "arm64",
+    "compiler": "clang",
+    "flags": "-std=gnu99 -D_GNU_SOURCE -w"
+  },
+  "tasks": {
+    "T001_build_succeeds": {
+      "status": "done",
+      "notes": "make all succeeds with clang on macOS arm64"
+    },
+    "T010_strip_getpass": {
+      "status": "done",
+      "notes": "Headless mode skips getpass(), uses CONQUER_PASSWORD env var"
+    },
+    "T011_strip_checkuser": {
+      "status": "done",
+      "notes": "UID checks bypassed when CONQUER_HEADLESS=1"
+    },
+    "T012_strip_filelock": {
+      "status": "done",
+      "notes": "File lock checks (RUNSTOP, update lock) bypassed in headless mode"
+    },
+    "T013_strip_curses_from_admin": {
+      "status": "done",
+      "notes": "newinit/newreset/newmsg/newerror/errorbar handle headless mode; newterm with /dev/null for createworld curses calls"
+    },
+    "T014_headless_makeworld": {
+      "status": "done",
+      "notes": "makeworld() has complete headless fast-path: env vars for password, map size, water %"
+    },
+    "T015_headless_update": {
+      "status": "done",
+      "notes": "conqrun -x works headlessly (no TTY required)"
+    },
+    "T016_headless_npc_prompts": {
+      "status": "done",
+      "notes": "NPC nation yes/no prompts auto-answered in headless mode"
+    },
+    "T017_oracle_build": {
+      "status": "done",
+      "notes": "oracle/oracle binary built, links against game .o files"
+    },
+    "T018_oracle_json_output": {
+      "status": "done",
+      "notes": "Dumps valid JSON: world meta, nations, armies, sectors"
+    },
+    "T019_oracle_flags": {
+      "status": "done",
+      "notes": "Supports -m (meta), -n (nations), -a (armies), -s (sectors), -d (datadir)"
+    },
+    "T020_seeded_rng": {
+      "status": "done",
+      "notes": "Portable LCG replaces platform rand()/srand() via conquer_rand.h macros"
+    },
+    "T020a_deterministic_verification": {
+      "status": "done",
+      "notes": "Verified: same CONQUER_SEED produces identical world gen AND turn update (MD5 match)"
+    },
+    "T029a_docs_dev_setup": {
+      "status": "done",
+      "notes": "docs/DEV-SETUP.md created"
+    },
+    "T029b_docs_oracle": {
+      "status": "done",
+      "notes": "docs/ORACLE.md created"
+    },
+    "T029c_docs_rng": {
+      "status": "done",
+      "notes": "docs/RNG.md created"
+    },
+    "T029d_build_state_json": {
+      "status": "done",
+      "notes": "This file"
+    },
+    "T029e_logs_dir": {
+      "status": "done",
+      "notes": "logs/ directory created"
+    }
+  },
+  "files_modified": [
+    "gpl-release/headless.h (NEW) — headless mode env var helpers",
+    "gpl-release/conquer_rand.h (NEW) — portable seeded LCG",
+    "gpl-release/header.h — includes conquer_rand.h",
+    "gpl-release/admin.c — headless UID bypass, env seed, lock bypass",
+    "gpl-release/makeworl.c — headless world gen fast-path",
+    "gpl-release/newlogin.c — headless curses stubs",
+    "oracle/oracle.c (NEW) — game state JSON dumper",
+    "oracle/Makefile (NEW) — oracle build",
+    "docs/DEV-SETUP.md (NEW)",
+    "docs/ORACLE.md (NEW)",
+    "docs/RNG.md (NEW)"
+  ],
+  "verification": {
+    "headless_makeworld": "PASS — conqrun -m exits 0 with CONQUER_HEADLESS=1",
+    "headless_update": "PASS — conqrun -x exits 0 with CONQUER_HEADLESS=1",
+    "oracle_valid_json": "PASS — python3 json.load succeeds, 1024 sectors, 35 nations, 364 armies",
+    "deterministic_worldgen": "PASS — MD5 match across two runs with CONQUER_SEED=42",
+    "deterministic_update": "PASS — MD5 match for turn 2 across two runs with CONQUER_SEED=42"
+  }
+}
