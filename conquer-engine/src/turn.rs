@@ -350,7 +350,11 @@ fn update_nation_economy(
 /// Get maximum movement for a unit type
 fn get_max_movement(unit_type: u8, powers: i64) -> u8 {
     use conquer_core::tables::UNIT_MOVE;
-    let r#move = UNIT_MOVE[unit_type as usize];
+    let idx = unit_type as usize;
+    if idx >= UNIT_MOVE.len() {
+        return 4; // Default movement for unknown unit types
+    }
+    let r#move = UNIT_MOVE[idx];
     
     // CAVALRY power bonus
     if Power::has_power(powers, Power::CAVALRY) {

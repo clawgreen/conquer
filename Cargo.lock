@@ -32,6 +32,7 @@ name = "conquer-engine"
 version = "0.1.0"
 dependencies = [
  "conquer-core",
+ "serde_json",
 ]
 
 [[package]]

@@ -364,9 +364,9 @@ pub const WINTER: u8 = 4;
 // ============================================================
 
 /// Map X dimension - set at world creation (runtime value)
-pub const MAPX: usize = 30;
+pub const MAPX: usize = 32;
 /// Map Y dimension - set at world creation (runtime value)
-pub const MAPY: usize = 30;
+pub const MAPY: usize = 32;
 
 // ============================================================
 // Miscellaneous

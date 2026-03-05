@@ -3,7 +3,7 @@
   "phase_name": "Rust Game Engine",
   "status": "in_progress",
   "current_sprint": "Phase 2 Sprint 3 (2J-2O): trade, diplomacy, events, commands, turn pipeline, nation creation",
-  "current_todo": "T239",
+  "current_todo": "T240",
   "started_at": "2026-03-04T19:31:00-08:00",
   "completed": [
     "T001",
@@ -224,7 +224,8 @@
     "T235",
     "T236",
     "T237",
-    "T238"
+    "T238",
+    "T239"
   ],
   "skipped": [
     "T092",
@@ -252,8 +253,8 @@
   "failed": [],
   "blocked": [],
   "last_run": "2026-03-04T22:01:00-08:00",
-  "tests_total": 130,
-  "tests_passing": 130,
+  "tests_total": 145,
+  "tests_passing": 145,
   "oracle_seeds_passing": [
     42
   ],
@@ -292,8 +293,8 @@
         "turn",
         "nation"
       ],
-      "tests": 89,
-      "notes": "Sprint 3 progress: trade, diplomacy (with 22 new snapshot tests), events, commands, nation, turn modules now enabled. 130 tests passing. turn.rs now enabled with run_world_combat wrapper and update_nation_economy."
+      "tests": 104,
+      "notes": "Sprint 3 progress: trade, diplomacy (22 new tests), events (15 new tests), commands, nation, turn modules now enabled. 145 tests passing. turn.rs now enabled with run_world_combat wrapper and update_nation_economy."
     },
     "conquer-server": {
       "status": "scaffold",
@@ -321,6 +322,6 @@
     "worldgen_deterministic": "PASS \u2014 Same seed produces identical world in back-to-back runs",
     "economy_spreadsheet": "PASS \u2014 Farm production, taxation, seasonal modifiers working",
     "phase2_sprint1": "COMPLETE \u2014 rng.rs, utils.rs, worldgen.rs, economy.rs all building and tested",
-    "phase2_sprint3": "IN PROGRESS — T238 (diplomacy snapshot tests) complete with 22 new tests. 130 tests passing total. Next: T239 (random events)"
+    "phase2_sprint3": "IN PROGRESS — T238+T239 (diplomacy+events snapshot tests) complete. 145 tests passing total. Next: T240 (weather disasters)"
   }
 }
