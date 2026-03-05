@@ -1,8 +1,9 @@
-// conquer-db/src/store.rs — In-memory game store
+// conquer-db/src/store.rs — In-memory game store with optional Postgres write-through
 //
 // Thread-safe storage for games, users, players, actions, chat, invites.
 // Uses Arc<RwLock<>> for concurrent access from Axum handlers.
-// This is the primary store for testing; Postgres can replace it later.
+// When a PgPool is provided, all writes are persisted to Postgres.
+// On startup with Postgres, hydrate() loads all data into memory.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,6 +20,9 @@ use conquer_engine::rng::ConquerRng;
 use crate::auth::AuthManager;
 use crate::error::DbError;
 use crate::models::*;
+
+#[cfg(feature = "postgres")]
+use sqlx::PgPool;
 
 // ============================================================
 // Per-game state container
@@ -58,6 +62,9 @@ pub struct GameStore {
     notifications: Arc<RwLock<HashMap<Uuid, Vec<Notification>>>>,
     /// Per-user notification preferences (T434)
     notification_prefs: Arc<RwLock<HashMap<Uuid, NotificationPreferences>>>,
+    /// Optional Postgres connection pool for persistence
+    #[cfg(feature = "postgres")]
+    pool: Option<PgPool>,
 }
 
 impl GameStore {
@@ -70,6 +77,87 @@ impl GameStore {
             invite_index: Arc::new(RwLock::new(HashMap::new())),
             notifications: Arc::new(RwLock::new(HashMap::new())),
             notification_prefs: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "postgres")]
+            pool: None,
+        }
+    }
+
+    /// Create a store with Postgres persistence
+    #[cfg(feature = "postgres")]
+    pub fn with_pool(pool: PgPool) -> Self {
+        GameStore {
+            games: Arc::new(RwLock::new(HashMap::new())),
+            users: Arc::new(RwLock::new(HashMap::new())),
+            username_index: Arc::new(RwLock::new(HashMap::new())),
+            email_index: Arc::new(RwLock::new(HashMap::new())),
+            invite_index: Arc::new(RwLock::new(HashMap::new())),
+            notifications: Arc::new(RwLock::new(HashMap::new())),
+            notification_prefs: Arc::new(RwLock::new(HashMap::new())),
+            pool: Some(pool),
+        }
+    }
+
+    /// Run migrations and hydrate in-memory state from Postgres
+    #[cfg(feature = "postgres")]
+    pub async fn hydrate(&self) -> Result<(), DbError> {
+        let pool = match &self.pool {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        // Run migrations
+        crate::pg::run_migrations(pool).await?;
+
+        // Load users
+        let users = crate::pg::load_all_users(pool).await?;
+        tracing::info!("Loaded {} users from Postgres", users.len());
+        {
+            let mut users_map = self.users.write().await;
+            let mut uname_idx = self.username_index.write().await;
+            let mut email_idx = self.email_index.write().await;
+            for user in users {
+                uname_idx.insert(user.username.clone(), user.id);
+                email_idx.insert(user.email.clone(), user.id);
+                users_map.insert(user.id, user);
+            }
+        }
+
+        // Load games
+        let managed_games = crate::pg::load_all_games(pool).await?;
+        tracing::info!("Loaded {} games from Postgres", managed_games.len());
+        {
+            let mut games = self.games.write().await;
+            let mut invite_idx = self.invite_index.write().await;
+            for game in managed_games {
+                // Rebuild invite index
+                for invite in &game.invites {
+                    invite_idx.insert(invite.invite_code.clone(), game.info.id);
+                }
+                games.insert(game.info.id, game);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Helper: get pool reference (returns None if not compiled with postgres or no pool)
+    #[cfg(feature = "postgres")]
+    fn pool(&self) -> Option<&PgPool> {
+        self.pool.as_ref()
+    }
+
+    /// Persist helper that logs errors but doesn't fail the operation
+    /// (write-through: memory is source of truth, Postgres is durable backup)
+    #[cfg(feature = "postgres")]
+    async fn persist<F, Fut>(&self, op_name: &str, f: F)
+    where
+        F: FnOnce(PgPool) -> Fut,
+        Fut: std::future::Future<Output = Result<(), DbError>>,
+    {
+        if let Some(pool) = &self.pool {
+            if let Err(e) = f(pool.clone()).await {
+                tracing::error!("Postgres persist failed ({}): {}", op_name, e);
+            }
         }
     }
 
@@ -117,6 +205,15 @@ impl GameStore {
         self.users.write().await.insert(id, user.clone());
         self.username_index.write().await.insert(username_lower, id);
         self.email_index.write().await.insert(email_lower, id);
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let user_clone = user.clone();
+            self.persist("create_user", |pool| async move {
+                crate::pg::save_user(&pool, &user_clone).await
+            }).await;
+        }
 
         Ok(user)
     }
@@ -192,6 +289,10 @@ impl GameStore {
             player_count: 0,
         };
 
+        // Clone state for Postgres persistence before moving into ManagedGame
+        #[cfg(feature = "postgres")]
+        let state_for_persist = state.clone();
+
         let managed = ManagedGame {
             info: info.clone(),
             state,
@@ -206,6 +307,17 @@ impl GameStore {
         };
 
         self.games.write().await.insert(id, managed);
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let info_clone = info.clone();
+            self.persist("create_game", |pool| async move {
+                crate::pg::save_game_info(&pool, &info_clone).await?;
+                crate::pg::save_game_state(&pool, info_clone.id, info_clone.current_turn, &state_for_persist).await
+            }).await;
+        }
+
         Ok(info)
     }
 
@@ -249,6 +361,13 @@ impl GameStore {
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.info.status = GameStatus::Completed;
         game.info.updated_at = Utc::now();
+        drop(games);
+
+        #[cfg(feature = "postgres")]
+        self.persist("delete_game", |pool| async move {
+            crate::pg::delete_game_row(&pool, game_id).await
+        }).await;
+
         Ok(())
     }
 
@@ -336,7 +455,23 @@ impl GameStore {
             created_at: Utc::now(),
             is_system: true,
         };
-        game.chat_messages.push(sys_msg);
+        game.chat_messages.push(sys_msg.clone());
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let player_clone = player.clone();
+            let info_clone = game.info.clone();
+            let state_clone = game.state.clone();
+            let turn = game.state.world.turn;
+            drop(games);
+            self.persist("join_game", |pool| async move {
+                crate::pg::save_player(&pool, &player_clone).await?;
+                crate::pg::save_game_info(&pool, &info_clone).await?;
+                crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await?;
+                crate::pg::save_chat_message(&pool, &sys_msg).await
+            }).await;
+        }
 
         Ok(player)
     }
@@ -380,6 +515,13 @@ impl GameStore {
             .find(|p| p.user_id == user_id)
             .ok_or_else(|| DbError::NotFound("Player not in game".to_string()))?;
         player.is_done_this_turn = done;
+        drop(games);
+
+        #[cfg(feature = "postgres")]
+        self.persist("set_player_done", |pool| async move {
+            crate::pg::update_player_done(&pool, game_id, user_id, done).await
+        }).await;
+
         Ok(())
     }
 
@@ -422,6 +564,17 @@ impl GameStore {
         };
 
         game.actions.push(submitted.clone());
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let submitted_clone = submitted.clone();
+            drop(games);
+            self.persist("submit_action", |pool| async move {
+                crate::pg::save_action(&pool, &submitted_clone).await
+            }).await;
+        }
+
         Ok(submitted)
     }
 
@@ -456,7 +609,17 @@ impl GameStore {
             a.id == action_id && a.nation_id == nation_id && a.turn == turn
         });
         match idx {
-            Some(i) => { game.actions.remove(i); Ok(()) }
+            Some(i) => {
+                game.actions.remove(i);
+                drop(games);
+
+                #[cfg(feature = "postgres")]
+                self.persist("retract_action", |pool| async move {
+                    crate::pg::delete_action(&pool, action_id).await
+                }).await;
+
+                Ok(())
+            }
             None => Err(DbError::NotFound(format!("Action {}", action_id))),
         }
     }
@@ -545,7 +708,21 @@ impl GameStore {
             created_at: Utc::now(),
             is_system: true,
         };
-        game.chat_messages.push(sys_msg);
+        game.chat_messages.push(sys_msg.clone());
+
+        // Persist new turn state to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let state_clone = game.state.clone();
+            let info_clone = game.info.clone();
+            drop(games);
+            self.persist("run_turn", |pool| async move {
+                crate::pg::save_game_state(&pool, game_id, new_turn, &state_clone).await?;
+                crate::pg::save_game_info(&pool, &info_clone).await?;
+                crate::pg::reset_players_done(&pool, game_id).await?;
+                crate::pg::save_chat_message(&pool, &sys_msg).await
+            }).await;
+        }
 
         Ok(new_turn)
     }
@@ -630,6 +807,16 @@ impl GameStore {
             game.chat_messages.drain(..game.chat_messages.len() - 1000);
         }
 
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let msg_clone = msg.clone();
+            drop(games);
+            self.persist("send_chat", |pool| async move {
+                crate::pg::save_chat_message(&pool, &msg_clone).await
+            }).await;
+        }
+
         Ok(msg)
     }
 
@@ -659,6 +846,16 @@ impl GameStore {
         // Ring buffer
         if game.chat_messages.len() > 1000 {
             game.chat_messages.drain(..game.chat_messages.len() - 1000);
+        }
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let msg_clone = msg.clone();
+            drop(games);
+            self.persist("send_system_message", |pool| async move {
+                crate::pg::save_chat_message(&pool, &msg_clone).await
+            }).await;
         }
 
         Ok(msg)
@@ -768,6 +965,21 @@ impl GameStore {
         Ok(game.players.iter().map(|p| p.nation_id).collect())
     }
 
+    /// Get a specific user's nation_id in a game (if they're a player)
+    pub async fn get_player_nation_id(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<u8, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        game.players.iter()
+            .find(|p| p.user_id == user_id)
+            .map(|p| p.nation_id)
+            .ok_or_else(|| DbError::NotFound(format!("Player {} not in game {}", user_id, game_id)))
+    }
+
     // ========================================================
     // Invite operations
     // ========================================================
@@ -800,6 +1012,16 @@ impl GameStore {
         };
         game.invites.push(invite.clone());
         self.invite_index.write().await.insert(code_short, game_id);
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let invite_clone = invite.clone();
+            self.persist("create_invite", |pool| async move {
+                crate::pg::save_invite(&pool, &invite_clone).await
+            }).await;
+        }
+
         Ok(invite)
     }
 
@@ -856,6 +1078,17 @@ impl GameStore {
             .ok_or_else(|| DbError::NotFound(format!("Invite code '{}'", code)))?;
 
         invite.uses += 1;
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let invite_clone = invite.clone();
+            drop(games);
+            self.persist("use_invite", |pool| async move {
+                crate::pg::save_invite(&pool, &invite_clone).await
+            }).await;
+        }
+
         Ok(())
     }
 
@@ -1127,7 +1360,19 @@ impl GameStore {
                 user.email = email_lower;
             }
         }
-        Ok(user.clone())
+        let result = user.clone();
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let user_clone = result.clone();
+            drop(users);
+            self.persist("update_user_profile", |pool| async move {
+                crate::pg::save_user(&pool, &user_clone).await
+            }).await;
+        }
+
+        Ok(result)
     }
 
     /// Change password (T410)
@@ -1146,6 +1391,17 @@ impl GameStore {
         }
 
         user.password_hash = AuthManager::hash_password(new_password)?;
+
+        // Persist to Postgres
+        #[cfg(feature = "postgres")]
+        {
+            let user_clone = user.clone();
+            drop(users);
+            self.persist("change_password", |pool| async move {
+                crate::pg::save_user(&pool, &user_clone).await
+            }).await;
+        }
+
         Ok(())
     }
 
@@ -1176,7 +1432,18 @@ impl GameStore {
 
         game.info.settings = settings;
         game.info.updated_at = Utc::now();
-        Ok(game.info.clone())
+        let result = game.info.clone();
+
+        #[cfg(feature = "postgres")]
+        {
+            let info_clone = result.clone();
+            drop(games);
+            self.persist("update_game_settings", |pool| async move {
+                crate::pg::save_game_info(&pool, &info_clone).await
+            }).await;
+        }
+
+        Ok(result)
     }
 
     /// Check if a user is the game creator/admin
@@ -1209,6 +1476,12 @@ impl GameStore {
         let code = game.invites[idx].invite_code.clone();
         game.invites.remove(idx);
         self.invite_index.write().await.remove(&code);
+
+        #[cfg(feature = "postgres")]
+        self.persist("revoke_invite", |pool| async move {
+            crate::pg::delete_invite(&pool, invite_id).await
+        }).await;
+
         Ok(())
     }
 
@@ -1236,7 +1509,18 @@ impl GameStore {
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.info.status = status;
         game.info.updated_at = Utc::now();
-        Ok(game.info.clone())
+        let result = game.info.clone();
+
+        #[cfg(feature = "postgres")]
+        {
+            let info_clone = result.clone();
+            drop(games);
+            self.persist("set_game_status", |pool| async move {
+                crate::pg::save_game_info(&pool, &info_clone).await
+            }).await;
+        }
+
+        Ok(result)
     }
 
     /// Kick a player from a game
@@ -1256,6 +1540,20 @@ impl GameStore {
             game.state.nations[nation_id as usize].active = 0;
         }
         game.info.updated_at = Utc::now();
+
+        #[cfg(feature = "postgres")]
+        {
+            let info_clone = game.info.clone();
+            let state_clone = game.state.clone();
+            let turn = game.state.world.turn;
+            drop(games);
+            self.persist("kick_player", |pool| async move {
+                crate::pg::delete_player(&pool, game_id, nation_id).await?;
+                crate::pg::save_game_info(&pool, &info_clone).await?;
+                crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await
+            }).await;
+        }
+
         Ok(())
     }
 
@@ -1268,9 +1566,10 @@ impl GameStore {
         let state_json = serde_json::to_string(&game.state)
             .map_err(|e| DbError::SerializationError(e.to_string()))?;
 
+        let turn = game.state.world.turn;
         let snapshot = TurnSnapshot {
             game_id,
-            turn: game.state.world.turn,
+            turn,
             state_json,
             created_at: Utc::now(),
         };
@@ -1280,6 +1579,17 @@ impl GameStore {
         if game.turn_snapshots.len() > 10 {
             game.turn_snapshots.drain(..game.turn_snapshots.len() - 10);
         }
+
+        // Persist to Postgres (game_worlds table stores snapshots permanently)
+        #[cfg(feature = "postgres")]
+        {
+            let state_clone = game.state.clone();
+            drop(games);
+            self.persist("save_turn_snapshot", |pool| async move {
+                crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await
+            }).await;
+        }
+
         Ok(())
     }
 

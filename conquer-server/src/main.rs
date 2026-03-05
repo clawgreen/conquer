@@ -28,18 +28,35 @@ async fn main() {
 
     let bind_addr = config.bind_addr;
 
-    // Run database migrations on startup if DATABASE_URL is set (T444)
-    if let Some(ref db_url) = config.database_url {
-        let safe_len = db_url.find('@').unwrap_or(15).min(15);
-        tracing::info!("Database URL configured: {}...", &db_url[..safe_len]);
-        // Migration would run here with sqlx::migrate!() when postgres feature is enabled
-    }
+    // Create store — with Postgres if DATABASE_URL is set
+    let store = if let Some(ref db_url) = config.database_url {
+        let safe_url = if let Some(at) = db_url.find('@') {
+            format!("{}...{}", &db_url[..db_url[..at].rfind(':').unwrap_or(0).max(15).min(at)], &db_url[at..])
+        } else {
+            db_url.clone()
+        };
+        tracing::info!("Connecting to Postgres: {}", safe_url);
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(10)
+            .connect(db_url)
+            .await
+            .expect("Failed to connect to Postgres");
+
+        let store = GameStore::with_pool(pool);
+        store.hydrate().await.expect("Failed to hydrate from Postgres");
+        tracing::info!("Postgres persistence active — data will survive restarts");
+        store
+    } else {
+        tracing::warn!("No DATABASE_URL set — running in-memory only (data lost on restart)");
+        GameStore::new()
+    };
 
     let ws_manager = ConnectionManager::new();
     let metrics = Arc::new(Metrics::new());
 
     let state = AppState {
-        store: GameStore::new(),
+        store,
         jwt: JwtManager::new(&config.jwt_secret, config.jwt_expiry_hours),
         ws_manager,
         config,

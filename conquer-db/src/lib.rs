@@ -11,6 +11,9 @@ pub mod models;
 pub mod store;
 pub mod auth;
 
+#[cfg(feature = "postgres")]
+pub mod pg;
+
 pub use error::DbError;
 pub use models::*;
 pub use store::{GameStore, PublicNationInfo, ScoreEntry, ServerStats};
