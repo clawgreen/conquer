@@ -48,40 +48,42 @@ pub async fn ws_upgrade(
         }
     };
 
-    // Verify player is in this game
-    let player = match state.store.get_player(game_id, user_id).await {
-        Ok(p) => p,
+    // Check if player or spectator (T428-T429)
+    let is_spectator = state.store.is_spectator(game_id, user_id).await;
+    let nation_id = match state.store.get_player(game_id, user_id).await {
+        Ok(p) => Some(p.nation_id),
+        Err(_) if is_spectator => None, // spectator: no nation
         Err(_) => {
             return axum::http::Response::builder()
                 .status(403)
-                .body(axum::body::Body::from("Not a player in this game"))
+                .body(axum::body::Body::from("Not a player or spectator in this game"))
                 .unwrap()
                 .into_response();
         }
     };
 
-    let nation_id = player.nation_id;
-
-    ws.on_upgrade(move |socket| handle_ws(socket, state, game_id, nation_id))
+    ws.on_upgrade(move |socket| handle_ws(socket, state, game_id, nation_id, is_spectator))
         .into_response()
 }
 
-/// Handle a WebSocket connection (enhanced for Phase 5 chat)
+/// Handle a WebSocket connection (enhanced for Phase 5 chat + Phase 6 spectators)
 async fn handle_ws(
     socket: WebSocket,
     state: AppState,
     game_id: Uuid,
-    nation_id: u8,
+    nation_id: Option<u8>, // None for spectators
+    is_spectator: bool,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
-    // Register presence (T405)
-    state.ws_manager.player_connected(game_id, nation_id).await;
-    // Broadcast presence to other players
-    state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
-        nation_id,
-        status: "online".to_string(),
-    }).await;
+    // Register presence (T405) — only for players
+    if let Some(nid) = nation_id {
+        state.ws_manager.player_connected(game_id, nid).await;
+        state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
+            nation_id: nid,
+            status: "online".to_string(),
+        }).await;
+    }
 
     // Subscribe to game broadcasts
     let mut broadcast_rx = state.ws_manager.subscribe(game_id).await;
@@ -123,6 +125,8 @@ async fn handle_ws(
     // Handle incoming messages from client
     let store = state.store.clone();
     let ws_mgr = state.ws_manager.clone();
+    let is_spec = is_spectator;
+    let nid = nation_id;
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
@@ -130,14 +134,32 @@ async fn handle_ws(
                     if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
                         match client_msg {
                             ClientMessage::Ping => {
-                                // Pong is handled by broadcast forwarder
                                 ws_mgr.broadcast(game_id, ServerMessage::Pong).await;
                             }
                             ClientMessage::Action { action } => {
-                                // Submit action
-                                let _ = store.submit_action(game_id, nation_id, action).await;
+                                // Spectators can't submit actions (T429)
+                                if is_spec {
+                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
+                                        message: "Spectators cannot submit actions".to_string(),
+                                    }).await;
+                                    continue;
+                                }
+                                if let Some(nation_id) = nid {
+                                    let _ = store.submit_action(game_id, nation_id, action).await;
+                                }
                             }
                             ClientMessage::ChatSend { channel, content } => {
+                                // Spectators can only read chat (T431)
+                                if is_spec {
+                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
+                                        message: "Spectators cannot send chat messages".to_string(),
+                                    }).await;
+                                    continue;
+                                }
+                                let nation_id = match nid {
+                                    Some(n) => n,
+                                    None => continue,
+                                };
                                 // Validate channel access for private channels (T390)
                                 if channel != "public" && !conquer_db::GameStore::nation_can_see_channel_pub(nation_id, &channel) {
                                     ws_mgr.broadcast(game_id, ServerMessage::Error {
@@ -167,9 +189,12 @@ async fn handle_ws(
                                 }
                             }
                             ClientMessage::ChatHistoryRequest { channel, before, limit } => {
-                                // Validate channel access
-                                if channel != "public" && !conquer_db::GameStore::nation_can_see_channel_pub(nation_id, &channel) {
-                                    continue;
+                                // Validate channel access — spectators only see public (T431)
+                                if channel != "public" {
+                                    match nid {
+                                        Some(n) if conquer_db::GameStore::nation_can_see_channel_pub(n, &channel) => {},
+                                        _ => continue,
+                                    }
                                 }
                                 let before_dt = before.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&chrono::Utc)));
                                 let limit = limit.min(100);
@@ -208,11 +233,12 @@ async fn handle_ws(
         _ = &mut recv_task => send_task.abort(),
     }
 
-    // Unregister presence (T405)
-    state.ws_manager.player_disconnected(game_id, nation_id).await;
-    // Broadcast offline status
-    state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
-        nation_id,
-        status: "offline".to_string(),
-    }).await;
+    // Unregister presence (T405) — only for players
+    if let Some(nid) = nation_id {
+        state.ws_manager.player_disconnected(game_id, nid).await;
+        state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
+            nation_id: nid,
+            status: "offline".to_string(),
+        }).await;
+    }
 }

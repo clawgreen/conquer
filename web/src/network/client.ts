@@ -5,6 +5,8 @@ import {
   AuthResponse, GameInfo, MapResponse, Nation, ArmyInfo, NavyInfo,
   PublicNationInfo, ScoreEntry, NewsEntry, JoinGameResponse,
   ServerMessage, ClientMessage, ChatMessageData,
+  UserProfile, GameHistoryEntry, Notification, NotificationPreferences,
+  AdminPlayerInfo, TurnSnapshotInfo, ServerStats, InviteInfo, GameSettings,
 } from '../types';
 
 const API_BASE = '/api';
@@ -159,6 +161,127 @@ export class GameClient {
 
   requestChatHistory(channel: string, before?: string, limit: number = 50): void {
     this.sendWs({ type: 'chat_history_request', data: { channel, before, limit } });
+  }
+
+  // ============ User Profile (T409-T411) ============
+
+  async getProfile(): Promise<UserProfile> {
+    return this.request<UserProfile>('GET', '/users/me');
+  }
+
+  async updateProfile(data: { display_name?: string; email?: string }): Promise<unknown> {
+    return this.request('PUT', '/users/me', data);
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<unknown> {
+    return this.request('PUT', '/users/me/password', { old_password: oldPassword, new_password: newPassword });
+  }
+
+  async getGameHistory(): Promise<GameHistoryEntry[]> {
+    return this.request<GameHistoryEntry[]>('GET', '/users/me/history');
+  }
+
+  // ============ Game Settings (T415-T418) ============
+
+  async updateGameSettings(gameId: string, settings: Partial<GameSettings>): Promise<GameInfo> {
+    return this.request<GameInfo>('PUT', `/games/${gameId}/settings`, settings);
+  }
+
+  // ============ Invites (T419-T422) ============
+
+  async createInvite(gameId: string, maxUses?: number, expiresHours?: number): Promise<InviteInfo> {
+    return this.request<InviteInfo>('POST', `/games/${gameId}/invites`, { max_uses: maxUses, expires_hours: expiresHours });
+  }
+
+  async listInvites(gameId: string): Promise<InviteInfo[]> {
+    return this.request<InviteInfo[]>('GET', `/games/${gameId}/invites`);
+  }
+
+  async revokeInvite(gameId: string, inviteId: string): Promise<unknown> {
+    return this.request('DELETE', `/games/${gameId}/invites/${inviteId}`);
+  }
+
+  async getInvite(code: string): Promise<InviteInfo> {
+    return this.request<InviteInfo>('GET', `/invites/${code}`);
+  }
+
+  async acceptInvite(code: string, nationName: string, leaderName: string, race: string, classId: number, mark: string): Promise<JoinGameResponse> {
+    return this.request<JoinGameResponse>('POST', `/invites/${code}/accept`, {
+      nation_name: nationName, leader_name: leaderName, race, class: classId, mark,
+    });
+  }
+
+  // ============ Admin (T423-T427) ============
+
+  async adminListPlayers(gameId: string): Promise<AdminPlayerInfo[]> {
+    return this.request<AdminPlayerInfo[]>('GET', `/games/${gameId}/admin/players`);
+  }
+
+  async adminKickPlayer(gameId: string, nationId: number): Promise<unknown> {
+    return this.request('POST', `/games/${gameId}/admin/kick`, { nation_id: nationId });
+  }
+
+  async adminSetStatus(gameId: string, status: string): Promise<GameInfo> {
+    return this.request<GameInfo>('POST', `/games/${gameId}/admin/status`, { status });
+  }
+
+  async adminAdvanceTurn(gameId: string): Promise<unknown> {
+    return this.request('POST', `/games/${gameId}/admin/advance-turn`);
+  }
+
+  async adminListSnapshots(gameId: string): Promise<TurnSnapshotInfo[]> {
+    return this.request<TurnSnapshotInfo[]>('GET', `/games/${gameId}/admin/snapshots`);
+  }
+
+  async adminRollback(gameId: string, targetTurn: number): Promise<unknown> {
+    return this.request('POST', `/games/${gameId}/admin/rollback`, { target_turn: targetTurn });
+  }
+
+  async getServerStats(): Promise<ServerStats> {
+    return this.request<ServerStats>('GET', '/admin/stats');
+  }
+
+  // ============ Spectator (T428-T431) ============
+
+  async joinSpectator(gameId: string): Promise<unknown> {
+    return this.request('POST', `/games/${gameId}/spectate`);
+  }
+
+  async leaveSpectator(gameId: string): Promise<unknown> {
+    return this.request('DELETE', `/games/${gameId}/spectate`);
+  }
+
+  async getSpectatorMap(gameId: string): Promise<MapResponse> {
+    return this.request<MapResponse>('GET', `/games/${gameId}/spectate/map`);
+  }
+
+  // ============ Notifications (T432-T434) ============
+
+  async getNotifications(unreadOnly: boolean = false): Promise<Notification[]> {
+    const qs = unreadOnly ? '?unread_only=true' : '';
+    return this.request<Notification[]>('GET', `/notifications${qs}`);
+  }
+
+  async markNotificationRead(id: string): Promise<unknown> {
+    return this.request('POST', `/notifications/${id}/read`);
+  }
+
+  async markAllNotificationsRead(): Promise<unknown> {
+    return this.request('POST', '/notifications/read-all');
+  }
+
+  async getNotificationPreferences(): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('GET', '/notifications/preferences');
+  }
+
+  async setNotificationPreferences(prefs: NotificationPreferences): Promise<NotificationPreferences> {
+    return this.request<NotificationPreferences>('PUT', '/notifications/preferences', prefs);
+  }
+
+  // ============ Game Browser (T422) ============
+
+  async listPublicGames(): Promise<GameInfo[]> {
+    return this.request<GameInfo[]>('GET', '/games/public');
   }
 
   // ============ WebSocket ============

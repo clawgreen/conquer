@@ -24,6 +24,42 @@ pub struct InviteResponse {
     pub uses: u32,
 }
 
+/// GET /api/games/:id/invites — List invites (T420)
+pub async fn list_invites(
+    State(state): State<AppState>,
+    claims: Claims,
+    Path(game_id): Path<Uuid>,
+) -> Result<Json<Vec<InviteResponse>>, ApiError> {
+    let _user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
+        .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
+
+    let invites = state.store.list_invites(game_id).await?;
+    let game = state.store.get_game_info(game_id).await?;
+
+    let result: Vec<InviteResponse> = invites.into_iter().map(|i| InviteResponse {
+        invite_code: i.invite_code,
+        game_id: game_id.to_string(),
+        game_name: game.name.clone(),
+        max_uses: i.max_uses,
+        uses: i.uses,
+    }).collect();
+
+    Ok(Json(result))
+}
+
+/// DELETE /api/games/:id/invites/:invite_id — Revoke invite (T420)
+pub async fn revoke_invite(
+    State(state): State<AppState>,
+    claims: Claims,
+    Path((game_id, invite_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
+        .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
+
+    state.store.revoke_invite(game_id, invite_id).await?;
+    Ok(Json(serde_json::json!({"status": "revoked"})))
+}
+
 /// POST /api/games/:id/invites — Create invite (T321)
 pub async fn create_invite(
     State(state): State<AppState>,

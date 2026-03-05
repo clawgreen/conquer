@@ -3,6 +3,11 @@
 
 import { GameClient } from '../network/client';
 import { GameInfo, RACE_NAMES, CLASS_NAMES } from '../types';
+import { ProfilePage } from './profilePage';
+import { GameCreationWizard } from './gameCreationWizard';
+import { AdminPanel } from './adminPanel';
+import { InviteManager } from './invitePage';
+import { NotificationBell } from './notifications';
 
 // Terminal-retro styles for the lobby
 const LOBBY_CSS = `
@@ -96,6 +101,9 @@ export class LobbyScreen {
   private client: GameClient;
   private onGameStart: (gameId: string, nationId: number) => void;
   private isLoggedIn = false;
+  private parent: HTMLElement;
+  private subScreen: ProfilePage | GameCreationWizard | AdminPanel | InviteManager | null = null;
+  private notifBell: NotificationBell | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -104,6 +112,7 @@ export class LobbyScreen {
   ) {
     this.client = client;
     this.onGameStart = onGameStart;
+    this.parent = parent;
 
     // Inject CSS
     const style = document.createElement('style');
@@ -211,20 +220,35 @@ export class LobbyScreen {
     }
   }
 
+  private returnFromSub(): void {
+    if (this.subScreen) {
+      if ('destroy' in this.subScreen) (this.subScreen as any).destroy();
+      this.subScreen = null;
+    }
+    this.parent.innerHTML = '';
+    this.container = document.createElement('div');
+    this.container.className = 'lobby';
+    this.parent.appendChild(this.container);
+    this.render();
+  }
+
   private async renderGameList(): Promise<void> {
+    // Show notification bell (T432)
+    if (!this.notifBell) {
+      this.notifBell = new NotificationBell(document.body, this.client);
+    }
+
     this.container.innerHTML = `
       <h1>CONQUER</h1>
       <p style="color:#55ff55;">Welcome, ${localStorage.getItem('conquer_username') ?? 'player'}!</p>
-      <button id="btn-logout" style="position:absolute;top:10px;right:10px;">Logout</button>
+      <div style="position:absolute;top:10px;right:10px;display:flex;gap:8px;">
+        <button id="btn-profile" style="font-family:inherit;background:#222;color:#55ffff;border:1px solid #55ffff;padding:6px 12px;cursor:pointer;">⚡ Profile</button>
+        <button id="btn-logout" style="font-family:inherit;background:#222;color:#ff5555;border:1px solid #ff5555;padding:6px 12px;cursor:pointer;">Logout</button>
+      </div>
 
       <div class="section">
         <h2>Create New Game</h2>
-        <div class="form-row">
-          <label>Name:</label>
-          <input id="new-game-name" type="text" placeholder="game name">
-        </div>
-        <button id="btn-create-game">Create Game</button>
-        <div id="create-error" class="error"></div>
+        <button id="btn-create-wizard" style="font-family:inherit;background:#004400;color:#55ff55;border:1px solid #55ff55;padding:10px 20px;cursor:pointer;font-size:14px;">⚔ New Game Wizard</button>
       </div>
 
       <div class="section">
@@ -277,10 +301,18 @@ export class LobbyScreen {
       localStorage.removeItem('conquer_token');
       localStorage.removeItem('conquer_user_id');
       localStorage.removeItem('conquer_username');
+      if (this.notifBell) { this.notifBell.destroy(); this.notifBell = null; }
       this.isLoggedIn = false;
       this.render();
     });
-    document.getElementById('btn-create-game')!.addEventListener('click', () => this.createGame());
+    document.getElementById('btn-profile')!.addEventListener('click', () => {
+      this.container.remove();
+      this.subScreen = new ProfilePage(this.parent, this.client, () => this.returnFromSub());
+    });
+    document.getElementById('btn-create-wizard')!.addEventListener('click', () => {
+      this.container.remove();
+      this.subScreen = new GameCreationWizard(this.parent, this.client, () => this.returnFromSub());
+    });
     document.getElementById('btn-refresh')!.addEventListener('click', () => this.loadGames());
     document.getElementById('btn-join')!.addEventListener('click', () => this.joinGame());
 
@@ -303,7 +335,12 @@ export class LobbyScreen {
             <span class="game-name">${g.name}</span>
             <span class="game-status">[${g.status}] Turn ${g.current_turn} | ${g.player_count} players</span>
           </div>
-          <button class="btn-join-game" data-id="${g.id}" data-name="${g.name}">Join</button>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-join-game" data-id="${g.id}" data-name="${g.name}">Join</button>
+            <button class="btn-spectate" data-id="${g.id}" style="font-family:inherit;background:#111;color:#aaa;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">👁 Watch</button>
+            <button class="btn-admin" data-id="${g.id}" style="font-family:inherit;background:#111;color:#ffff55;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">⚙</button>
+            <button class="btn-invites" data-id="${g.id}" style="font-family:inherit;background:#111;color:#55ffff;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">📨</button>
+          </div>
         </div>
       `).join('');
 
@@ -315,21 +352,40 @@ export class LobbyScreen {
           document.getElementById('join-section')!.style.display = 'block';
         });
       });
+
+      // Spectate buttons (T428)
+      listEl.querySelectorAll('.btn-spectate').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const gameId = (e.target as HTMLElement).dataset.id!;
+          try {
+            await this.client.joinSpectator(gameId);
+            // Connect as spectator — for now just go to game with nation -1
+            this.onGameStart(gameId, -1);
+          } catch (err) {
+            alert(`Spectate failed: ${(err as Error).message}`);
+          }
+        });
+      });
+
+      // Admin buttons (T423)
+      listEl.querySelectorAll('.btn-admin').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const gameId = (e.target as HTMLElement).dataset.id!;
+          this.container.remove();
+          this.subScreen = new AdminPanel(this.parent, this.client, gameId, () => this.returnFromSub());
+        });
+      });
+
+      // Invite buttons (T419)
+      listEl.querySelectorAll('.btn-invites').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const gameId = (e.target as HTMLElement).dataset.id!;
+          this.container.remove();
+          this.subScreen = new InviteManager(this.parent, this.client, gameId, () => this.returnFromSub());
+        });
+      });
     } catch (e) {
       listEl.innerHTML = `<p class="error">Failed to load games: ${(e as Error).message}</p>`;
-    }
-  }
-
-  private async createGame(): Promise<void> {
-    const name = (document.getElementById('new-game-name') as HTMLInputElement).value;
-    const errorEl = document.getElementById('create-error')!;
-    if (!name) { errorEl.textContent = 'Enter a game name'; return; }
-    try {
-      await this.client.createGame(name);
-      errorEl.textContent = '';
-      this.loadGames();
-    } catch (e) {
-      errorEl.textContent = `Failed: ${(e as Error).message}`;
     }
   }
 
@@ -357,6 +413,8 @@ export class LobbyScreen {
   }
 
   destroy(): void {
+    if (this.subScreen && 'destroy' in this.subScreen) (this.subScreen as any).destroy();
+    if (this.notifBell) { this.notifBell.destroy(); this.notifBell = null; }
     this.container.remove();
   }
 }

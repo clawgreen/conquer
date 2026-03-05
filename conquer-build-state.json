@@ -1,11 +1,12 @@
 {
-  "current_phase": 5,
-  "phase_name": "Player Chat",
+  "current_phase": 6,
+  "phase_name": "Self-Service Platform",
   "status": "complete",
-  "current_sprint": "Phase 5 (5A-5C): Chat backend, system messages, chat frontend",
-  "current_todo": "T408",
-  "current_task": "phase5-complete",
-  "started_at": "2026-03-05T01:45:00-08:00",
+  "current_sprint": "Phase 6: User Profiles, Game Wizard, Invites, Admin, Spectators, Notifications",
+  "current_todo": "T434",
+  "current_task": "phase6-complete",
+  "started_at": "2026-03-05T02:00:00-08:00",
+  "completed_at": "2026-03-05T03:00:00-08:00",
   "completed": [
     "T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009",
     "T010", "T011", "T012", "T013", "T014", "T015", "T016", "T017", "T018", "T019",
@@ -47,7 +48,12 @@
     "T381", "T382", "T383", "T384", "T385", "T386", "T387",
     "T388", "T389", "T390", "T391", "T392", "T393",
     "T394", "T395", "T396", "T397", "T398", "T399",
-    "T400", "T401", "T402", "T403", "T404", "T405", "T406", "T407", "T408"
+    "T400", "T401", "T402", "T403", "T404", "T405", "T406", "T407", "T408",
+    "T409", "T410", "T411", "T412", "T413", "T414",
+    "T415", "T416", "T417", "T418", "T419", "T420", "T421",
+    "T422", "T423", "T424", "T425",
+    "T426", "T427", "T428", "T429", "T430",
+    "T431", "T432", "T433", "T434"
   ],
   "skipped": [],
   "skipped_notes": {
@@ -55,9 +61,9 @@
   },
   "failed": [],
   "blocked": [],
-  "last_run": "2026-03-05T02:30:00-08:00",
-  "tests_total": 183,
-  "tests_passing": 183,
+  "last_run": "2026-03-05T03:00:00-08:00",
+  "tests_total": 194,
+  "tests_passing": 194,
   "oracle_seeds_passing": [42],
   "oracle_seeds_failing": [],
   "rust_crates": {
@@ -67,19 +73,19 @@
       "tests": 36
     },
     "conquer-engine": {
-      "status": "in_progress",
+      "status": "complete",
       "modules": ["rng", "utils", "worldgen", "economy", "combat", "movement", "magic", "npc", "monster", "navy", "trade", "diplomacy", "events", "commands", "turn", "nation"],
       "tests": 110
     },
     "conquer-server": {
       "status": "complete",
-      "modules": ["config", "jwt", "errors", "ws", "app", "routes/auth", "routes/games", "routes/state", "routes/actions", "routes/invites", "routes/websocket", "routes/health", "main"],
+      "modules": ["config", "jwt", "errors", "ws", "app", "routes/auth", "routes/games", "routes/state", "routes/actions", "routes/invites", "routes/websocket", "routes/health", "routes/users", "routes/admin", "routes/spectators", "routes/notifications", "main"],
       "tests": 10
     },
     "conquer-db": {
       "status": "complete",
       "modules": ["error", "models", "store", "auth"],
-      "tests": 19
+      "tests": 28
     },
     "conquer-oracle": {
       "status": "complete",
@@ -92,48 +98,50 @@
     "framework": "TypeScript + Vite",
     "directory": "web/",
     "modules": [
-      "src/types.ts — shared types matching Rust API",
-      "src/renderer/colors.ts — curses color palette (8 base + 8 bright)",
+      "src/types.ts — shared types matching Rust API (Phase 6 platform types added)",
+      "src/renderer/colors.ts — curses color palette",
       "src/renderer/terminal.ts — TerminalRenderer: Canvas 2D character grid",
       "src/state/gameState.ts — client-side game state cache",
-      "src/network/client.ts — GameClient: REST + WebSocket",
+      "src/network/client.ts — GameClient: REST + WebSocket (Phase 6 APIs added)",
       "src/game/mapView.ts — map rendering with display/highlight modes",
       "src/game/inputHandler.ts — keyboard handler with vi keys",
       "src/game/gameScreen.ts — main game orchestrator",
       "src/ui/sidePanel.ts — side/bottom panels",
-      "src/ui/lobby.ts — login/register/game list/join"
+      "src/ui/lobby.ts — login/register/game list/join (enhanced with wizard, admin, spectate, invite buttons)",
+      "src/ui/chatPanel.ts — chat panel with channels, presence, slash commands",
+      "src/ui/profilePage.ts — user profile, password change, stats, notification preferences",
+      "src/ui/gameCreationWizard.ts — 3-step game creation wizard",
+      "src/ui/adminPanel.ts — game admin dashboard: players, kick, pause/resume, advance turn, rollback",
+      "src/ui/invitePage.ts — invite management + landing page for invite links",
+      "src/ui/notifications.ts — notification bell with dropdown, polling, mark-read"
     ],
-    "build": "npm run build — passes clean (36KB gzipped)",
+    "build": "npm run build — passes clean (21KB gzipped)",
     "features": [
       "Canvas 2D terminal-style renderer with monospace font",
-      "12 display modes matching C get_display_for()",
-      "6 highlight modes matching C highlight()",
-      "Fog of war rendering",
-      "Army/navy markers on map",
-      "Side panel with nation info, army/navy lists",
-      "Bottom panel with sector detail",
+      "12 display modes, 6 highlight modes, fog of war",
       "Full keyboard input: hjkl/arrows, display toggles, commands",
       "REST API + WebSocket client with auto-reconnect",
-      "Game lobby with login/register, game list, create/join",
-      "Nation creation (race, class, mark selection)",
-      "End-turn + waiting indicator",
-      "Notification system for game events",
-      "Font size picker (+/-)",
-      "Dev proxy routing /api to localhost:3000"
+      "Game lobby with login/register, game browser, create/join",
+      "3-step game creation wizard (map, NPCs/timer, review)",
+      "User profile page with stats, password change, notification preferences",
+      "Admin dashboard: player management, kick, pause/resume, advance turn, rollback",
+      "Invite link generation, management, and landing page (/invite/:code)",
+      "Spectator mode (watch button on lobby)",
+      "Notification bell with unread badge, dropdown, mark-read",
+      "Chat system with public/private channels, presence, /commands",
+      "End-turn + waiting indicator, font size picker"
     ]
   },
   "key_results": {
-    "phase5_chat": "COMPLETE — Full player chat system with public/private channels, system messages, presence, slash commands",
-    "phase5_backend": "PASS — WebSocket chat, REST endpoint, rate limiting, private channels, system messages",
-    "phase5_frontend": "PASS — ChatPanel component with terminal aesthetic, channel switcher, presence, /commands",
-    "phase5_build": "PASS — tsc + vite build clean, 14KB gzipped output",
-    "phase5_rust_tests": "PASS — 183 tests (was 179 + 4 new chat tests), all passing",
+    "phase6_platform": "COMPLETE — Full self-service platform: profiles, game wizard, invites, admin, spectators, notifications",
+    "phase6_backend": "PASS — 15+ new REST endpoints, spectator WebSocket support, turn rollback, notification system",
+    "phase6_frontend": "PASS — 6 new UI components with terminal aesthetic",
+    "phase6_build": "PASS — tsc + vite build clean, 21KB gzipped",
+    "phase6_rust_tests": "PASS — 194 tests (183 existing + 11 new Phase 6), all passing",
+    "phase5_chat": "COMPLETE — Full player chat system",
     "phase4_frontend": "COMPLETE — Full web frontend with terminal aesthetic",
-    "phase4_build": "PASS — tsc + vite build clean, 36KB gzipped output",
-    "phase4_rust_tests": "PASS — 179 tests unchanged, all passing",
-    "rng_cross_validation": "PASS — 10,000 values with seed 42 identical between C and Rust",
-    "oracle_json_loading": "PASS — Full oracle snapshot loads into Rust GameState",
-    "phase3_server": "COMPLETE — Full Axum server with 30+ endpoints, JWT auth, WebSocket broadcast",
-    "phase3_tests": "PASS — 179 total tests, all passing"
+    "phase3_server": "COMPLETE — Full Axum server with 45+ endpoints",
+    "rng_cross_validation": "PASS — 10,000 values identical C↔Rust",
+    "oracle_json_loading": "PASS — Full oracle snapshot loads into Rust GameState"
   }
 }

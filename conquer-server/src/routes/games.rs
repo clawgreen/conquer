@@ -61,7 +61,11 @@ pub async fn create_game(
         return Err(ApiError::BadRequest("Game name required".to_string()));
     }
 
-    let settings = req.settings.unwrap_or_default();
+    let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
+        .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
+
+    let mut settings = req.settings.unwrap_or_default();
+    settings.creator_id = Some(user_id);
     let game = state.store.create_game(&req.name, settings).await?;
 
     // Broadcast not needed yet — no one is connected
@@ -153,6 +157,15 @@ pub async fn join_game(
         game_id: game_id.to_string(),
         nation_name: req.nation_name,
     }))
+}
+
+/// GET /api/games/public — List public games for the browser (T422)
+pub async fn list_public_games(
+    State(state): State<AppState>,
+    _claims: Claims,
+) -> Result<Json<Vec<GameInfo>>, ApiError> {
+    let games = state.store.list_public_games().await;
+    Ok(Json(games))
 }
 
 /// DELETE /api/games/:id — Archive game (T293, admin only)

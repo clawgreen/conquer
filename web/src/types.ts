@@ -178,6 +178,20 @@ export interface GameSettings {
   seed: number;
   turn_timer_hours: number | null;
   auto_advance: boolean;
+  // Phase 6
+  mountain_pct?: number;
+  password?: string;
+  min_players?: number;
+  npc_cheat?: boolean;
+  npc_see_cities?: boolean;
+  monster_respawn?: boolean;
+  npc_messages?: boolean;
+  trade_enabled?: boolean;
+  random_events?: boolean;
+  storms_enabled?: boolean;
+  starting_gold?: number;
+  creator_id?: string;
+  public_game?: boolean;
 }
 
 export interface GameInfo {
@@ -258,6 +272,85 @@ export type ClientMessage =
   | { type: 'chat_send'; data: { channel: string; content: string } }
   | { type: 'chat_history_request'; data: { channel: string; before?: string; limit: number } }
   | { type: 'ping'; data: null };
+
+// ============================================================
+// Phase 6: Platform types
+// ============================================================
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  games_played: number;
+  games_won: number;
+  games_lost: number;
+  game_history: GameHistoryEntry[];
+}
+
+export interface GameHistoryEntry {
+  game_id: string;
+  game_name: string;
+  nation_name: string;
+  race: string;
+  class: number;
+  final_score: number;
+  outcome: string;
+  joined_at: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  event_type: string;
+  game_id: string | null;
+  message: string;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NotificationPreferences {
+  your_turn: boolean;
+  game_started: boolean;
+  game_invite: boolean;
+  under_attack: boolean;
+  turn_advanced: boolean;
+  player_joined: boolean;
+  game_completed: boolean;
+  email_enabled: boolean;
+}
+
+export interface AdminPlayerInfo {
+  user_id: string;
+  nation_id: number;
+  nation_name: string;
+  race: string;
+  class: number;
+  is_done: boolean;
+  score: number;
+  joined_at: string;
+}
+
+export interface TurnSnapshotInfo {
+  turn: number;
+  created_at: string;
+}
+
+export interface ServerStats {
+  total_games: number;
+  active_games: number;
+  total_users: number;
+  total_players: number;
+}
+
+export interface InviteInfo {
+  invite_code: string;
+  game_id: string;
+  game_name: string;
+  max_uses: number | null;
+  uses: number;
+}
 
 // ============================================================
 // Helper functions

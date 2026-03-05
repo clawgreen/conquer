@@ -4,7 +4,7 @@ use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode, header},
     middleware,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -101,10 +101,38 @@ pub fn build_router(state: AppState) -> Router {
         .route("/games/{id}/presence", get(routes::state::get_presence))
         // WebSocket (T312)
         .route("/games/{id}/ws", get(routes::websocket::ws_upgrade))
-        // Invites (T321-T323)
+        // Invites (T321-T323, T419-T422)
         .route("/games/{id}/invites", post(routes::invites::create_invite))
+        .route("/games/{id}/invites", get(routes::invites::list_invites))
+        .route("/games/{id}/invites/{invite_id}", delete(routes::invites::revoke_invite))
         .route("/invites/{code}", get(routes::invites::get_invite))
-        .route("/invites/{code}/accept", post(routes::invites::accept_invite));
+        .route("/invites/{code}/accept", post(routes::invites::accept_invite))
+        // User profile & settings (T409-T411)
+        .route("/users/me", get(routes::users::get_profile))
+        .route("/users/me", put(routes::users::update_profile))
+        .route("/users/me/password", put(routes::users::change_password))
+        .route("/users/me/history", get(routes::users::get_history))
+        // Admin dashboard (T423-T427)
+        .route("/games/{id}/admin/players", get(routes::admin::admin_list_players))
+        .route("/games/{id}/admin/kick", post(routes::admin::admin_kick_player))
+        .route("/games/{id}/admin/status", post(routes::admin::admin_set_status))
+        .route("/games/{id}/admin/advance-turn", post(routes::admin::admin_advance_turn))
+        .route("/games/{id}/admin/snapshots", get(routes::admin::admin_list_snapshots))
+        .route("/games/{id}/admin/rollback", post(routes::admin::admin_rollback))
+        .route("/games/{id}/settings", put(routes::admin::update_game_settings))
+        .route("/admin/stats", get(routes::admin::server_stats))
+        // Spectator mode (T428-T431)
+        .route("/games/{id}/spectate", post(routes::spectators::join_spectator))
+        .route("/games/{id}/spectate", delete(routes::spectators::leave_spectator))
+        .route("/games/{id}/spectate/map", get(routes::spectators::spectator_map))
+        // Game browser (T422)
+        .route("/games/public", get(routes::games::list_public_games))
+        // Notifications (T432-T434)
+        .route("/notifications", get(routes::notifications::get_notifications))
+        .route("/notifications/{id}/read", post(routes::notifications::mark_read))
+        .route("/notifications/read-all", post(routes::notifications::mark_all_read))
+        .route("/notifications/preferences", get(routes::notifications::get_preferences))
+        .route("/notifications/preferences", put(routes::notifications::set_preferences));
 
     Router::new()
         .nest("/api", api)

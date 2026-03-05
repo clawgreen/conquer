@@ -3,6 +3,7 @@
 import { GameClient } from './network/client';
 import { LobbyScreen } from './ui/lobby';
 import { GameScreen } from './game/gameScreen';
+import { InviteLandingPage } from './ui/invitePage';
 
 // Global styles — terminal aesthetic
 document.documentElement.style.cssText = `
@@ -51,5 +52,15 @@ function showGame(gameId: string, nationId: number): void {
   currentScreen = new GameScreen(app, client, gameId, nationId);
 }
 
-// Start with lobby
-showLobby();
+// Route: /invite/:code shows invite landing page
+const inviteMatch = window.location.pathname.match(/^\/invite\/([a-zA-Z0-9]+)$/);
+if (inviteMatch) {
+  const code = inviteMatch[1];
+  currentScreen = new InviteLandingPage(app, client, code, (gameId, nationId) => {
+    window.history.replaceState(null, '', '/');
+    showGame(gameId, nationId);
+  }) as any;
+} else {
+  // Start with lobby
+  showLobby();
+}

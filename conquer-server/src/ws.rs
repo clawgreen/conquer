@@ -86,6 +86,16 @@ pub enum ServerMessage {
     },
     /// Pong response
     Pong,
+    /// Notification (T432)
+    Notification {
+        event_type: String,
+        message: String,
+        game_id: Option<String>,
+    },
+    /// Game status changed (Phase 6)
+    GameStatusChanged {
+        status: String,
+    },
     /// Error message
     Error {
         message: String,

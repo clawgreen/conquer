@@ -34,6 +34,10 @@ pub struct ManagedGame {
     pub news: Vec<NewsEntry>,
     pub chat_messages: Vec<ChatMessage>,
     pub invites: Vec<GameInvite>,
+    /// Spectators watching the game (T428)
+    pub spectators: Vec<Spectator>,
+    /// Turn snapshots for rollback (T426)
+    pub turn_snapshots: Vec<TurnSnapshot>,
 }
 
 // ============================================================
@@ -50,6 +54,10 @@ pub struct GameStore {
     email_index: Arc<RwLock<HashMap<String, Uuid>>>,
     /// invite_code -> game_id index
     invite_index: Arc<RwLock<HashMap<String, Uuid>>>,
+    /// Per-user notifications (T432)
+    notifications: Arc<RwLock<HashMap<Uuid, Vec<Notification>>>>,
+    /// Per-user notification preferences (T434)
+    notification_prefs: Arc<RwLock<HashMap<Uuid, NotificationPreferences>>>,
 }
 
 impl GameStore {
@@ -60,6 +68,8 @@ impl GameStore {
             username_index: Arc::new(RwLock::new(HashMap::new())),
             email_index: Arc::new(RwLock::new(HashMap::new())),
             invite_index: Arc::new(RwLock::new(HashMap::new())),
+            notifications: Arc::new(RwLock::new(HashMap::new())),
+            notification_prefs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -191,6 +201,8 @@ impl GameStore {
             news: Vec::new(),
             chat_messages: Vec::new(),
             invites: Vec::new(),
+            spectators: Vec::new(),
+            turn_snapshots: Vec::new(),
         };
 
         self.games.write().await.insert(id, managed);
@@ -462,6 +474,20 @@ impl GameStore {
         }
 
         let current_turn = game.state.world.turn;
+
+        // Save snapshot before advancing (T426 — rollback support)
+        if let Ok(state_json) = serde_json::to_string(&game.state) {
+            let snapshot = TurnSnapshot {
+                game_id,
+                turn: current_turn,
+                state_json,
+                created_at: Utc::now(),
+            };
+            game.turn_snapshots.push(snapshot);
+            if game.turn_snapshots.len() > 10 {
+                game.turn_snapshots.drain(..game.turn_snapshots.len() - 10);
+            }
+        }
 
         // Collect actions for this turn, sorted by nation then order
         let mut turn_actions: Vec<_> = game.actions.iter()
@@ -1002,6 +1028,543 @@ impl GameStore {
         scores.sort_by(|a, b| b.score.cmp(&a.score));
         Ok(scores)
     }
+
+    // ========================================================
+    // User profile operations (T409-T411)
+    // ========================================================
+
+    /// Get user profile with game history
+    pub async fn get_user_profile(&self, user_id: Uuid) -> Result<UserProfile, DbError> {
+        let users = self.users.read().await;
+        let user = users.get(&user_id)
+            .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
+
+        let games = self.games.read().await;
+        let mut history = Vec::new();
+        let mut won = 0u32;
+        let mut lost = 0u32;
+
+        for game in games.values() {
+            if let Some(player) = game.players.iter().find(|p| p.user_id == user_id) {
+                let nation = &game.state.nations[player.nation_id as usize];
+                let outcome = if game.info.status == GameStatus::Completed {
+                    // Simple heuristic: highest score wins
+                    let max_score = game.state.nations.iter()
+                        .filter(|n| n.is_active())
+                        .map(|n| n.score)
+                        .max()
+                        .unwrap_or(0);
+                    if nation.score == max_score && nation.is_active() {
+                        won += 1;
+                        "won".to_string()
+                    } else {
+                        lost += 1;
+                        "lost".to_string()
+                    }
+                } else if !nation.is_active() {
+                    lost += 1;
+                    "eliminated".to_string()
+                } else {
+                    "active".to_string()
+                };
+                history.push(GameHistoryEntry {
+                    game_id: game.info.id,
+                    game_name: game.info.name.clone(),
+                    nation_name: nation.name.clone(),
+                    race: nation.race,
+                    class: nation.class,
+                    final_score: nation.score,
+                    outcome,
+                    joined_at: player.joined_at,
+                });
+            }
+        }
+
+        Ok(UserProfile {
+            id: user.id,
+            username: user.username.clone(),
+            email: user.email.clone(),
+            display_name: user.display_name.clone(),
+            created_at: user.created_at,
+            games_played: history.len() as u32,
+            games_won: won,
+            games_lost: lost,
+            game_history: history,
+        })
+    }
+
+    /// Update user profile (T410)
+    pub async fn update_user_profile(
+        &self,
+        user_id: Uuid,
+        display_name: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<User, DbError> {
+        let mut users = self.users.write().await;
+        let user = users.get_mut(&user_id)
+            .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
+
+        if let Some(name) = display_name {
+            user.display_name = name.to_string();
+        }
+        if let Some(new_email) = email {
+            let email_lower = new_email.to_lowercase();
+            if email_lower != user.email {
+                // Check uniqueness
+                let idx = self.email_index.read().await;
+                if idx.contains_key(&email_lower) {
+                    return Err(DbError::AlreadyExists("Email already registered".to_string()));
+                }
+                drop(idx);
+                let mut idx = self.email_index.write().await;
+                idx.remove(&user.email);
+                idx.insert(email_lower.clone(), user_id);
+                user.email = email_lower;
+            }
+        }
+        Ok(user.clone())
+    }
+
+    /// Change password (T410)
+    pub async fn change_password(
+        &self,
+        user_id: Uuid,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), DbError> {
+        let mut users = self.users.write().await;
+        let user = users.get_mut(&user_id)
+            .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
+
+        if !AuthManager::verify_password(old_password, &user.password_hash)? {
+            return Err(DbError::AuthError("Incorrect current password".to_string()));
+        }
+
+        user.password_hash = AuthManager::hash_password(new_password)?;
+        Ok(())
+    }
+
+    // ========================================================
+    // Game settings (T415-T418)
+    // ========================================================
+
+    /// Update game settings (creator only)
+    pub async fn update_game_settings(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+        settings: GameSettings,
+    ) -> Result<GameInfo, DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        // Only creator can update settings
+        if game.info.settings.creator_id != Some(user_id) {
+            return Err(DbError::Unauthorized("Only game creator can modify settings".to_string()));
+        }
+
+        // Can only change settings before game starts
+        if game.info.status != GameStatus::WaitingForPlayers {
+            return Err(DbError::InvalidState("Cannot change settings after game starts".to_string()));
+        }
+
+        game.info.settings = settings;
+        game.info.updated_at = Utc::now();
+        Ok(game.info.clone())
+    }
+
+    /// Check if a user is the game creator/admin
+    pub async fn is_game_admin(&self, game_id: Uuid, user_id: Uuid) -> Result<bool, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        Ok(game.info.settings.creator_id == Some(user_id))
+    }
+
+    // ========================================================
+    // Invite management (T419-T422)
+    // ========================================================
+
+    /// List invites for a game
+    pub async fn list_invites(&self, game_id: Uuid) -> Result<Vec<GameInvite>, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        Ok(game.invites.clone())
+    }
+
+    /// Revoke an invite
+    pub async fn revoke_invite(&self, game_id: Uuid, invite_id: Uuid) -> Result<(), DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        let idx = game.invites.iter().position(|i| i.id == invite_id)
+            .ok_or_else(|| DbError::NotFound(format!("Invite {}", invite_id)))?;
+        let code = game.invites[idx].invite_code.clone();
+        game.invites.remove(idx);
+        self.invite_index.write().await.remove(&code);
+        Ok(())
+    }
+
+    /// List public games for the game browser (T422)
+    pub async fn list_public_games(&self) -> Vec<GameInfo> {
+        let games = self.games.read().await;
+        games.values()
+            .filter(|g| g.info.settings.public_game && g.info.status != GameStatus::Completed)
+            .map(|g| g.info.clone())
+            .collect()
+    }
+
+    // ========================================================
+    // Admin operations (T423-T427)
+    // ========================================================
+
+    /// Pause/resume a game (game admin)
+    pub async fn set_game_status(
+        &self,
+        game_id: Uuid,
+        status: GameStatus,
+    ) -> Result<GameInfo, DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        game.info.status = status;
+        game.info.updated_at = Utc::now();
+        Ok(game.info.clone())
+    }
+
+    /// Kick a player from a game
+    pub async fn kick_player(
+        &self,
+        game_id: Uuid,
+        nation_id: u8,
+    ) -> Result<(), DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        game.players.retain(|p| p.nation_id != nation_id);
+        game.info.player_count = game.players.len();
+        // Deactivate the nation
+        if (nation_id as usize) < NTOTAL {
+            game.state.nations[nation_id as usize].active = 0;
+        }
+        game.info.updated_at = Utc::now();
+        Ok(())
+    }
+
+    /// Save a turn snapshot for rollback (T426)
+    pub async fn save_turn_snapshot(&self, game_id: Uuid) -> Result<(), DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        let state_json = serde_json::to_string(&game.state)
+            .map_err(|e| DbError::SerializationError(e.to_string()))?;
+
+        let snapshot = TurnSnapshot {
+            game_id,
+            turn: game.state.world.turn,
+            state_json,
+            created_at: Utc::now(),
+        };
+        game.turn_snapshots.push(snapshot);
+
+        // Keep max 10 snapshots
+        if game.turn_snapshots.len() > 10 {
+            game.turn_snapshots.drain(..game.turn_snapshots.len() - 10);
+        }
+        Ok(())
+    }
+
+    /// Rollback to a previous turn (T426)
+    pub async fn rollback_turn(
+        &self,
+        game_id: Uuid,
+        target_turn: i16,
+    ) -> Result<i16, DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        let snapshot = game.turn_snapshots.iter()
+            .find(|s| s.turn == target_turn)
+            .cloned()
+            .ok_or_else(|| DbError::NotFound(format!("No snapshot for turn {}", target_turn)))?;
+
+        let restored: GameState = serde_json::from_str(&snapshot.state_json)
+            .map_err(|e| DbError::SerializationError(e.to_string()))?;
+
+        game.state = restored;
+        game.info.current_turn = target_turn;
+        game.info.updated_at = Utc::now();
+
+        // Reset player done flags
+        for player in &mut game.players {
+            player.is_done_this_turn = false;
+        }
+
+        // Remove snapshots after this turn
+        game.turn_snapshots.retain(|s| s.turn <= target_turn);
+
+        Ok(target_turn)
+    }
+
+    /// List available turn snapshots for rollback
+    pub async fn list_turn_snapshots(&self, game_id: Uuid) -> Result<Vec<(i16, DateTime<Utc>)>, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        Ok(game.turn_snapshots.iter()
+            .map(|s| (s.turn, s.created_at))
+            .collect())
+    }
+
+    // ========================================================
+    // Spectator operations (T428-T431)
+    // ========================================================
+
+    /// Join as spectator
+    pub async fn join_as_spectator(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Spectator, DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        // Check not already a player
+        if game.players.iter().any(|p| p.user_id == user_id) {
+            return Err(DbError::InvalidState("Already a player in this game".to_string()));
+        }
+        // Check not already a spectator
+        if game.spectators.iter().any(|s| s.user_id == user_id) {
+            return Err(DbError::AlreadyExists("Already spectating".to_string()));
+        }
+
+        let spec = Spectator {
+            game_id,
+            user_id,
+            joined_at: Utc::now(),
+        };
+        game.spectators.push(spec.clone());
+        Ok(spec)
+    }
+
+    /// Leave spectator mode
+    pub async fn leave_spectator(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), DbError> {
+        let mut games = self.games.write().await;
+        let game = games.get_mut(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+        game.spectators.retain(|s| s.user_id != user_id);
+        Ok(())
+    }
+
+    /// Check if user is a spectator
+    pub async fn is_spectator(&self, game_id: Uuid, user_id: Uuid) -> bool {
+        let games = self.games.read().await;
+        games.get(&game_id)
+            .map(|g| g.spectators.iter().any(|s| s.user_id == user_id))
+            .unwrap_or(false)
+    }
+
+    /// Get spectator-visible map (public info, no fog of war bypass)
+    pub async fn get_spectator_map(
+        &self,
+        game_id: Uuid,
+    ) -> Result<Vec<Vec<Option<Sector>>>, DbError> {
+        let games = self.games.read().await;
+        let game = games.get(&game_id)
+            .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
+
+        let state = &game.state;
+        let map_x = state.world.map_x as usize;
+        let map_y = state.world.map_y as usize;
+
+        // Spectators see sectors owned by any active nation (union of public info)
+        let mut visible = vec![vec![None; map_y]; map_x];
+        for x in 0..map_x {
+            for y in 0..map_y {
+                let sector = &state.sectors[x][y];
+                if sector.owner > 0 && (sector.owner as usize) < NTOTAL
+                    && state.nations[sector.owner as usize].is_active() {
+                    visible[x][y] = Some(sector.clone());
+                }
+            }
+        }
+        Ok(visible)
+    }
+
+    // ========================================================
+    // Notification operations (T432-T434)
+    // ========================================================
+
+    /// Add a notification for a user
+    pub async fn add_notification(
+        &self,
+        user_id: Uuid,
+        event_type: NotificationType,
+        game_id: Option<Uuid>,
+        message: &str,
+    ) -> Result<Notification, DbError> {
+        // Check if user has this event enabled
+        let prefs = self.notification_prefs.read().await;
+        let user_prefs = prefs.get(&user_id).cloned().unwrap_or_default();
+        let enabled = match event_type {
+            NotificationType::YourTurn => user_prefs.your_turn,
+            NotificationType::GameStarted => user_prefs.game_started,
+            NotificationType::GameInvite => user_prefs.game_invite,
+            NotificationType::UnderAttack => user_prefs.under_attack,
+            NotificationType::TurnAdvanced => user_prefs.turn_advanced,
+            NotificationType::PlayerJoined => user_prefs.player_joined,
+            NotificationType::GameCompleted => user_prefs.game_completed,
+        };
+        drop(prefs);
+
+        if !enabled {
+            return Err(DbError::InvalidState("Notification disabled by user preferences".to_string()));
+        }
+
+        let notif = Notification {
+            id: Uuid::new_v4(),
+            user_id,
+            event_type,
+            game_id,
+            message: message.to_string(),
+            read: false,
+            created_at: Utc::now(),
+        };
+
+        let mut notifications = self.notifications.write().await;
+        notifications.entry(user_id).or_insert_with(Vec::new).push(notif.clone());
+
+        // Cap at 100 per user
+        if let Some(list) = notifications.get_mut(&user_id) {
+            if list.len() > 100 {
+                list.drain(..list.len() - 100);
+            }
+        }
+
+        Ok(notif)
+    }
+
+    /// Get notifications for a user
+    pub async fn get_notifications(
+        &self,
+        user_id: Uuid,
+        unread_only: bool,
+    ) -> Vec<Notification> {
+        let notifications = self.notifications.read().await;
+        notifications.get(&user_id)
+            .map(|list| {
+                if unread_only {
+                    list.iter().filter(|n| !n.read).cloned().collect()
+                } else {
+                    list.clone()
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Mark a notification as read
+    pub async fn mark_notification_read(
+        &self,
+        user_id: Uuid,
+        notif_id: Uuid,
+    ) -> Result<(), DbError> {
+        let mut notifications = self.notifications.write().await;
+        if let Some(list) = notifications.get_mut(&user_id) {
+            if let Some(notif) = list.iter_mut().find(|n| n.id == notif_id) {
+                notif.read = true;
+                return Ok(());
+            }
+        }
+        Err(DbError::NotFound(format!("Notification {}", notif_id)))
+    }
+
+    /// Mark all notifications as read
+    pub async fn mark_all_read(&self, user_id: Uuid) {
+        let mut notifications = self.notifications.write().await;
+        if let Some(list) = notifications.get_mut(&user_id) {
+            for n in list.iter_mut() {
+                n.read = true;
+            }
+        }
+    }
+
+    /// Get notification preferences
+    pub async fn get_notification_prefs(&self, user_id: Uuid) -> NotificationPreferences {
+        let prefs = self.notification_prefs.read().await;
+        prefs.get(&user_id).cloned().unwrap_or_default()
+    }
+
+    /// Update notification preferences
+    pub async fn set_notification_prefs(
+        &self,
+        user_id: Uuid,
+        prefs: NotificationPreferences,
+    ) {
+        let mut all_prefs = self.notification_prefs.write().await;
+        all_prefs.insert(user_id, prefs);
+    }
+
+    /// Broadcast notifications to all players in a game for an event
+    pub async fn notify_game_players(
+        &self,
+        game_id: Uuid,
+        event_type: NotificationType,
+        message: &str,
+        exclude_user: Option<Uuid>,
+    ) {
+        let player_user_ids: Vec<Uuid> = {
+            let games = self.games.read().await;
+            match games.get(&game_id) {
+                Some(g) => g.players.iter()
+                    .filter(|p| exclude_user.map_or(true, |ex| p.user_id != ex))
+                    .map(|p| p.user_id)
+                    .collect(),
+                None => return,
+            }
+        };
+
+        for uid in player_user_ids {
+            let _ = self.add_notification(uid, event_type, Some(game_id), message).await;
+        }
+    }
+
+    // ========================================================
+    // Server stats (T427)
+    // ========================================================
+
+    /// Get server stats
+    pub async fn server_stats(&self) -> ServerStats {
+        let games = self.games.read().await;
+        let users = self.users.read().await;
+        let active_games = games.values()
+            .filter(|g| g.info.status == GameStatus::Active || g.info.status == GameStatus::WaitingForPlayers)
+            .count();
+        let total_players: usize = games.values().map(|g| g.players.len()).sum();
+        ServerStats {
+            total_games: games.len(),
+            active_games,
+            total_users: users.len(),
+            total_players,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerStats {
+    pub total_games: usize,
+    pub active_games: usize,
+    pub total_users: usize,
+    pub total_players: usize,
 }
 
 // ============================================================
@@ -1478,5 +2041,192 @@ mod tests {
 
         store.set_player_done(game.id, user2.id, true).await.unwrap();
         assert!(store.all_players_done(game.id).await.unwrap());
+    }
+
+    // ========================================================
+    // Phase 6 tests
+    // ========================================================
+
+    #[tokio::test]
+    async fn test_user_profile() {
+        let store = GameStore::new();
+        let user = store.create_user("player1", "p1@test.com", "pass", Some("Player One")).await.unwrap();
+
+        let profile = store.get_user_profile(user.id).await.unwrap();
+        assert_eq!(profile.display_name, "Player One");
+        assert_eq!(profile.games_played, 0);
+
+        // Join a game
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+
+        let profile = store.get_user_profile(user.id).await.unwrap();
+        assert_eq!(profile.games_played, 1);
+        assert_eq!(profile.game_history[0].nation_name, "Gondor");
+    }
+
+    #[tokio::test]
+    async fn test_update_profile() {
+        let store = GameStore::new();
+        let user = store.create_user("player1", "p1@test.com", "pass", None).await.unwrap();
+
+        let updated = store.update_user_profile(user.id, Some("New Name"), None).await.unwrap();
+        assert_eq!(updated.display_name, "New Name");
+    }
+
+    #[tokio::test]
+    async fn test_change_password() {
+        let store = GameStore::new();
+        let user = store.create_user("player1", "p1@test.com", "oldpass", None).await.unwrap();
+
+        // Wrong old password fails
+        let err = store.change_password(user.id, "wrong", "newpass").await;
+        assert!(err.is_err());
+
+        // Correct old password succeeds
+        store.change_password(user.id, "oldpass", "newpass").await.unwrap();
+
+        // New password works
+        let authed = store.authenticate_user("player1", "newpass").await.unwrap();
+        assert_eq!(authed.id, user.id);
+    }
+
+    #[tokio::test]
+    async fn test_game_admin() {
+        let store = GameStore::new();
+        let user = store.create_user("creator", "c@test.com", "pass", None).await.unwrap();
+
+        let mut settings = GameSettings::default();
+        settings.creator_id = Some(user.id);
+        let game = store.create_game("AdminTest", settings).await.unwrap();
+
+        assert!(store.is_game_admin(game.id, user.id).await.unwrap());
+
+        let other = store.create_user("other", "o@test.com", "pass", None).await.unwrap();
+        assert!(!store.is_game_admin(game.id, other.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_kick_player() {
+        let store = GameStore::new();
+        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let player = store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+
+        store.kick_player(game.id, player.nation_id).await.unwrap();
+
+        let players = store.list_players(game.id).await.unwrap();
+        assert!(players.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_turn_rollback() {
+        let store = GameStore::new();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let initial_turn = game.current_turn;
+
+        // Advance a couple turns (each saves a snapshot)
+        let t1 = store.run_turn(game.id).await.unwrap();
+        let t2 = store.run_turn(game.id).await.unwrap();
+        assert_eq!(t2, initial_turn + 2);
+
+        // Rollback to turn 1
+        let rolled = store.rollback_turn(game.id, t1).await.unwrap();
+        assert_eq!(rolled, t1);
+
+        let info = store.get_game_info(game.id).await.unwrap();
+        assert_eq!(info.current_turn, t1);
+    }
+
+    #[tokio::test]
+    async fn test_spectator() {
+        let store = GameStore::new();
+        let user = store.create_user("spec", "spec@test.com", "pass", None).await.unwrap();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+
+        store.join_as_spectator(game.id, user.id).await.unwrap();
+        assert!(store.is_spectator(game.id, user.id).await);
+
+        // Can't join twice
+        let err = store.join_as_spectator(game.id, user.id).await;
+        assert!(err.is_err());
+
+        store.leave_spectator(game.id, user.id).await.unwrap();
+        assert!(!store.is_spectator(game.id, user.id).await);
+    }
+
+    #[tokio::test]
+    async fn test_notifications() {
+        let store = GameStore::new();
+        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+
+        // Default prefs enable most notifications
+        let notif = store.add_notification(
+            user.id, NotificationType::YourTurn, None, "It's your turn!",
+        ).await.unwrap();
+        assert!(!notif.read);
+
+        let unread = store.get_notifications(user.id, true).await;
+        assert_eq!(unread.len(), 1);
+
+        store.mark_notification_read(user.id, notif.id).await.unwrap();
+        let unread = store.get_notifications(user.id, true).await;
+        assert_eq!(unread.len(), 0);
+
+        let all = store.get_notifications(user.id, false).await;
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_notification_preferences() {
+        let store = GameStore::new();
+        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+
+        // Disable player_joined (default is false, but let's be explicit)
+        let mut prefs = NotificationPreferences::default();
+        prefs.your_turn = false;
+        store.set_notification_prefs(user.id, prefs).await;
+
+        // Now your_turn notifications are suppressed
+        let result = store.add_notification(
+            user.id, NotificationType::YourTurn, None, "your turn",
+        ).await;
+        assert!(result.is_err()); // should fail because disabled
+
+        // But game_started still works
+        let result = store.add_notification(
+            user.id, NotificationType::GameStarted, None, "game started",
+        ).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invite_management() {
+        let store = GameStore::new();
+        let user = store.create_user("admin", "a@test.com", "pass", None).await.unwrap();
+        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+
+        let inv1 = store.create_invite(game.id, user.id, Some(5), None).await.unwrap();
+        let inv2 = store.create_invite(game.id, user.id, None, None).await.unwrap();
+
+        let invites = store.list_invites(game.id).await.unwrap();
+        assert_eq!(invites.len(), 2);
+
+        store.revoke_invite(game.id, inv1.id).await.unwrap();
+        let invites = store.list_invites(game.id).await.unwrap();
+        assert_eq!(invites.len(), 1);
+        assert_eq!(invites[0].id, inv2.id);
+    }
+
+    #[tokio::test]
+    async fn test_server_stats() {
+        let store = GameStore::new();
+        store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+        store.create_game("G1", GameSettings::default()).await.unwrap();
+
+        let stats = store.server_stats().await;
+        assert_eq!(stats.total_users, 1);
+        assert_eq!(stats.total_games, 1);
+        assert_eq!(stats.active_games, 1); // waiting_for_players counts
     }
 }

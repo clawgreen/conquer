@@ -13,5 +13,5 @@ pub mod auth;
 
 pub use error::DbError;
 pub use models::*;
-pub use store::GameStore;
+pub use store::{GameStore, PublicNationInfo, ScoreEntry, ServerStats};
 pub use auth::AuthManager;

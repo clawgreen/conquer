@@ -5,3 +5,8 @@ pub mod actions;
 pub mod invites;
 pub mod websocket;
 pub mod health;
+// Phase 6
+pub mod users;
+pub mod admin;
+pub mod spectators;
+pub mod notifications;
