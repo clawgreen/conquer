@@ -636,15 +636,15 @@ export class GameScreen {
       ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
       const ts = getTilesetById(tsId);
-      const layers: LayerConfig = this.state.layerOverrides
-        ? { ...DEFAULT_LAYERS, ...this.state.layerOverrides, cursor: true } as LayerConfig
-        : layersForMode(this.state.displayMode);
 
-      // Use compositor for multi-layer rendering
-      if (this.state.layerOverrides || layers.vegetation || layers.designation) {
+      if (ts.tileType === 'image') {
+        // Image/sprite tilesets: multi-layer compositor with z-order compositing
+        const layers: LayerConfig = this.state.layerOverrides
+          ? { ...DEFAULT_LAYERS, ...this.state.layerOverrides, cursor: true } as LayerConfig
+          : layersForMode(this.state.displayMode);
         renderCompositedMap(ctx, this.state, ts, this.term.fontSize, ctx.canvas.width, ctx.canvas.height, layers);
       } else {
-        // Single-mode rendering (data overlays like food/move/defense)
+        // Emoji tilesets: single-layer per-mode mapping (no compositing)
         renderMap(this.term, this.state);
       }
 
