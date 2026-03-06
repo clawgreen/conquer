@@ -249,23 +249,16 @@ export class TerminalRenderer {
         this.cursorY >= 0 && this.cursorY < this._rows) {
       const px = this.cursorX * this._cellW;
       const py = this.cursorY * this._cellH;
-      // Cursor covers 2 cells wide (character + padding cell)
-      const cw = this._cellW * 2;
+      // Classic terminal cursor: inverse video on one character cell
       ctx.fillStyle = CURSES_COLORS.brightGreen;
-      ctx.globalAlpha = 0.35;
-      ctx.fillRect(px, py, cw, this._cellH);
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(px, py, this._cellW, this._cellH);
       ctx.globalAlpha = 1.0;
-      // Green border for visibility
-      ctx.strokeStyle = CURSES_COLORS.brightGreen;
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.8;
-      ctx.strokeRect(px + 0.5, py + 0.5, cw - 1, this._cellH - 1);
-      ctx.globalAlpha = 1.0;
-      // Redraw character on cursor
+      // Redraw character on cursor in contrasting color
       const cell = this.grid[this.cursorY][this.cursorX];
       if (cell.ch !== ' ') {
         ctx.font = `${cell.bold ? 'bold ' : ''}${this._fontSize}px ${this._fontFamily}`;
-        ctx.fillStyle = CURSES_COLORS.brightGreen;
+        ctx.fillStyle = CURSES_COLORS.black;
         ctx.fillText(cell.ch, px, py);
       }
     }

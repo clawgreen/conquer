@@ -688,7 +688,7 @@ export class GameScreen {
       this.term.clear();
       renderMap(this.term, this.state);
       renderBottomPanel(this.term, this.state, this.statusMessage);
-      this.term.setCursor(this.state.cursorX * 2, this.state.cursorY);
+      this.term.setCursor(this.state.cursorX, this.state.cursorY);
       this.term.render();
     }
 

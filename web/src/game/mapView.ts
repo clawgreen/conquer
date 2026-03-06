@@ -346,8 +346,8 @@ function getTileForSector(
 
 /** Calculate viewport screen size based on terminal dimensions */
 export function screenSize(term: TerminalRenderer): { screenX: number; screenY: number } {
-  // Map uses full width (HUD is HTML overlay now), bottom 3 rows for sector info
-  const screenX = Math.floor(term.cols / 2);
+  // Classic terminal: 1 char per sector (original ncurses style, rectangular cells)
+  const screenX = term.cols;
   const screenY = term.rows - 3;
   return { screenX: Math.max(1, screenX), screenY: Math.max(1, screenY) };
 }
@@ -385,11 +385,8 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
       const absX = sx + state.xOffset;
       const absY = sy + state.yOffset;
       const sector = getSector(state, absX, absY);
-      const colPos = sx * 2;
-
       if (!sector) {
-        term.setCell(colPos, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
-        term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
+        term.setCell(sx, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
         continue;
       }
 
@@ -402,15 +399,12 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
 
       if (isHighlighted) {
         if (theme.highlightStyle === 'inverse') {
-          term.setCell(colPos, sy, { ch, fg: style.fg, bg: style.bg, inverse: true, bold: style.bold });
-          term.setCell(colPos + 1, sy, { ch: ' ', fg: style.bg, bg: style.fg });
+          term.setCell(sx, sy, { ch, fg: style.fg, bg: style.bg, inverse: true, bold: style.bold });
         } else {
-          term.setCell(colPos, sy, { ch, fg: style.fg, bg: theme.highlightBg, bold: style.bold });
-          term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.highlightBg, bg: theme.highlightBg });
+          term.setCell(sx, sy, { ch, fg: style.fg, bg: theme.highlightBg, bold: style.bold });
         }
       } else {
-        term.setCell(colPos, sy, { ch, fg: style.fg, bg: style.bg, bold: style.bold, inverse: false });
-        term.setCell(colPos + 1, sy, { ch: ' ', fg: style.bg, bg: style.bg });
+        term.setCell(sx, sy, { ch, fg: style.fg, bg: style.bg, bold: style.bold, inverse: false });
       }
     }
   }
