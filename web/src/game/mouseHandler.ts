@@ -3,7 +3,7 @@
 // Touch: one-finger drag to pan, pinch to zoom
 
 import { TerminalRenderer } from '../renderer/terminal';
-import { getTileset } from '../renderer/tilesets';
+import { getTileset, getScaledCellSize } from '../renderer/tilesets';
 
 export interface PanZoomCallbacks {
   getOffset(): { x: number; y: number };
@@ -50,12 +50,12 @@ export class MouseHandler {
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  /** Get cell dimensions based on current tileset */
+  /** Get cell dimensions based on current tileset, scaled for zoom */
   private getCellSize(): { cw: number; ch: number } {
     const tsId = this.cb.getTilesetId();
     const ts = getTileset(tsId);
     if (ts.tileType !== 'char') {
-      return { cw: ts.cellWidth, ch: ts.cellHeight };
+      return getScaledCellSize(ts, this.cb.getFontSize());
     }
     // Char mode: cell width = 2 chars wide (matching C's 2-column cells)
     return { cw: this.term.cellWidth * 2, ch: this.term.cellHeight };

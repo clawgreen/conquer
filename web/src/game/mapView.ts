@@ -11,7 +11,7 @@ import {
   Sector,
 } from '../types';
 import { getTheme, terrainStyle, ThemeDef, SectorStyle } from '../renderer/themes';
-import { TileSet, TileDef, getTileset, getCachedImage, TILESET_ASCII } from '../renderer/tilesets';
+import { TileSet, TileDef, getTileset, getScaledCellSize, getCachedImage, TILESET_ASCII } from '../renderer/tilesets';
 
 // Food value per vegetation type (from conquer-core vegfood)
 const VEGFOOD = [0, 0, 0, 4, 6, 9, 7, 4, 0, 0, 0, 0];
@@ -343,8 +343,7 @@ function renderTilesetMap(
   if (!ctx) return;
 
   const theme = getTheme(state.themeId);
-  const cw = ts.cellWidth;
-  const ch = ts.cellHeight;
+  const { cw, ch } = getScaledCellSize(ts, term.fontSize);
 
   // How many tiles fit in the canvas
   const canvasW = ctx.canvas.width;
@@ -367,7 +366,7 @@ function renderTilesetMap(
         ctx.fillStyle = theme.fogBg;
         ctx.fillRect(px, py, cw, ch);
         if (fogTile.type === 'emoji') {
-          ctx.font = `${ch - 4}px serif`;
+          ctx.font = `${Math.max(10, ch - 4)}px serif`;
           ctx.textBaseline = 'middle';
           ctx.textAlign = 'center';
           ctx.fillText(fogTile.value, px + cw / 2, py + ch / 2);
@@ -384,7 +383,7 @@ function renderTilesetMap(
       ctx.fillRect(px, py, cw, ch);
 
       if (tile.type === 'emoji') {
-        ctx.font = `${ch - 4}px serif`;
+        ctx.font = `${Math.max(10, ch - 4)}px serif`;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
         ctx.fillText(tile.value, px + cw / 2, py + ch / 2);

@@ -78,48 +78,51 @@ export const TILESET_EMOJI: TileSet = {
   tileType: 'emoji',
   cellWidth: 24,
   cellHeight: 24,
+  // Elevation: terrain height
   elevation: [
-    emojiTile('🌊'),  // water
-    emojiTile('🏔️'),  // peak
-    emojiTile('⛰️'),   // mountain
-    emojiTile('🏕️'),  // hill
-    emojiTile('🟩'),  // flat
+    emojiTile('🌊'),  // 0: WATER — oceans, lakes, rivers
+    emojiTile('🗻'),  // 1: PEAK — impassable mountain peak
+    emojiTile('⛰️'),   // 2: MOUNTAIN — mountainous, slow movement
+    emojiTile('🏔️'),  // 3: HILL — hilly terrain
+    emojiTile('🟩'),  // 4: FLAT — plains, easy movement
   ],
+  // Vegetation: what grows on the land
   vegetation: [
-    emojiTile('🌿'),  // vine
-    emojiTile('🏜️'),  // desert
-    emojiTile('🌲'),  // tree
-    emojiTile('🌾'),  // brush
-    emojiTile('🌳'),  // lush
-    emojiTile('🌾'),  // grain
-    emojiTile('💧'),  // water veg
-    emojiTile('🌲'),  // forest
-    emojiTile('🌴'),  // jungle
-    emojiTile('🪸'),   // swamp
-    emojiTile('🧊'),  // ice
-    emojiTile('❄️'),   // tundra
+    emojiTile('🌋'),  // 0: VOLCANO — active volcanic terrain
+    emojiTile('🏜️'),  // 1: DESERT — arid wasteland
+    emojiTile('🥶'),  // 2: TUNDRA — frozen ground
+    emojiTile('🪨'),  // 3: BARREN — rocky, minimal food
+    emojiTile('🌱'),  // 4: LT_VEG — light vegetation, some food
+    emojiTile('🌾'),  // 5: GOOD — good farmland/grassland, best food
+    emojiTile('🌳'),  // 6: WOOD — wooded area
+    emojiTile('🌲'),  // 7: FOREST — dense forest
+    emojiTile('🌴'),  // 8: JUNGLE — tropical jungle, high defense
+    emojiTile('🐊'),  // 9: SWAMP — swampland, slow
+    emojiTile('🧊'),  // 10: ICE — frozen ice
+    emojiTile('➖'),  // 11: NONE — no vegetation (water/peak)
   ],
+  // Designation: what sectors have been developed into
   designation: [
-    emojiTile('🏘️'),  // town
-    emojiTile('🏙️'),  // city
-    emojiTile('⛏️'),   // mine
-    emojiTile('🌾'),  // farm
-    emojiTile('🎣'),  // fishery
-    emojiTile('👑'),  // capital
-    emojiTile('🏰'),  // fort
-    emojiTile('🏯'),  // castle
-    emojiTile('🪵'),  // stockade
-    emojiTile('⭐'),  // capitol
-    emojiTile('❓'),  // unknown
-    emojiTile('🪓'),  // logging
-    emojiTile('🌉'),  // bridge
-    emojiTile('🛤️'),  // road
-    emojiTile('💰'),  // goldmine
-    emojiTile('🏪'),  // granary
-    emojiTile('🏫'),  // university
-    emojiTile('⚓'),  // harbor
-    emojiTile('🏗️'),  // misc
-    emojiTile('🏛️'),  // palace
+    emojiTile('🏘️'),  // 0: TOWN — small settlement
+    emojiTile('🏙️'),  // 1: CITY — large settlement
+    emojiTile('⛏️'),   // 2: MINE — metal extraction
+    emojiTile('👨‍🌾'), // 3: FARM — agriculture
+    emojiTile('💀'),  // 4: DEVASTATED — war-ravaged
+    emojiTile('💰'),  // 5: GOLDMINE — gold/jewel extraction
+    emojiTile('🏰'),  // 6: FORT — military fortification
+    emojiTile('🏚️'),  // 7: RUIN — ruined city/capitol
+    emojiTile('🪵'),  // 8: STOCKADE — wooden fortification
+    emojiTile('👑'),  // 9: CAPITOL — nation's capital!
+    emojiTile('❓'),  // 10: SPECIAL — unique sector
+    emojiTile('🪓'),  // 11: LUMBERYARD — wood production
+    emojiTile('🔨'),  // 12: BLACKSMITH — metal processing
+    emojiTile('🛤️'),  // 13: ROAD — faster movement
+    emojiTile('⚙️'),  // 14: MILL — production bonus
+    emojiTile('🏪'),  // 15: GRANARY — food storage
+    emojiTile('⛪'),  // 16: CHURCH — morale/alignment
+    emojiTile('🏫'),  // 17: UNIVERSITY — research
+    emojiTile('🟫'),  // 18: NODESIG — undesignated raw land
+    emojiTile('⛺'),  // 19: BASECAMP — military base camp
   ],
   army: emojiTile('⚔️'),
   navy: emojiTile('⛵'),
@@ -137,47 +140,47 @@ export const TILESET_UNICODE: TileSet = {
   cellWidth: 14,
   cellHeight: 16,
   elevation: [
-    charTile('≈'),  // water
-    charTile('▲'),  // peak
-    charTile('△'),  // mountain
-    charTile('∧'),  // hill
-    charTile('·'),  // flat
+    charTile('≈'),  // WATER
+    charTile('▲'),  // PEAK — impassable
+    charTile('△'),  // MOUNTAIN
+    charTile('∧'),  // HILL
+    charTile('·'),  // FLAT
   ],
   vegetation: [
-    charTile('♣'),  // vine
-    charTile('░'),  // desert
-    charTile('↟'),  // tree
-    charTile('≋'),  // brush
-    charTile('♠'),  // lush
-    charTile('⌇'),  // grain
-    charTile('≈'),  // water veg
-    charTile('⌘'),  // forest
-    charTile('❦'),  // jungle
-    charTile('⌁'),  // swamp
-    charTile('◇'),  // ice
-    charTile('○'),  // tundra
+    charTile('♨'),  // VOLCANO
+    charTile('░'),  // DESERT
+    charTile('※'),  // TUNDRA
+    charTile('∴'),  // BARREN
+    charTile('♣'),  // LT_VEG — light vegetation
+    charTile('♠'),  // GOOD — good farmland
+    charTile('↟'),  // WOOD
+    charTile('⌘'),  // FOREST
+    charTile('❦'),  // JUNGLE
+    charTile('≋'),  // SWAMP
+    charTile('◇'),  // ICE
+    charTile('○'),  // NONE
   ],
   designation: [
-    charTile('⌂'),  // town
-    charTile('▣'),  // city
-    charTile('⛏'),  // mine
-    charTile('⌗'),  // farm
-    charTile('⚓'),  // fishery
-    charTile('♛'),  // capital
-    charTile('⚑'),  // fort
-    charTile('♜'),  // castle
-    charTile('⌸'),  // stockade
-    charTile('★'),  // capitol
-    charTile('?'),  // unknown
-    charTile('⌻'),  // logging
-    charTile('═'),  // bridge
-    charTile('─'),  // road
-    charTile('⊛'),  // goldmine
-    charTile('⊞'),  // granary
-    charTile('⊠'),  // university
-    charTile('⚓'),  // harbor
-    charTile('⊡'),  // misc
-    charTile('⊕'),  // palace
+    charTile('⌂'),  // TOWN
+    charTile('▣'),  // CITY
+    charTile('⛏'),  // MINE
+    charTile('⌗'),  // FARM
+    charTile('✕'),  // DEVASTATED
+    charTile('⊛'),  // GOLDMINE
+    charTile('⚑'),  // FORT
+    charTile('♜'),  // RUIN
+    charTile('⌸'),  // STOCKADE
+    charTile('★'),  // CAPITOL
+    charTile('?'),  // SPECIAL
+    charTile('⌻'),  // LUMBERYARD
+    charTile('⚒'),  // BLACKSMITH
+    charTile('─'),  // ROAD
+    charTile('⊙'),  // MILL
+    charTile('⊞'),  // GRANARY
+    charTile('†'),  // CHURCH
+    charTile('⊠'),  // UNIVERSITY
+    charTile('·'),  // NODESIG
+    charTile('⊕'),  // BASECAMP
   ],
   army: charTile('♞'),
   navy: charTile('♚'),
@@ -195,23 +198,47 @@ export const TILESET_FANTASY: TileSet = {
   cellWidth: 24,
   cellHeight: 24,
   elevation: [
-    emojiTile('🌊'),
-    emojiTile('🗻'),
-    emojiTile('⛰️'),
-    emojiTile('🏔️'),
-    emojiTile('🟢'),
+    emojiTile('🌊'),  // WATER
+    emojiTile('🗻'),  // PEAK
+    emojiTile('⛰️'),   // MOUNTAIN
+    emojiTile('🏔️'),  // HILL
+    emojiTile('🟢'),  // FLAT
   ],
   vegetation: [
-    emojiTile('🌿'), emojiTile('💀'), emojiTile('🌲'), emojiTile('🍂'),
-    emojiTile('🌳'), emojiTile('🌾'), emojiTile('🐟'), emojiTile('🌲'),
-    emojiTile('🐉'), emojiTile('🦎'), emojiTile('❄️'), emojiTile('🐺'),
+    emojiTile('🔥'),  // VOLCANO — fire and brimstone
+    emojiTile('💀'),  // DESERT — deathlands
+    emojiTile('🐺'),  // TUNDRA — wolves in the snow
+    emojiTile('🦴'),  // BARREN — bones and dust
+    emojiTile('🍀'),  // LT_VEG — clover fields
+    emojiTile('🌻'),  // GOOD — fertile enchanted fields
+    emojiTile('🍄'),  // WOOD — mushroom woods
+    emojiTile('🌲'),  // FOREST — deep dark forest
+    emojiTile('🐉'),  // JUNGLE — dragon territory
+    emojiTile('🦎'),  // SWAMP — lizard swamps
+    emojiTile('❄️'),   // ICE — frozen wastes
+    emojiTile('🕳️'),  // NONE — the void
   ],
   designation: [
-    emojiTile('🏠'), emojiTile('🏰'), emojiTile('⛏️'), emojiTile('🌾'),
-    emojiTile('🐟'), emojiTile('👑'), emojiTile('🛡️'), emojiTile('🏰'),
-    emojiTile('🪵'), emojiTile('⭐'), emojiTile('❓'), emojiTile('🪓'),
-    emojiTile('🌉'), emojiTile('🛤️'), emojiTile('💰'), emojiTile('🍺'),
-    emojiTile('📜'), emojiTile('⚓'), emojiTile('🔨'), emojiTile('🏛️'),
+    emojiTile('🏠'),  // TOWN — village
+    emojiTile('🏰'),  // CITY — castle city
+    emojiTile('⛏️'),   // MINE — dwarf mines
+    emojiTile('🌾'),  // FARM — peasant farms
+    emojiTile('🔥'),  // DEVASTATED — burned ruins
+    emojiTile('💎'),  // GOLDMINE — gem mines
+    emojiTile('🛡️'),  // FORT — shield wall
+    emojiTile('💀'),  // RUIN — haunted ruins
+    emojiTile('🪵'),  // STOCKADE — palisade
+    emojiTile('👑'),  // CAPITOL — throne room
+    emojiTile('✨'),  // SPECIAL — magical
+    emojiTile('🪓'),  // LUMBERYARD
+    emojiTile('⚒️'),  // BLACKSMITH — forge
+    emojiTile('🛤️'),  // ROAD — king's road
+    emojiTile('⚙️'),   // MILL — windmill
+    emojiTile('🍺'),  // GRANARY — mead hall
+    emojiTile('📜'),  // CHURCH — temple
+    emojiTile('🧙'),  // UNIVERSITY — wizard tower
+    emojiTile('🟤'),  // NODESIG — wild land
+    emojiTile('⛺'),  // BASECAMP — war camp
   ],
   army: emojiTile('⚔️'),
   navy: emojiTile('🚢'),
@@ -238,6 +265,24 @@ export function registerTileset(ts: TileSet): void {
 
 export function getTileset(id: string): TileSet {
   return ALL_TILESETS.find(t => t.id === id) ?? TILESET_ASCII;
+}
+
+/**
+ * Get effective cell dimensions for a tileset, scaled by zoom factor.
+ * For char tilesets, cell size comes from the terminal renderer.
+ * For emoji/image tilesets, scale the base cellWidth/cellHeight by zoom.
+ * zoomFactor = currentFontSize / defaultFontSize (14)
+ */
+export function getScaledCellSize(ts: TileSet, fontSize: number): { cw: number; ch: number } {
+  if (ts.tileType === 'char') {
+    // Char mode uses terminal grid — handled elsewhere
+    return { cw: ts.cellWidth, ch: ts.cellHeight };
+  }
+  const zoomFactor = fontSize / 14; // 14px is the baseline font
+  return {
+    cw: Math.round(ts.cellWidth * zoomFactor),
+    ch: Math.round(ts.cellHeight * zoomFactor),
+  };
 }
 
 // ─── Image tileset loading (for sprite-based tilesets) ───
