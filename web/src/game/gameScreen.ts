@@ -48,6 +48,7 @@ export class GameScreen {
     this.layout = new GameLayout(parent);
     const savedUiTheme = localStorage.getItem('conquer_ui_theme');
     if (savedUiTheme) this.layout.uiThemeId = savedUiTheme;
+    this.layout.initMobileState();
 
     this.canvas = this.layout.canvas;
     this.canvas.style.background = '#000';
@@ -88,6 +89,16 @@ export class GameScreen {
         this.handleResize();
       },
       getTilesetId: () => this.state.tilesetId ?? 'ascii',
+      onTapCell: (mapX, mapY) => {
+        // Move cursor to tapped map cell
+        const { screenX, screenY } = screenSize(this.term);
+        const localX = mapX - this.state.xOffset;
+        const localY = mapY - this.state.yOffset;
+        if (localX >= 0 && localX < screenX && localY >= 0 && localY < screenY) {
+          this.state.cursorX = localX;
+          this.state.cursorY = localY;
+        }
+      },
     });
 
     // Map tooltip

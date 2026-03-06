@@ -11,6 +11,8 @@ export interface PanZoomCallbacks {
   getFontSize(): number;
   setFontSize(size: number): void;
   getTilesetId(): string;
+  /** Called when user taps/clicks a map cell (not drag) */
+  onTapCell?(cellX: number, cellY: number): void;
 }
 
 export class MouseHandler {
@@ -24,10 +26,14 @@ export class MouseHandler {
   private dragStartY = 0;
   private dragOffsetStartX = 0;
   private dragOffsetStartY = 0;
+  private dragMoved = false;  // true if user dragged beyond tap threshold
 
   // Touch pinch state
   private pinchStartDist = 0;
   private pinchStartFontSize = 0;
+
+  // Tap threshold (pixels of movement before it's considered a drag, not a tap)
+  private static TAP_THRESHOLD = 8;
 
   constructor(canvas: HTMLCanvasElement, term: TerminalRenderer, cb: PanZoomCallbacks) {
     this.canvas = canvas;
@@ -57,8 +63,8 @@ export class MouseHandler {
     if (ts.tileType !== 'char') {
       return getScaledCellSize(ts, this.cb.getFontSize());
     }
-    // Char mode: cell width = 2 chars wide (matching C's 2-column cells)
-    return { cw: this.term.cellWidth * 2, ch: this.term.cellHeight };
+    // Char mode: 1 char per sector (classic ncurses style)
+    return { cw: this.term.cellWidth, ch: this.term.cellHeight };
   }
 
   // ─── Mouse drag to pan ───
@@ -66,6 +72,7 @@ export class MouseHandler {
   private onMouseDown = (e: MouseEvent): void => {
     if (e.button !== 0) return; // left click only
     this.dragging = true;
+    this.dragMoved = false;
     this.dragStartX = e.clientX;
     this.dragStartY = e.clientY;
     const off = this.cb.getOffset();
@@ -79,9 +86,12 @@ export class MouseHandler {
       this.canvas.style.cursor = 'grab';
       return;
     }
-    const { cw, ch } = this.getCellSize();
     const dx = e.clientX - this.dragStartX;
     const dy = e.clientY - this.dragStartY;
+    if (Math.abs(dx) > MouseHandler.TAP_THRESHOLD || Math.abs(dy) > MouseHandler.TAP_THRESHOLD) {
+      this.dragMoved = true;
+    }
+    const { cw, ch } = this.getCellSize();
 
     // Convert pixel delta to cell delta (negative because dragging right = scroll left)
     const cellDx = Math.round(-dx / cw);
@@ -93,10 +103,26 @@ export class MouseHandler {
     );
   };
 
-  private onMouseUp = (): void => {
+  private onMouseUp = (e: MouseEvent | Event): void => {
+    if (this.dragging && !this.dragMoved && this.cb.onTapCell && e instanceof MouseEvent) {
+      this.handleTap(e.clientX, e.clientY);
+    }
     this.dragging = false;
     this.canvas.style.cursor = 'grab';
   };
+
+  /** Convert screen coordinates to map cell and call onTapCell */
+  private handleTap(clientX: number, clientY: number): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasX = clientX - rect.left;
+    const canvasY = clientY - rect.top;
+    const { cw, ch } = this.getCellSize();
+    const off = this.cb.getOffset();
+    const cellX = Math.floor(canvasX / cw);
+    const cellY = Math.floor(canvasY / ch);
+    // cellX/cellY are screen-relative; convert to absolute map coords
+    this.cb.onTapCell!(cellX + off.x, cellY + off.y);
+  }
 
   // ─── Mouse wheel zoom at pointer ───
 
@@ -136,9 +162,10 @@ export class MouseHandler {
 
   private onTouchStart = (e: TouchEvent): void => {
     if (e.touches.length === 1) {
-      // Single finger: drag
+      // Single finger: drag or tap
       e.preventDefault();
       this.dragging = true;
+      this.dragMoved = false;
       this.dragStartX = e.touches[0].clientX;
       this.dragStartY = e.touches[0].clientY;
       const off = this.cb.getOffset();
@@ -156,9 +183,12 @@ export class MouseHandler {
   private onTouchMove = (e: TouchEvent): void => {
     if (e.touches.length === 1 && this.dragging) {
       e.preventDefault();
-      const { cw, ch } = this.getCellSize();
       const dx = e.touches[0].clientX - this.dragStartX;
       const dy = e.touches[0].clientY - this.dragStartY;
+      if (Math.abs(dx) > MouseHandler.TAP_THRESHOLD || Math.abs(dy) > MouseHandler.TAP_THRESHOLD) {
+        this.dragMoved = true;
+      }
+      const { cw, ch } = this.getCellSize();
       const cellDx = Math.round(-dx / cw);
       const cellDy = Math.round(-dy / ch);
       this.cb.setOffset(
@@ -174,7 +204,11 @@ export class MouseHandler {
     }
   };
 
-  private onTouchEnd = (): void => {
+  private onTouchEnd = (e: TouchEvent): void => {
+    if (this.dragging && !this.dragMoved && this.cb.onTapCell) {
+      // Single-finger tap: move cursor to tapped cell
+      this.handleTap(this.dragStartX, this.dragStartY);
+    }
     this.dragging = false;
   };
 

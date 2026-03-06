@@ -66,18 +66,44 @@ export class GameLayout {
     localStorage.setItem('conquer_ui_theme', id);
   }
 
+  private get isMobile(): boolean { return window.innerWidth <= 600; }
+
   toggleLeft(): void {
     this.leftVisible = !this.leftVisible;
-    this._leftBar.style.display = this.leftVisible ? 'flex' : 'none';
+    if (this.isMobile) {
+      this._leftBar.classList.toggle('mobile-hidden', !this.leftVisible);
+      if (this.leftVisible) this._leftBar.style.display = 'flex';
+    } else {
+      this._leftBar.style.display = this.leftVisible ? 'flex' : 'none';
+    }
     this._leftToggle.textContent = this.leftVisible ? '◀' : '▶';
     this.onResize();
   }
 
   toggleRight(): void {
     this.rightVisible = !this.rightVisible;
-    this._rightBar.style.display = this.rightVisible ? 'flex' : 'none';
+    if (this.isMobile) {
+      this._rightBar.classList.toggle('mobile-hidden', !this.rightVisible);
+      if (this.rightVisible) this._rightBar.style.display = 'flex';
+    } else {
+      this._rightBar.style.display = this.rightVisible ? 'flex' : 'none';
+    }
     this._rightToggle.textContent = this.rightVisible ? '▶' : '◀';
     this.onResize();
+  }
+
+  /** Call after construction to set initial mobile state */
+  initMobileState(): void {
+    if (this.isMobile) {
+      this.leftVisible = false;
+      this.rightVisible = false;
+      this._leftBar.classList.add('mobile-hidden');
+      this._rightBar.classList.add('mobile-hidden');
+      this._leftBar.style.display = 'flex';
+      this._rightBar.style.display = 'flex';
+      this._leftToggle.textContent = '▶';
+      this._rightToggle.textContent = '◀';
+    }
   }
 
   onResize(): void {
@@ -152,8 +178,19 @@ export class GameLayout {
         .cmd-btn { padding: 6px 8px; font-size: 12px; min-height: 36px; }
       }
       @media (max-width: 600px) {
-        #left-sidebar { display: none !important; }
-        #right-sidebar { display: none !important; }
+        /* Sidebars start hidden on mobile but can be toggled via buttons */
+        #left-sidebar.mobile-hidden { display: none !important; }
+        #right-sidebar.mobile-hidden { display: none !important; }
+        /* Make sidebars overlay on mobile instead of pushing content */
+        #left-sidebar:not(.mobile-hidden) {
+          position: absolute; left: 0; top: 0; bottom: 0;
+          z-index: 20; box-shadow: 4px 0 12px rgba(0,0,0,0.5);
+        }
+        #right-sidebar:not(.mobile-hidden) {
+          position: absolute; right: 0; top: 0; bottom: 0;
+          z-index: 20; box-shadow: -4px 0 12px rgba(0,0,0,0.5);
+        }
+        .sidebar-toggle { padding: 12px 6px; font-size: 18px; }
       }
     `;
     document.head.appendChild(style);
