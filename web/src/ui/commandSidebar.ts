@@ -69,8 +69,10 @@ const CMD_GROUPS: CmdGroup[] = [
   {
     name: 'View',
     cmds: [
-      { label: 'A+ Font', cmd: 'font_up', key: '+' },
-      { label: 'A- Font', cmd: 'font_down', key: '-' },
+      { label: 'Game Font +', cmd: 'font_up', key: '+' },
+      { label: 'Game Font -', cmd: 'font_down', key: '-' },
+      { label: 'Menu Font +', cmd: 'sidebar_font_up' },
+      { label: 'Menu Font -', cmd: 'sidebar_font_down' },
       { label: 'Center Map', cmd: 'center_map' },
       { label: 'Focus Mode', cmd: 'toggle_sidebars' },
       { label: '── Themes ──', cmd: '_sep' },
@@ -106,6 +108,7 @@ export class CommandSidebar {
   private btnElements: Map<string, HTMLElement> = new Map();
   private collapsedGroups: Set<string> = new Set();
   private _themeId = 'terminal';
+  private _fontSize: number = parseInt(localStorage.getItem('conquer_sidebar_font') ?? '12');
 
   constructor(container: HTMLElement, callback: CmdCallback) {
     this.container = container;
@@ -117,6 +120,7 @@ export class CommandSidebar {
   }
 
   set themeId(id: string) { this._themeId = id; this.render(); }
+  get fontSize(): number { return this._fontSize; }
 
   flash(cmd: string): void {
     const el = this.btnElements.get(cmd);
@@ -143,6 +147,7 @@ export class CommandSidebar {
     const t = getUiTheme(this._themeId);
     this.btnElements.clear();
     this.container.innerHTML = '';
+    this.container.style.fontSize = `${this._fontSize}px`;
 
     for (const group of CMD_GROUPS) {
       const div = document.createElement('div');
@@ -169,11 +174,23 @@ export class CommandSidebar {
           btn.className = 'cmd-btn';
           btn.style.cssText = `background:${t.btnBg};color:${t.btnText};border-left:2px solid transparent;`;
           btn.innerHTML = cmd.key
-            ? `${cmd.label} <span style="float:right;opacity:0.4;font-size:10px;">${cmd.key}</span>`
+            ? `<span style="opacity:0.5;margin-right:4px;">(${cmd.key})</span>${cmd.label}`
             : cmd.label;
           btn.addEventListener('click', () => {
-            this.callback(cmd.cmd);
-            this.flash(cmd.cmd);
+            if (cmd.cmd === 'sidebar_font_up') {
+              this._fontSize = Math.min(20, this._fontSize + 1);
+              localStorage.setItem('conquer_sidebar_font', String(this._fontSize));
+              this.render();
+              this.callback('_sidebar_font_changed');
+            } else if (cmd.cmd === 'sidebar_font_down') {
+              this._fontSize = Math.max(9, this._fontSize - 1);
+              localStorage.setItem('conquer_sidebar_font', String(this._fontSize));
+              this.render();
+              this.callback('_sidebar_font_changed');
+            } else if (cmd.cmd !== '_sep') {
+              this.callback(cmd.cmd);
+              this.flash(cmd.cmd);
+            }
           });
           div.appendChild(btn);
           this.btnElements.set(cmd.cmd, btn);

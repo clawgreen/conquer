@@ -17,6 +17,7 @@ export class StatsSidebar {
   }
 
   set themeId(id: string) { this._themeId = id; }
+  set fontSize(px: number) { this.container.style.fontSize = `${px}px`; }
 
   update(state: GameState): void {
     if (!state.nation || !state.gameInfo) {
@@ -112,7 +113,39 @@ export class StatsSidebar {
       </div>
 
       ${state.isDone ? `<div style="text-align:center;padding:8px;color:${t.sidebarAccent};">✓ TURN ENDED</div>` : ''}
+
+      <div class="stat-section" style="border-color:${t.sidebarBorder};">
+        <div class="stat-section-title" style="color:${t.sidebarDim};">Scoreboard</div>
+        ${this.renderScores(state, t)}
+      </div>
     `;
+  }
+
+  private renderScores(state: GameState, t: ReturnType<typeof getUiTheme>): string {
+    if (!state.scores || state.scores.length === 0) {
+      // Use publicNations as fallback
+      const nations = state.publicNations
+        .filter(n => n.score != null && n.score > 0)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+        .slice(0, 10);
+      if (nations.length === 0) return '<div class="stat-row" style="opacity:0.4;">No scores yet</div>';
+      return nations.map((n, i) => {
+        const isYou = n.nation_id === state.nationId;
+        return `<div class="stat-row" style="${isYou ? `color:${t.sidebarAccent};font-weight:bold;` : ''}">
+          <span>${i + 1}. ${n.name}</span><span>${n.score ?? 0}</span>
+        </div>`;
+      }).join('');
+    }
+    return state.scores
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map((s, i) => {
+        const isYou = s.nation_id === state.nationId;
+        return `<div class="stat-row" style="${isYou ? `color:${t.sidebarAccent};font-weight:bold;` : ''}">
+          <span>${i + 1}. ${s.name}</span><span>${s.score}</span>
+        </div>`;
+      }).join('') || '<div class="stat-row" style="opacity:0.4;">No scores yet</div>';
   }
 
   destroy(): void {}

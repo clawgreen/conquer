@@ -57,9 +57,10 @@ export class GameScreen {
     this.cmdSidebar = new CommandSidebar(this.layout.leftBar, (cmd) => this.handleCommand(cmd));
     this.cmdSidebar.themeId = this.layout.uiThemeId;
 
-    // Right sidebar: stats
+    // Right sidebar: stats (match font size with left)
     this.statsSidebar = new StatsSidebar(this.layout.rightBar);
     this.statsSidebar.themeId = this.layout.uiThemeId;
+    this.statsSidebar.fontSize = this.cmdSidebar.fontSize;
 
     // Chat panel (Phase 5: T400)
     this.chatPanel = new ChatPanel(parent, this.client, this.state);
@@ -122,6 +123,9 @@ export class GameScreen {
       }
 
       this.setStatus(`Welcome, ${nation.name}! Turn ${gameInfo.current_turn} — Press T for chat`);
+
+      // Load scores for sidebar
+      this.client.getScores(gameId).then(s => { this.state.scores = s; }).catch(() => {});
 
       // Load initial chat data (Phase 5)
       this.loadChatData();
@@ -360,6 +364,12 @@ export class GameScreen {
   }
 
   private handleCommand(cmd: string): void {
+    // Sidebar font sync
+    if (cmd === '_sidebar_font_changed') {
+      this.statsSidebar.fontSize = this.cmdSidebar.fontSize;
+      return;
+    }
+
     // Theme commands
     if (cmd.startsWith('theme_')) {
       const themeId = cmd.slice(6);
