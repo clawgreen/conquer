@@ -79,11 +79,9 @@ export class GameScreen {
     this.mouseHandler = new MouseHandler(this.canvas, this.term, {
       getOffset: () => ({ x: this.state.xOffset, y: this.state.yOffset }),
       setOffset: (x, y) => {
-        const mapW = this.state.mapData?.map_x ?? 32;
-        const mapH = this.state.mapData?.map_y ?? 32;
-        // Clamp: can't go below 0 or past the point where map edge hits right/bottom of screen
-        this.state.xOffset = Math.max(0, Math.min(x, Math.max(0, mapW - 1)));
-        this.state.yOffset = Math.max(0, Math.min(y, Math.max(0, mapH - 1)));
+        // Only prevent negative offsets — free panning otherwise
+        this.state.xOffset = Math.max(0, x);
+        this.state.yOffset = Math.max(0, y);
       },
       getFontSize: () => this.term.fontSize,
       setFontSize: (size) => {
