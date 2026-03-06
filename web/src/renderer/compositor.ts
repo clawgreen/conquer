@@ -231,8 +231,10 @@ export function renderCompositedMap(
       const sector = getSector(state, absX, absY);
 
       if (!sector) {
-        // Fog of war — black
-        ctx.fillStyle = '#000';
+        const mapW = state.mapData?.map_x ?? 0;
+        const mapH = state.mapData?.map_y ?? 0;
+        const outOfBounds = absX < 0 || absY < 0 || absX >= mapW || absY >= mapH;
+        ctx.fillStyle = outOfBounds ? '#111111' : '#000';
         ctx.fillRect(px, py, cw, ch);
         continue;
       }

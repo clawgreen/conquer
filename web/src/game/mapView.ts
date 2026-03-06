@@ -388,8 +388,14 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
       const colPos = sx * 2;
 
       if (!sector) {
-        term.setCell(colPos, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
-        term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
+        // Outside map bounds = dark grey; fog of war = black
+        const mapW = state.mapData?.map_x ?? 0;
+        const mapH = state.mapData?.map_y ?? 0;
+        const outOfBounds = absX < 0 || absY < 0 || absX >= mapW || absY >= mapH;
+        const bg = outOfBounds ? '#111111' : theme.fogBg;
+        const fg = outOfBounds ? '#111111' : theme.fogFg;
+        term.setCell(colPos, sy, { ch: ' ', fg, bg });
+        term.setCell(colPos + 1, sy, { ch: ' ', fg, bg });
         continue;
       }
 
@@ -476,8 +482,10 @@ function renderTilesetMap(
       const py = sy * ch;
 
       if (!sector) {
-        // Fog of war — just black
-        ctx.fillStyle = '#000';
+        const mapW = state.mapData?.map_x ?? 0;
+        const mapH = state.mapData?.map_y ?? 0;
+        const outOfBounds = absX < 0 || absY < 0 || absX >= mapW || absY >= mapH;
+        ctx.fillStyle = outOfBounds ? '#111111' : '#000';
         ctx.fillRect(px, py, cw, ch);
         continue;
       }
