@@ -2,6 +2,7 @@
 
 import { getUiTheme } from './uiThemes';
 import { DisplayMode, HighlightMode } from '../types';
+import { ALL_TILESETS } from '../renderer/tilesets';
 
 export type CmdCallback = (cmd: string) => void;
 
@@ -109,10 +110,11 @@ const CMD_GROUPS: CmdGroup[] = [
     name: 'Tileset',
     collapsed: true,
     cmds: [
-      { label: 'ASCII Classic', cmd: 'tileset_ascii' },
-      { label: 'Unicode Symbols', cmd: 'tileset_unicode' },
-      { label: '😀 Emoji', cmd: 'tileset_emoji' },
-      { label: '🐉 Fantasy', cmd: 'tileset_fantasy' },
+      // Dynamically built from ALL_TILESETS registry
+      ...ALL_TILESETS.map(ts => ({
+        label: ts.tileType === 'image' ? `🎨 ${ts.name}` : ts.tileType === 'emoji' ? `😀 ${ts.name}` : ts.name,
+        cmd: `tileset_${ts.id}`,
+      })),
       { label: '✏️ Edit Tileset...', cmd: 'tileset_editor' },
     ],
   },
