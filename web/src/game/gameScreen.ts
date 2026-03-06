@@ -7,21 +7,23 @@ import { GameState, createInitialState, buildOccupied } from '../state/gameState
 import { renderMap, screenSize } from './mapView';
 import { renderBottomPanel } from '../ui/sidePanel';
 import { ChatPanel } from '../ui/chatPanel';
-import { HudOverlay } from '../ui/hudOverlay';
-import { CommandBar } from '../ui/commandBar';
+import { GameLayout } from '../ui/gameLayout';
+import { CommandSidebar } from '../ui/commandSidebar';
+import { StatsSidebar } from '../ui/statsSidebar';
 import { InputHandler, GameAction } from './inputHandler';
 import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 
 export class GameScreen {
+  private layout: GameLayout;
   private canvas: HTMLCanvasElement;
   private term: TerminalRenderer;
   private client: GameClient;
   private input: InputHandler;
   private chatPanel: ChatPanel;
-  private hud: HudOverlay;
-  private commandBar: CommandBar;
+  private cmdSidebar: CommandSidebar;
+  private statsSidebar: StatsSidebar;
   private _backBtn: HTMLElement | null = null;
   private state: GameState;
   private animFrame: number = 0;
@@ -35,11 +37,13 @@ export class GameScreen {
     this.state.gameId = gameId;
     this.state.nationId = nationId;
 
-    // Create canvas
-    this.canvas = document.createElement('canvas');
-    this.canvas.style.display = 'block';
+    // Three-column layout with CRT bezel
+    this.layout = new GameLayout(parent);
+    const savedUiTheme = localStorage.getItem('conquer_ui_theme');
+    if (savedUiTheme) this.layout.uiThemeId = savedUiTheme;
+
+    this.canvas = this.layout.canvas;
     this.canvas.style.background = '#000';
-    parent.appendChild(this.canvas);
 
     // Initialize renderer
     this.term = new TerminalRenderer(this.canvas);
@@ -49,29 +53,13 @@ export class GameScreen {
     // Input handler
     this.input = new InputHandler((action) => this.handleAction(action));
 
-    // Back button — always visible, top-left
-    const backBtn = document.createElement('button');
-    backBtn.id = 'btn-back-to-lobby';
-    backBtn.textContent = '← Lobby';
-    backBtn.style.cssText = `
-      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 4px); left: 4px; z-index: 60;
-      background: rgba(0,17,0,0.9); color: #55ff55; border: 1px solid #338833;
-      border-radius: 4px; padding: 6px 10px; font-family: inherit; font-size: 12px;
-      cursor: pointer; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-    `;
-    backBtn.addEventListener('click', () => {
-      localStorage.removeItem('conquer_game_id');
-      localStorage.removeItem('conquer_nation_id');
-      window.location.reload();
-    });
-    parent.appendChild(backBtn);
-    this._backBtn = backBtn;
+    // Left sidebar: commands
+    this.cmdSidebar = new CommandSidebar(this.layout.leftBar, (cmd) => this.handleCommand(cmd));
+    this.cmdSidebar.themeId = this.layout.uiThemeId;
 
-    // HTML HUD overlay (replaces canvas-rendered side panel)
-    this.hud = new HudOverlay(parent);
-
-    // Command button bar
-    this.commandBar = new CommandBar(parent, (cmd) => this.handleCommand(cmd));
+    // Right sidebar: stats
+    this.statsSidebar = new StatsSidebar(this.layout.rightBar);
+    this.statsSidebar.themeId = this.layout.uiThemeId;
 
     // Chat panel (Phase 5: T400)
     this.chatPanel = new ChatPanel(parent, this.client, this.state);
@@ -102,10 +90,9 @@ export class GameScreen {
   }
 
   private handleResize(): void {
-    const barH = this.commandBar ? this.commandBar.getHeight() : 80;
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight - barH;
-    this.term.resize(window.innerWidth, window.innerHeight - barH);
+    this.layout.onResize();
+    const rect = this.canvas.getBoundingClientRect();
+    this.term.resize(rect.width, rect.height);
   }
 
   private async loadGameData(): Promise<void> {
@@ -419,11 +406,6 @@ export class GameScreen {
         case 'toggle_chat': this.handleAction({ type: 'toggle_chat' }); break;
         case 'end_turn': this.handleAction({ type: 'end_turn' }); break;
         case 'refresh': this.loadGameData(); this.setStatus('Refreshing...'); break;
-        case 'back_to_lobby':
-          localStorage.removeItem('conquer_game_id');
-          localStorage.removeItem('conquer_nation_id');
-          window.location.reload();
-          break;
         case 'font_up':
           this.term.setFontSize(this.term.fontSize + 2);
           this.handleResize();
@@ -434,6 +416,17 @@ export class GameScreen {
           break;
         case 'center_map':
           this.handleAction({ type: 'center_map' });
+          break;
+        case 'toggle_sidebars':
+          this.layout.toggleLeft();
+          this.layout.toggleRight();
+          this.handleResize();
+          this.setStatus(this.layout.leftBar.style.display === 'none' ? 'Focus mode' : 'Sidebars visible');
+          break;
+        case 'back_to_lobby':
+          localStorage.removeItem('conquer_game_id');
+          localStorage.removeItem('conquer_nation_id');
+          window.location.reload();
           break;
       }
     }
@@ -544,19 +537,18 @@ export class GameScreen {
 
     this.term.render();
 
-    // Update HTML HUD overlay
-    this.hud.update(this.state);
+    // Update right sidebar stats
+    this.statsSidebar.update(this.state);
   }
 
   destroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
     this.input.destroy();
     this.chatPanel.destroy();
-    this.hud.destroy();
-    this.commandBar.destroy();
+    this.cmdSidebar.destroy();
+    this.statsSidebar.destroy();
     this.term.destroy();
     this.client.disconnectWebSocket();
-    this._backBtn?.remove();
-    this.canvas.remove();
+    this.layout.destroy();
   }
 }
