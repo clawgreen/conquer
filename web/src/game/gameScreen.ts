@@ -4,7 +4,7 @@
 import { TerminalRenderer } from '../renderer/terminal';
 import { GameClient } from '../network/client';
 import { GameState, createInitialState, buildOccupied } from '../state/gameState';
-import { renderMap, screenSize } from './mapView';
+import { renderMap, renderTilesetCursor, screenSize } from './mapView';
 import { renderBottomPanel } from '../ui/sidePanel';
 import { ChatPanel } from '../ui/chatPanel';
 import { GameLayout } from '../ui/gameLayout';
@@ -17,7 +17,7 @@ import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
-import { registerTileset } from '../renderer/tilesets';
+import { registerTileset, getTileset as getTilesetById } from '../renderer/tilesets';
 import { MapTooltip } from '../ui/mapTooltip';
 
 export class GameScreen {
@@ -614,6 +614,9 @@ export class GameScreen {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       renderMap(this.term, this.state);
+
+      // Blinking cursor overlay
+      renderTilesetCursor(ctx, this.state, getTilesetById(tsId), this.term.fontSize);
 
       // Render bottom panel as text overlay on canvas
       const fontSize = this.term.fontSize;

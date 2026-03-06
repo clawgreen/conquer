@@ -416,6 +416,33 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
   }
 }
 
+/** Draw a blinking cursor overlay on the selected cell */
+let cursorBlinkOn = true;
+setInterval(() => { cursorBlinkOn = !cursorBlinkOn; }, 500);
+
+export function renderTilesetCursor(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  ts: TileSet,
+  fontSize: number,
+): void {
+  const { cw, ch } = getScaledCellSize(ts, fontSize);
+  const sx = state.cursorX;
+  const sy = state.cursorY;
+  const px = sx * cw;
+  const py = sy * ch;
+
+  // Semi-transparent green overlay that blinks
+  const alpha = cursorBlinkOn ? 0.35 : 0.15;
+  ctx.fillStyle = `rgba(85, 255, 85, ${alpha})`;
+  ctx.fillRect(px, py, cw, ch);
+
+  // Green border always visible
+  ctx.strokeStyle = `rgba(85, 255, 85, ${cursorBlinkOn ? 0.9 : 0.5})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, cw - 2, ch - 2);
+}
+
 /** Render map using emoji or image tileset directly to canvas */
 function renderTilesetMap(
   term: TerminalRenderer,
@@ -449,16 +476,9 @@ function renderTilesetMap(
       const py = sy * ch;
 
       if (!sector) {
-        // Fog
-        const fogTile = ts.fog;
-        ctx.fillStyle = theme.fogBg;
+        // Fog of war — just black
+        ctx.fillStyle = '#000';
         ctx.fillRect(px, py, cw, ch);
-        if (fogTile.type === 'emoji') {
-          ctx.font = `${Math.max(10, ch - 4)}px serif`;
-          ctx.textBaseline = 'middle';
-          ctx.textAlign = 'center';
-          ctx.fillText(fogTile.value, px + cw / 2, py + ch / 2);
-        }
         continue;
       }
 
