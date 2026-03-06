@@ -237,6 +237,10 @@ export class GameClient {
     return this.request('POST', `/games/${gameId}/admin/rollback`, { target_turn: targetTurn });
   }
 
+  async adminDeleteGame(gameId: string): Promise<unknown> {
+    return this.request('DELETE', `/games/${gameId}`);
+  }
+
   async getServerStats(): Promise<ServerStats> {
     return this.request<ServerStats>('GET', '/admin/stats');
   }

@@ -76,6 +76,7 @@ export class AdminPanel {
           ${game.status === 'paused' ? '<button id="btn-resume" style="font-family:inherit;background:#222;color:#55ff55;border:1px solid #55ff55;padding:6px 14px;cursor:pointer;">▶ Resume</button>' : ''}
           <button id="btn-advance" style="font-family:inherit;background:#222;color:#55ffff;border:1px solid #55ffff;padding:6px 14px;cursor:pointer;">⏩ Advance Turn</button>
           <button id="btn-complete" style="font-family:inherit;background:#222;color:#ff5555;border:1px solid #ff5555;padding:6px 14px;cursor:pointer;">🏁 End Game</button>
+          <button id="btn-delete" style="font-family:inherit;background:#440000;color:#ff3333;border:1px solid #ff3333;padding:6px 14px;cursor:pointer;">🗑 Delete Game</button>
         </div>
         <div id="status-msg" style="margin:6px 0;"></div>
       </div>
@@ -117,6 +118,7 @@ export class AdminPanel {
     document.getElementById('btn-resume')?.addEventListener('click', () => this.setStatus('active'));
     document.getElementById('btn-advance')!.addEventListener('click', () => this.advanceTurn());
     document.getElementById('btn-complete')!.addEventListener('click', () => this.setStatus('completed'));
+    document.getElementById('btn-delete')!.addEventListener('click', () => this.deleteGame());
 
     this.container.querySelectorAll('.kick-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -178,6 +180,18 @@ export class AdminPanel {
       this.load();
     } catch (e) {
       alert(`Rollback failed: ${(e as Error).message}`);
+    }
+  }
+
+  private async deleteGame(): Promise<void> {
+    if (!confirm('DELETE this game permanently? This cannot be undone!')) return;
+    if (!confirm('Are you really sure? All game data will be lost forever.')) return;
+    try {
+      await this.client.adminDeleteGame(this.gameId);
+      alert('Game deleted.');
+      this.onClose();
+    } catch (e) {
+      alert(`Delete failed: ${(e as Error).message}`);
     }
   }
 
