@@ -360,15 +360,38 @@ export class GameScreen {
         break;
 
       case 'font_increase':
-        this.term.setFontSize(this.term.fontSize + 1);
-        this.handleResize();
+        this.zoomCentered(1);
         break;
 
       case 'font_decrease':
-        this.term.setFontSize(this.term.fontSize - 1);
-        this.handleResize();
+        this.zoomCentered(-1);
         break;
     }
+  }
+
+  /** Zoom (change font size) while keeping the view centered */
+  private zoomCentered(delta: number, anchorScreenX?: number, anchorScreenY?: number): void {
+    const oldSize = screenSize(this.term);
+    const newFontSize = Math.max(6, this.term.fontSize + delta);
+    if (newFontSize === this.term.fontSize) return;
+
+    // Anchor point in map coordinates (default: center of viewport)
+    const ax = anchorScreenX ?? Math.floor(oldSize.screenX / 2);
+    const ay = anchorScreenY ?? Math.floor(oldSize.screenY / 2);
+    const anchorMapX = this.state.xOffset + ax;
+    const anchorMapY = this.state.yOffset + ay;
+
+    // Apply new font size
+    this.term.setFontSize(newFontSize);
+    localStorage.setItem('conquer_font_size', String(newFontSize));
+    this.handleResize();
+
+    // Recalculate: keep anchor point at same screen position
+    const newSize = screenSize(this.term);
+    const newAx = anchorScreenX ?? Math.floor(newSize.screenX / 2);
+    const newAy = anchorScreenY ?? Math.floor(newSize.screenY / 2);
+    this.state.xOffset = anchorMapX - newAx;
+    this.state.yOffset = anchorMapY - newAy;
   }
 
   private async submitAction(action: unknown): Promise<void> {
@@ -546,12 +569,10 @@ export class GameScreen {
         case 'end_turn': this.handleAction({ type: 'end_turn' }); break;
         case 'refresh': this.loadGameData(); this.setStatus('Refreshing...'); break;
         case 'font_up':
-          this.term.setFontSize(this.term.fontSize + 2);
-          this.handleResize();
+          this.zoomCentered(2);
           break;
         case 'font_down':
-          this.term.setFontSize(this.term.fontSize - 2);
-          this.handleResize();
+          this.zoomCentered(-2);
           break;
         case 'center_map':
           this.handleAction({ type: 'center_map' });

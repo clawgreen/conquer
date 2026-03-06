@@ -200,7 +200,25 @@ export class MouseHandler {
       const dist = this.getTouchDist(e.touches);
       const scale = dist / this.pinchStartDist;
       const newSize = Math.max(8, Math.min(32, Math.round(this.pinchStartFontSize * scale)));
+      if (newSize === this.cb.getFontSize()) return;
+
+      // Pinch center in screen coords
+      const rect = this.canvas.getBoundingClientRect();
+      const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
+      const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
+
+      const { cw: oldCW, ch: oldCH } = this.getCellSize();
+      const off = this.cb.getOffset();
+      const cellX = off.x + cx / oldCW;
+      const cellY = off.y + cy / oldCH;
+
       this.cb.setFontSize(newSize);
+
+      const { cw: newCW, ch: newCH } = this.getCellSize();
+      this.cb.setOffset(
+        Math.round(cellX - cx / newCW),
+        Math.round(cellY - cy / newCH),
+      );
     }
   };
 
