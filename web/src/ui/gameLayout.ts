@@ -121,7 +121,7 @@ export class GameLayout {
       }
       #left-sidebar, #right-sidebar {
         display: flex; flex-direction: column; overflow-y: auto;
-        width: 200px; min-width: 160px; flex-shrink: 0;
+        width: 280px; min-width: 220px; flex-shrink: 0;
         -webkit-overflow-scrolling: touch;
       }
       #canvas-wrap {
@@ -135,23 +135,23 @@ export class GameLayout {
       .sidebar-toggle {
         position: absolute; top: 50%; transform: translateY(-50%);
         z-index: 10; background: rgba(0,0,0,0.7); border: 1px solid #333;
-        color: #888; font-size: 14px; padding: 8px 4px; cursor: pointer;
+        color: #888; font-size: 22px; padding: 14px 8px; cursor: pointer;
         border-radius: 3px; font-family: inherit; line-height: 1;
       }
       .sidebar-toggle:hover { color: #fff; border-color: #555; }
       .left-toggle { left: 2px; }
       .right-toggle { right: 2px; }
 
-      .cmd-group { margin-bottom: 2px; }
+      .cmd-group { margin-bottom: 4px; }
       .cmd-group-header {
-        padding: 4px 8px; font-size: 10px; text-transform: uppercase;
+        padding: 8px 12px; font-size: 14px; text-transform: uppercase;
         letter-spacing: 1px; cursor: pointer; user-select: none;
       }
       .cmd-group-header:hover { opacity: 0.8; }
       .cmd-btn {
         display: block; width: 100%; text-align: left;
-        padding: 5px 8px; font-size: 11px; font-family: inherit;
-        cursor: pointer; border: none; border-left: 2px solid transparent;
+        padding: 8px 12px; font-size: 15px; font-family: inherit;
+        cursor: pointer; border: none; border-left: 3px solid transparent;
         transition: background 0.1s, border-color 0.15s;
       }
       .cmd-btn:hover { opacity: 0.9; }
@@ -161,15 +161,15 @@ export class GameLayout {
 
       .stat-row {
         display: flex; justify-content: space-between;
-        padding: 2px 8px; font-size: 11px;
+        padding: 4px 12px; font-size: 15px;
       }
       .stat-label { opacity: 0.6; }
       .stat-value { font-weight: bold; }
       .stat-section {
-        padding: 6px 0; border-bottom: 1px solid transparent;
+        padding: 8px 0; border-bottom: 1px solid transparent;
       }
       .stat-section-title {
-        padding: 4px 8px; font-size: 10px; text-transform: uppercase;
+        padding: 6px 12px; font-size: 14px; text-transform: uppercase;
         letter-spacing: 1px;
       }
 
@@ -198,8 +198,8 @@ export class GameLayout {
 
   private applyTheme(): void {
     const t = getUiTheme(this._uiThemeId);
-    this._leftBar.style.cssText = `display:${this.leftVisible ? 'flex' : 'none'};flex-direction:column;width:200px;min-width:160px;flex-shrink:0;overflow-y:auto;background:${t.sidebarBg};border-right:1px solid ${t.sidebarBorder};color:${t.sidebarText};`;
-    this._rightBar.style.cssText = `display:${this.rightVisible ? 'flex' : 'none'};flex-direction:column;width:220px;min-width:170px;flex-shrink:0;overflow-y:auto;background:${t.sidebarBg};border-left:1px solid ${t.sidebarBorder};color:${t.sidebarText};`;
+    this._leftBar.style.cssText = `display:${this.leftVisible ? 'flex' : 'none'};flex-direction:column;width:280px;min-width:220px;flex-shrink:0;overflow-y:auto;background:${t.sidebarBg};border-right:1px solid ${t.sidebarBorder};color:${t.sidebarText};`;
+    this._rightBar.style.cssText = `display:${this.rightVisible ? 'flex' : 'none'};flex-direction:column;width:300px;min-width:240px;flex-shrink:0;overflow-y:auto;background:${t.sidebarBg};border-left:1px solid ${t.sidebarBorder};color:${t.sidebarText};`;
     this._canvasWrap.style.background = t.bezelBg;
     this._canvasWrap.style.boxShadow = t.bezelShadow;
     this._canvas.style.boxShadow = t.screenGlow;

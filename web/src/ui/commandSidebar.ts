@@ -140,7 +140,7 @@ export class CommandSidebar {
   private btnElements: Map<string, HTMLElement> = new Map();
   private collapsedGroups: Set<string> = new Set();
   private _themeId = 'terminal';
-  private _fontSize: number = parseInt(localStorage.getItem('conquer_sidebar_font') ?? '12');
+  private _fontSize: number = parseInt(localStorage.getItem('conquer_sidebar_font') ?? '16');
 
   constructor(container: HTMLElement, callback: CmdCallback) {
     this.container = container;
@@ -210,7 +210,7 @@ export class CommandSidebar {
             : cmd.label;
           btn.addEventListener('click', () => {
             if (cmd.cmd === 'sidebar_font_up') {
-              this._fontSize = Math.min(20, this._fontSize + 1);
+              this._fontSize = Math.min(28, this._fontSize + 1);
               localStorage.setItem('conquer_sidebar_font', String(this._fontSize));
               this.render();
               this.callback('_sidebar_font_changed');

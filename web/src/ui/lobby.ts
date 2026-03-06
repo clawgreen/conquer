@@ -236,13 +236,13 @@ export class LobbyScreen {
     // Notification bell is attached after render (needs DOM element)
 
     this.container.innerHTML = `
-      <header style="position:sticky;top:0;z-index:100;background:#0a0a0a;border-bottom:1px solid #222;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
-        <div style="color:#55ff55;font-weight:bold;font-size:16px;letter-spacing:2px;white-space:nowrap;">CONQUER</div>
+      <header style="position:sticky;top:0;z-index:100;background:#0a0a0a;border-bottom:1px solid #222;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
+        <div style="color:#55ff55;font-weight:bold;font-size:22px;letter-spacing:2px;white-space:nowrap;">CONQUER</div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <span style="color:#555;font-size:12px;">${localStorage.getItem('conquer_username') ?? ''}</span>
-          <button id="btn-profile" style="font-family:inherit;background:none;color:#55ffff;border:1px solid #333;padding:6px 12px;cursor:pointer;font-size:12px;border-radius:3px;">Profile</button>
+          <span style="color:#555;font-size:16px;">${localStorage.getItem('conquer_username') ?? ''}</span>
+          <button id="btn-profile" style="font-family:inherit;background:none;color:#55ffff;border:1px solid #333;padding:10px 16px;cursor:pointer;font-size:15px;border-radius:3px;">Profile</button>
           <span id="bell-slot"></span>
-          <button id="btn-logout" style="font-family:inherit;background:none;color:#ff5555;border:1px solid #333;padding:6px 12px;cursor:pointer;font-size:12px;border-radius:3px;">Logout</button>
+          <button id="btn-logout" style="font-family:inherit;background:none;color:#ff5555;border:1px solid #333;padding:10px 16px;cursor:pointer;font-size:15px;border-radius:3px;">Logout</button>
         </div>
       </header>
       <div style="text-align:center;padding:20px 0 10px;">
