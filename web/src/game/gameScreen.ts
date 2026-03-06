@@ -526,9 +526,10 @@ export class GameScreen {
     if (cmd === 'tileset_editor') {
       this.input.enabled = false;
       const oldCellPx = this.getCurrentCellPixelSize();
-      const oldScreen = screenSize(this.term);
-      const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
-      const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
+      const canvasW = this.canvas.width;
+      const canvasH = this.canvas.height;
+      const centerMapX = this.state.xOffset + (canvasW / 2) / oldCellPx.w;
+      const centerMapY = this.state.yOffset + (canvasH / 2) / oldCellPx.h;
       new TilesetEditor(
         document.body,
         this.state.tilesetId ?? 'ascii',
@@ -537,9 +538,9 @@ export class GameScreen {
           this.state.tilesetId = ts.id;
           localStorage.setItem('conquer_tileset', ts.id);
           this.matchCellSize(ts, oldCellPx);
-          const newScreen = screenSize(this.term);
-          this.state.xOffset = centerMapX - Math.floor(newScreen.screenX / 2);
-          this.state.yOffset = centerMapY - Math.floor(newScreen.screenY / 2);
+          const newCellPx = this.getCurrentCellPixelSize();
+          this.state.xOffset = Math.round(centerMapX - (canvasW / 2) / newCellPx.w);
+          this.state.yOffset = Math.round(centerMapY - (canvasH / 2) / newCellPx.h);
           this.setStatus(`Tileset saved: ${ts.name}`);
         },
         () => { this.input.enabled = true; },
@@ -552,11 +553,13 @@ export class GameScreen {
       const tsId = cmd.substring(8);
       const ts = getTilesetById(tsId);
 
-      // Capture current cell pixel size and viewport center
+      // Capture current cell pixel size and canvas center in map coords
       const oldCellPx = this.getCurrentCellPixelSize();
-      const oldScreen = screenSize(this.term);
-      const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
-      const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
+      const canvasW = this.canvas.width;
+      const canvasH = this.canvas.height;
+      // Map cell at pixel center of canvas
+      const centerMapX = this.state.xOffset + (canvasW / 2) / oldCellPx.w;
+      const centerMapY = this.state.yOffset + (canvasH / 2) / oldCellPx.h;
 
       this.state.tilesetId = tsId;
       localStorage.setItem('conquer_tileset', tsId);
@@ -565,9 +568,11 @@ export class GameScreen {
       this.matchCellSize(ts, oldCellPx);
 
       const reanchor = () => {
-        const newScreen = screenSize(this.term);
-        this.state.xOffset = centerMapX - Math.floor(newScreen.screenX / 2);
-        this.state.yOffset = centerMapY - Math.floor(newScreen.screenY / 2);
+        // Get the NEW cell pixel size after matchCellSize
+        const newCellPx = this.getCurrentCellPixelSize();
+        // Offset so the same map cell is at the pixel center
+        this.state.xOffset = Math.round(centerMapX - (canvasW / 2) / newCellPx.w);
+        this.state.yOffset = Math.round(centerMapY - (canvasH / 2) / newCellPx.h);
       };
 
       // Preload images for image-based tilesets

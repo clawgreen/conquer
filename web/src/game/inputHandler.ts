@@ -61,6 +61,12 @@ export class InputHandler {
     const key = e.key;
     const shift = e.shiftKey;
 
+    // Shift+Arrow = move selected army; Arrow = move cursor
+    if (shift && key === 'ArrowUp') return { type: 'move_army', dx: 0, dy: -1 };
+    if (shift && key === 'ArrowDown') return { type: 'move_army', dx: 0, dy: 1 };
+    if (shift && key === 'ArrowLeft') return { type: 'move_army', dx: -1, dy: 0 };
+    if (shift && key === 'ArrowRight') return { type: 'move_army', dx: 1, dy: 0 };
+
     // Arrow keys — cursor movement
     if (key === 'ArrowUp' || key === 'k') return { type: 'move_cursor', dx: 0, dy: -1 };
     if (key === 'ArrowDown' || key === 'j') return { type: 'move_cursor', dx: 0, dy: 1 };
