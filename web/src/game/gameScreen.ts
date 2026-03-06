@@ -17,7 +17,7 @@ import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
-import { registerTileset, getTileset as getTilesetById, preloadTilesetImages } from '../renderer/tilesets';
+import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
 
@@ -102,8 +102,17 @@ export class GameScreen {
       },
     });
 
-    // Map tooltip
+    // Map tooltip — provide actual cell dimensions from renderer
     this.tooltip = new MapTooltip(this.canvas);
+    this.tooltip.setCellSizeProvider(() => {
+      const tsId = this.state.tilesetId ?? 'ascii';
+      const ts = getTilesetById(tsId);
+      if (ts.tileType !== 'char') {
+        return getScaledCellSize(ts, this.term.fontSize);
+      }
+      // Classic char mode: 2 terminal cells per map sector
+      return { cw: this.term.cellW * 2, ch: this.term.cellH };
+    });
 
     // Left sidebar: commands
     this.cmdSidebar = new CommandSidebar(this.layout.leftBar, (cmd) => this.handleCommand(cmd));

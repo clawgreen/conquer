@@ -14,6 +14,7 @@ export class MapTooltip {
   private el: HTMLDivElement;
   private canvas: HTMLCanvasElement;
   private visible = false;
+  private _getCellSize: (() => { cw: number; ch: number }) | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -39,6 +40,11 @@ export class MapTooltip {
     this.state = state;
   }
 
+  /** Provide a callback that returns actual cell dimensions from the renderer */
+  setCellSizeProvider(fn: () => { cw: number; ch: number }): void {
+    this._getCellSize = fn;
+  }
+
   private onMove(e: MouseEvent): void {
     if (!this.state) return;
 
@@ -46,22 +52,17 @@ export class MapTooltip {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    const ts = getTileset(this.state.tilesetId ?? 'ascii');
+    // Use actual cell dimensions from the renderer
     let cw: number, ch: number;
-
-    if (ts.tileType !== 'char') {
-      const scaled = getScaledCellSize(ts, 14); // Use base size for hover calc
-      // Actually need the current font size... approximate from state
-      const fontSize = parseInt(localStorage.getItem('conquer_font_size') ?? '14');
-      const s = getScaledCellSize(ts, fontSize);
-      cw = s.cw;
-      ch = s.ch;
+    if (this._getCellSize) {
+      const size = this._getCellSize();
+      cw = size.cw;
+      ch = size.ch;
     } else {
-      // Char mode: need cellW from terminal
-      // Approximate: fontSize * 0.6 for width, fontSize * 1.2 for height
+      // Fallback (shouldn't happen)
       const fontSize = parseInt(localStorage.getItem('conquer_font_size') ?? '14');
-      cw = Math.ceil(fontSize * 0.6) * 2; // 2 chars per cell
-      ch = Math.ceil(fontSize * 1.2);
+      cw = Math.round(fontSize * 0.6) * 2;
+      ch = Math.round(fontSize * 1.2);
     }
 
     const sx = Math.floor(mx / cw);
