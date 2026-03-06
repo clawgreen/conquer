@@ -489,6 +489,9 @@ export class GameScreen {
     // Tileset editor
     if (cmd === 'tileset_editor') {
       this.input.enabled = false;
+      const oldScreen = screenSize(this.term);
+      const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
+      const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
       new TilesetEditor(
         document.body,
         this.state.tilesetId ?? 'ascii',
@@ -496,6 +499,9 @@ export class GameScreen {
           registerTileset(ts);
           this.state.tilesetId = ts.id;
           localStorage.setItem('conquer_tileset', ts.id);
+          const newScreen = screenSize(this.term);
+          this.state.xOffset = centerMapX - Math.floor(newScreen.screenX / 2);
+          this.state.yOffset = centerMapY - Math.floor(newScreen.screenY / 2);
           this.setStatus(`Tileset saved: ${ts.name}`);
         },
         () => { this.input.enabled = true; },
@@ -507,16 +513,31 @@ export class GameScreen {
     if (cmd.startsWith('tileset_')) {
       const tsId = cmd.substring(8);
       const ts = getTilesetById(tsId);
+
+      // Anchor on center of current viewport
+      const oldScreen = screenSize(this.term);
+      const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
+      const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
+
       this.state.tilesetId = tsId;
       localStorage.setItem('conquer_tileset', tsId);
+
+      const reanchor = () => {
+        const newScreen = screenSize(this.term);
+        this.state.xOffset = centerMapX - Math.floor(newScreen.screenX / 2);
+        this.state.yOffset = centerMapY - Math.floor(newScreen.screenY / 2);
+      };
+
       // Preload images for image-based tilesets
       if (ts.tileType === 'image') {
         this.setStatus(`Loading tileset: ${ts.name}...`);
         preloadTilesetImages(ts).then(() => {
+          reanchor();
           this.setStatus(`Tileset: ${ts.name}`);
           this.renderFrame();
         });
       } else {
+        reanchor();
         this.setStatus(`Tileset: ${ts.name}`);
       }
       return;
