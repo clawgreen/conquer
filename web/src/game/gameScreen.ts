@@ -17,6 +17,7 @@ import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
+import { KeybindingsManager, KeybindingsModal } from '../ui/keybindingsModal';
 import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
@@ -32,6 +33,7 @@ export class GameScreen {
   private statsSidebar: StatsSidebar;
   private mouseHandler: MouseHandler;
   private tooltip: MapTooltip;
+  private keybindingsManager: KeybindingsManager;
   private state: GameState;
   private animFrame: number = 0;
   private statusMessage: string = '';
@@ -39,6 +41,7 @@ export class GameScreen {
 
   constructor(parent: HTMLElement, client: GameClient, gameId: string, nationId: number) {
     this.client = client;
+    this.keybindingsManager = new KeybindingsManager();
     this.state = createInitialState();
     this.state.token = client.getToken();
     this.state.gameId = gameId;
@@ -699,6 +702,12 @@ export class GameScreen {
           this.layout.toggleRight();
           this.handleResize();
           this.setStatus(this.layout.leftBar.style.display === 'none' ? 'Focus mode' : 'Sidebars visible');
+          break;
+        case 'keybindings':
+          this.input.enabled = false;
+          new KeybindingsModal(document.body, this.keybindingsManager, () => {
+            this.input.enabled = true;
+          });
           break;
         case 'back_to_lobby':
           localStorage.removeItem('conquer_game_id');

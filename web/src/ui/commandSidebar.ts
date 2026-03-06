@@ -121,6 +121,7 @@ const CMD_GROUPS: CmdGroup[] = [
   {
     name: 'System',
     cmds: [
+      { label: '⌨ Key Bindings', cmd: 'keybindings' },
       { label: '🚪 Back to Lobby', cmd: 'back_to_lobby' },
     ],
   },
