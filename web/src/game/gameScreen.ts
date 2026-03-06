@@ -79,9 +79,9 @@ export class GameScreen {
     this.mouseHandler = new MouseHandler(this.canvas, this.term, {
       getOffset: () => ({ x: this.state.xOffset, y: this.state.yOffset }),
       setOffset: (x, y) => {
-        // Only prevent negative offsets — free panning otherwise
-        this.state.xOffset = Math.max(0, x);
-        this.state.yOffset = Math.max(0, y);
+        // Free panning — no limits. Negative offsets let you center/move the map anywhere.
+        this.state.xOffset = x;
+        this.state.yOffset = y;
       },
       getFontSize: () => this.term.fontSize,
       setFontSize: (size) => {
