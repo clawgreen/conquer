@@ -369,6 +369,42 @@ export class GameScreen {
     }
   }
 
+  /** Get the current pixel size of one map cell */
+  private getCurrentCellPixelSize(): { w: number; h: number } {
+    const tsId = this.state.tilesetId ?? 'ascii';
+    const ts = getTilesetById(tsId);
+    if (ts.tileType !== 'char') {
+      const s = getScaledCellSize(ts, this.term.fontSize);
+      return { w: s.cw, h: s.ch };
+    }
+    // Classic char mode: 2 terminal cells wide per map sector
+    return { w: this.term.cellW * 2, h: this.term.cellH };
+  }
+
+  /** Adjust font size so the new tileset's cell pixel size matches a target */
+  private matchCellSize(newTs: { tileType: string; cellWidth: number; cellHeight: number }, targetPx: { w: number; h: number }): void {
+    if (newTs.tileType === 'char') {
+      // For char tilesets, cell size = font-derived cellW*2 × cellH
+      // cellH ≈ fontSize * 1.2, so fontSize ≈ targetH / 1.2
+      // cellW ≈ fontSize * 0.6, so 2*cellW ≈ fontSize * 1.2 ≈ targetW
+      // Use height as the primary match (more reliable)
+      const newFontSize = Math.max(6, Math.min(32, Math.round(targetPx.h / 1.2)));
+      this.term.setFontSize(newFontSize);
+      localStorage.setItem('conquer_font_size', String(newFontSize));
+      this.handleResize();
+    } else {
+      // For emoji/image tilesets: cellPx = baseCellSize * (fontSize / 14)
+      // So fontSize = 14 * targetPx / baseCellSize
+      const scaleW = targetPx.w / newTs.cellWidth;
+      const scaleH = targetPx.h / newTs.cellHeight;
+      const scale = (scaleW + scaleH) / 2; // average both dimensions
+      const newFontSize = Math.max(6, Math.min(32, Math.round(14 * scale)));
+      this.term.setFontSize(newFontSize);
+      localStorage.setItem('conquer_font_size', String(newFontSize));
+      this.handleResize();
+    }
+  }
+
   /** Zoom (change font size) while keeping the view centered */
   private zoomCentered(delta: number, anchorScreenX?: number, anchorScreenY?: number): void {
     const oldSize = screenSize(this.term);
@@ -489,6 +525,7 @@ export class GameScreen {
     // Tileset editor
     if (cmd === 'tileset_editor') {
       this.input.enabled = false;
+      const oldCellPx = this.getCurrentCellPixelSize();
       const oldScreen = screenSize(this.term);
       const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
       const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
@@ -499,6 +536,7 @@ export class GameScreen {
           registerTileset(ts);
           this.state.tilesetId = ts.id;
           localStorage.setItem('conquer_tileset', ts.id);
+          this.matchCellSize(ts, oldCellPx);
           const newScreen = screenSize(this.term);
           this.state.xOffset = centerMapX - Math.floor(newScreen.screenX / 2);
           this.state.yOffset = centerMapY - Math.floor(newScreen.screenY / 2);
@@ -514,13 +552,17 @@ export class GameScreen {
       const tsId = cmd.substring(8);
       const ts = getTilesetById(tsId);
 
-      // Anchor on center of current viewport
+      // Capture current cell pixel size and viewport center
+      const oldCellPx = this.getCurrentCellPixelSize();
       const oldScreen = screenSize(this.term);
       const centerMapX = this.state.xOffset + Math.floor(oldScreen.screenX / 2);
       const centerMapY = this.state.yOffset + Math.floor(oldScreen.screenY / 2);
 
       this.state.tilesetId = tsId;
       localStorage.setItem('conquer_tileset', tsId);
+
+      // Adjust font size so new tileset's cell pixel size matches the old one
+      this.matchCellSize(ts, oldCellPx);
 
       const reanchor = () => {
         const newScreen = screenSize(this.term);
