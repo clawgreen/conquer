@@ -168,6 +168,41 @@ export class TerminalRenderer {
     if (this.blinkTimer) clearInterval(this.blinkTimer);
   }
 
+  /**
+   * Render only the bottom panel rows, starting at canvasY pixel position.
+   * Used when emoji/image tilesets handle the map area directly.
+   */
+  renderPartial(canvasY: number): void {
+    const ctx = this.ctx;
+    ctx.textBaseline = 'top';
+
+    // Render only the bottom 3 rows (panel area)
+    const startRow = Math.max(0, this._rows - 3);
+    for (let y = startRow; y < this._rows; y++) {
+      const rowIdx = y - startRow;
+      for (let x = 0; x < this._cols; x++) {
+        const cell = this.grid[y][x];
+        const px = x * this._cellW;
+        const py = canvasY + rowIdx * this._cellH;
+
+        let fg = cell.fg;
+        let bg = cell.bg;
+        if (cell.inverse) { [fg, bg] = [bg, fg]; }
+
+        if (bg !== CURSES_COLORS.black && bg !== '#000000' && bg !== '#000') {
+          ctx.fillStyle = bg;
+          ctx.fillRect(px, py, this._cellW, this._cellH);
+        }
+
+        if (cell.ch !== ' ') {
+          ctx.font = `${cell.bold ? 'bold ' : ''}${this._fontSize}px ${this._fontFamily}`;
+          ctx.fillStyle = fg;
+          ctx.fillText(cell.ch, px, py + 1);
+        }
+      }
+    }
+  }
+
   /** Render all dirty cells to canvas. */
   render(): void {
     if (!this._dirty) return;

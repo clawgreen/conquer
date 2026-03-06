@@ -229,6 +229,13 @@ export const ALL_TILESETS: TileSet[] = [
   TILESET_FANTASY,
 ];
 
+/** Register a custom tileset at runtime (e.g. from editor) */
+export function registerTileset(ts: TileSet): void {
+  const idx = ALL_TILESETS.findIndex(t => t.id === ts.id);
+  if (idx >= 0) ALL_TILESETS[idx] = ts;
+  else ALL_TILESETS.push(ts);
+}
+
 export function getTileset(id: string): TileSet {
   return ALL_TILESETS.find(t => t.id === id) ?? TILESET_ASCII;
 }

@@ -16,6 +16,8 @@ import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
+import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
+import { registerTileset } from '../renderer/tilesets';
 
 export class GameScreen {
   private layout: GameLayout;
@@ -54,6 +56,11 @@ export class GameScreen {
 
     // Input handler
     this.input = new InputHandler((action) => this.handleAction(action));
+
+    // Load user's custom tilesets
+    for (const ts of loadCustomTilesets()) {
+      registerTileset(ts);
+    }
 
     // Mouse/touch pan & zoom
     this.mouseHandler = new MouseHandler(this.canvas, this.term, {
@@ -398,6 +405,23 @@ export class GameScreen {
       return;
     }
 
+    // Tileset editor
+    if (cmd === 'tileset_editor') {
+      this.input.enabled = false;
+      new TilesetEditor(
+        document.body,
+        this.state.tilesetId ?? 'ascii',
+        (ts) => {
+          registerTileset(ts);
+          this.state.tilesetId = ts.id;
+          localStorage.setItem('conquer_tileset', ts.id);
+          this.setStatus(`Tileset saved: ${ts.name}`);
+        },
+        () => { this.input.enabled = true; },
+      );
+      return;
+    }
+
     // Tileset commands
     if (cmd.startsWith('tileset_')) {
       const tsId = cmd.substring(8);
@@ -575,14 +599,37 @@ export class GameScreen {
   }
 
   private renderFrame(): void {
-    this.term.clear();
-    renderMap(this.term, this.state);
-    renderBottomPanel(this.term, this.state, this.statusMessage);
+    const tsId = this.state.tilesetId ?? 'ascii';
+    const isDirectCanvas = tsId !== 'ascii' && tsId !== 'unicode';
 
-    // Set cursor position on map
-    this.term.setCursor(this.state.cursorX * 2, this.state.cursorY);
+    if (isDirectCanvas) {
+      // Emoji/image tilesets: clear canvas, render tiles directly, then overlay text
+      const ctx = this.term.getContext();
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      renderMap(this.term, this.state);
 
-    this.term.render();
+      // Render bottom panel as text overlay on canvas
+      const fontSize = this.term.fontSize;
+      ctx.font = `${fontSize}px "Courier New", monospace`;
+      ctx.textBaseline = 'top';
+      const panelY = ctx.canvas.height - fontSize * 3.5;
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(0, panelY, ctx.canvas.width, fontSize * 3.5);
+      ctx.fillStyle = '#55ff55';
+      // Use the term bottom panel for text content
+      this.term.clear();
+      renderBottomPanel(this.term, this.state, this.statusMessage);
+      // Draw just the bottom panel rows from term buffer
+      this.term.renderPartial(panelY);
+    } else {
+      // Classic char rendering: full terminal path
+      this.term.clear();
+      renderMap(this.term, this.state);
+      renderBottomPanel(this.term, this.state, this.statusMessage);
+      this.term.setCursor(this.state.cursorX * 2, this.state.cursorY);
+      this.term.render();
+    }
 
     // Update right sidebar stats
     this.statsSidebar.update(this.state);

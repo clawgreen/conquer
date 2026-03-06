@@ -99,6 +99,7 @@ const CMD_GROUPS: CmdGroup[] = [
       { label: 'Unicode Symbols', cmd: 'tileset_unicode' },
       { label: '😀 Emoji', cmd: 'tileset_emoji' },
       { label: '🐉 Fantasy', cmd: 'tileset_fantasy' },
+      { label: '✏️ Edit Tileset...', cmd: 'tileset_editor' },
     ],
   },
   {
