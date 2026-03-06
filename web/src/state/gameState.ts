@@ -80,7 +80,7 @@ export function createInitialState(): GameState {
     news: [],
     occupied: [],
     displayMode: DisplayMode.Designation,
-    highlightMode: HighlightMode.Own,
+    highlightMode: HighlightMode.None,
     cursorX: 0,
     cursorY: 0,
     xOffset: 0,
