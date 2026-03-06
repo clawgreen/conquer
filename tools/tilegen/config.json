@@ -1,0 +1,164 @@
+{
+  "$schema": "conquer-tilegen-config-v1",
+  "description": "Tileset generation pipeline configuration. Each style is a master prompt that governs a full generation run. Runs are logged with results.",
+
+  "styles": [
+    {
+      "id": "pixel16",
+      "name": "16px Retro",
+      "size": 16,
+      "prompt": "Create a 16x16 pixel art tile for a medieval fantasy strategy game. Style: classic retro pixel art with a limited 32-color palette, reminiscent of early DOS/NES games. Hard pixel edges, no anti-aliasing. Consistent lighting from top-left. Dark outlines on sprites. Each tile must read clearly at 16x16.",
+      "palette_notes": "Limited palette, earthy tones for terrain, bright accents for units/buildings. No gradients."
+    },
+    {
+      "id": "pixel32",
+      "name": "32px SNES Era",
+      "size": 32,
+      "prompt": "Create a 32x32 pixel art tile for a medieval fantasy strategy game. Style: detailed retro pixel art, SNES/GBA era quality. Rich but controlled palette (~64 colors). Subtle shading with 2-3 shade levels per color. Consistent top-left lighting. Tiles should seamlessly connect to adjacent tiles of the same type. Slight dithering for texture on terrain.",
+      "palette_notes": "Rich earthy palette. Greens for vegetation, blues for water, warm browns for buildings. Gold accents for important structures."
+    },
+    {
+      "id": "pixel64",
+      "name": "64px Modern Pixel",
+      "size": 64,
+      "prompt": "Create a 64x64 pixel art tile for a medieval fantasy strategy game. Style: modern detailed pixel art with rich color depth. Smooth shading gradients, detailed textures. Top-down orthographic view. Consistent warm lighting from top-left. Anti-aliased edges where appropriate. Each tile should have fine detail visible at this resolution.",
+      "palette_notes": "Full color range. Realistic but stylized. Ambient occlusion on buildings. Texture detail on terrain."
+    },
+    {
+      "id": "painted32",
+      "name": "32px Painted Miniature",
+      "size": 32,
+      "prompt": "Create a 32x32 painted miniature style tile for a medieval fantasy strategy game. Style: hand-painted tabletop miniature feel, like a Warhammer or D&D battle map. Soft brush strokes visible, watercolor-like blending. Warm parchment undertones. Consistent top-left lighting with soft shadows. Should feel like looking at a painted game board.",
+      "palette_notes": "Watercolor palette. Muted earth tones with occasional vivid accents. Parchment/cream base tone showing through."
+    },
+    {
+      "id": "iso64",
+      "name": "64px Isometric",
+      "size": 64,
+      "prompt": "Create a 64x64 isometric tile for a medieval fantasy strategy game. Style: isometric 3/4 top-down view, like classic Civilization or Age of Empires. The tile diamond is oriented with corners pointing up/down/left/right. Clean edges for seamless isometric tiling. Consistent lighting from top-left. Elevation should be visually apparent in the tile height.",
+      "palette_notes": "Vibrant but grounded. Terrain has depth through isometric perspective. Buildings show rooftops and facades."
+    }
+  ],
+
+  "generation_order": {
+    "description": "Order in which tiles are generated within a run. First tiles establish the style that later tiles reference.",
+    "phases": [
+      {
+        "phase": 1,
+        "name": "anchors",
+        "description": "Generate style-defining tiles first. These set the visual baseline.",
+        "tiles": ["elevation.water", "elevation.flat", "elevation.mountain", "vegetation.forest", "vegetation.good"],
+        "reference_strategy": "none — these ARE the style anchors"
+      },
+      {
+        "phase": 2,
+        "name": "terrain_complete",
+        "description": "Remaining terrain and vegetation tiles, referencing phase 1 anchors.",
+        "tiles": ["elevation.peak", "elevation.hill", "vegetation.volcano", "vegetation.desert", "vegetation.tundra", "vegetation.barren", "vegetation.light_veg", "vegetation.wood", "vegetation.jungle", "vegetation.swamp", "vegetation.ice", "vegetation.none"],
+        "reference_strategy": "include phase 1 anchors as style reference"
+      },
+      {
+        "phase": 3,
+        "name": "buildings",
+        "description": "All designation tiles. Reference terrain tiles for visual consistency.",
+        "tiles": ["designation.town", "designation.city", "designation.mine", "designation.farm", "designation.devastated", "designation.goldmine", "designation.fort", "designation.ruin", "designation.stockade", "designation.capitol", "designation.special", "designation.lumberyard", "designation.blacksmith", "designation.road", "designation.mill", "designation.granary", "designation.church", "designation.university", "designation.nodesig", "designation.basecamp"],
+        "reference_strategy": "include flat+good and flat+forest as background context"
+      },
+      {
+        "phase": 4,
+        "name": "units",
+        "description": "Army and navy tiles. Reference terrain for scale consistency.",
+        "tiles": ["units.army", "units.navy"],
+        "reference_strategy": "include flat+good as background, show unit AT SCALE on terrain"
+      },
+      {
+        "phase": 5,
+        "name": "race_variants",
+        "description": "Race-specific unit variants. Each references the base army tile + race aesthetic.",
+        "tiles": ["race.human.army", "race.orc.army", "race.elf.army", "race.dwarf.army", "race.lizard.army", "race.pirate.army", "race.savage.army", "race.nomad.army"],
+        "reference_strategy": "include base army tile + race description as style modifier"
+      },
+      {
+        "phase": 6,
+        "name": "ui_elements",
+        "description": "Numbers, indicators, special tiles.",
+        "tiles": ["number.0", "number.1", "number.2", "number.3", "number.4", "number.5", "number.6", "number.7", "number.8", "number.9", "number.plus", "special.fog", "special.cursor"],
+        "reference_strategy": "match overall palette from phase 1"
+      }
+    ]
+  },
+
+  "reference_strategies": {
+    "description": "Different approaches to maintaining visual consistency across a generation run.",
+    "strategies": [
+      {
+        "id": "progressive",
+        "name": "Progressive Refinement",
+        "description": "Each new tile includes the PREVIOUS tile as a style reference. Chain: tile1 → tile2(ref:tile1) → tile3(ref:tile2) → etc. Style drifts but stays locally consistent.",
+        "best_for": "Quick runs, acceptable variation"
+      },
+      {
+        "id": "anchor",
+        "name": "Anchor Reference",
+        "description": "All tiles reference the same 3-5 anchor tiles from phase 1. Most consistent overall style.",
+        "best_for": "Maximum consistency, recommended default"
+      },
+      {
+        "id": "category_anchor",
+        "name": "Category Anchor",
+        "description": "Each category (terrain, vegetation, buildings, units) has its own anchor tile. Within-category consistency is high, cross-category may vary slightly.",
+        "best_for": "When categories need distinct but harmonious styles"
+      },
+      {
+        "id": "cumulative",
+        "name": "Cumulative Gallery",
+        "description": "Each new tile references ALL previously generated tiles (or a grid/collage of them). Most context for the model but may hit token/size limits.",
+        "best_for": "Small tilesets where you can fit the gallery in context"
+      },
+      {
+        "id": "race_grouped",
+        "name": "Race Grouped",
+        "description": "Generate all tiles for one race together, using that race's aesthetic as the anchor. Then next race. Cross-race variation is intentional.",
+        "best_for": "Race-specific unit variants and buildings"
+      }
+    ]
+  },
+
+  "curation": {
+    "description": "Workflow for iterating toward a complete tileset the user likes.",
+    "workflow": [
+      {
+        "step": 1,
+        "action": "generate_full_run",
+        "description": "Generate all tiles for a style. Log everything."
+      },
+      {
+        "step": 2,
+        "action": "review",
+        "description": "User reviews each tile. Marks as KEEP, REGENERATE, or SKIP."
+      },
+      {
+        "step": 3,
+        "action": "lock_keepers",
+        "description": "Kept tiles are locked. They won't be regenerated and WILL be used as style references for regeneration."
+      },
+      {
+        "step": 4,
+        "action": "regenerate_rejected",
+        "description": "Regenerate only the tiles marked REGENERATE. Use locked/kept tiles as style references so new tiles match the approved ones."
+      },
+      {
+        "step": 5,
+        "action": "repeat",
+        "description": "Back to step 2. Repeat until all tiles are KEEP or user accepts the set."
+      }
+    ],
+    "storage": {
+      "description": "Where tiles and run data live",
+      "base_dir": "tools/tilegen/runs/",
+      "run_dir_format": "{style_id}_{timestamp}/",
+      "tile_naming": "{layer}_{tile_id}.png",
+      "manifest": "manifest.json"
+    }
+  }
+}

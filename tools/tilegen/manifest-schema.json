@@ -1,0 +1,64 @@
+{
+  "$schema": "conquer-tilegen-manifest-v1",
+  "description": "Schema for a generation run manifest. Created per-run, tracks every tile generated.",
+
+  "example": {
+    "run_id": "pixel32_20260305_183000",
+    "style_id": "pixel32",
+    "style_prompt": "Create a 32x32 pixel art tile...",
+    "reference_strategy": "anchor",
+    "started_at": "2026-03-05T18:30:00Z",
+    "completed_at": "2026-03-05T19:15:00Z",
+    "total_tiles": 51,
+    "generated": 51,
+    "kept": 35,
+    "regenerated": 16,
+    "iterations": 2,
+
+    "anchors": [
+      { "tile_id": "elevation.water", "file": "elevation_water.png", "locked": true },
+      { "tile_id": "elevation.flat", "file": "elevation_flat.png", "locked": true }
+    ],
+
+    "tiles": [
+      {
+        "tile_id": "elevation.water",
+        "layer": "elevation",
+        "index": 0,
+        "file": "elevation_water.png",
+        "phase": 1,
+        "prompt_used": "Create a 32x32 pixel art tile... [water description]",
+        "reference_images": [],
+        "status": "keep",
+        "generated_at": "2026-03-05T18:30:15Z",
+        "iteration": 1,
+        "notes": ""
+      },
+      {
+        "tile_id": "vegetation.forest",
+        "layer": "vegetation",
+        "index": 7,
+        "file": "vegetation_forest.png",
+        "phase": 2,
+        "prompt_used": "Create a 32x32 pixel art tile... [forest description]",
+        "reference_images": ["elevation_water.png", "elevation_flat.png"],
+        "status": "regenerate",
+        "generated_at": "2026-03-05T18:31:00Z",
+        "iteration": 1,
+        "notes": "Too dark, needs more green variety",
+
+        "regenerations": [
+          {
+            "iteration": 2,
+            "file": "vegetation_forest_v2.png",
+            "prompt_used": "...",
+            "reference_images": ["elevation_water.png", "elevation_flat.png", "elevation_mountain.png"],
+            "generated_at": "2026-03-05T19:00:00Z",
+            "status": "keep",
+            "notes": "Better — locked"
+          }
+        ]
+      }
+    ]
+  }
+}
