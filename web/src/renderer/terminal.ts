@@ -70,8 +70,9 @@ export class TerminalRenderer {
   private measureCell(): void {
     this.ctx.font = `${this._fontSize}px ${this._fontFamily}`;
     const m = this.ctx.measureText('M');
-    this._cellW = Math.ceil(m.width);
-    this._cellH = Math.ceil(this._fontSize * 1.2);
+    // Round to integer pixels to prevent sub-pixel drift across the grid
+    this._cellW = Math.round(m.width);
+    this._cellH = Math.round(this._fontSize * 1.2);
   }
 
   private initGrid(): void {
@@ -197,7 +198,7 @@ export class TerminalRenderer {
         if (cell.ch !== ' ') {
           ctx.font = `${cell.bold ? 'bold ' : ''}${this._fontSize}px ${this._fontFamily}`;
           ctx.fillStyle = fg;
-          ctx.fillText(cell.ch, px, py + 1);
+          ctx.fillText(cell.ch, px, py);
         }
       }
     }
@@ -237,27 +238,35 @@ export class TerminalRenderer {
         if (cell.ch !== ' ') {
           ctx.font = `${cell.bold ? 'bold ' : ''}${this._fontSize}px ${this._fontFamily}`;
           ctx.fillStyle = fg;
-          ctx.fillText(cell.ch, px, py + 1);
+          ctx.fillText(cell.ch, px, py);
         }
       }
     }
 
-    // Cursor
+    // Cursor — highlight spans TWO cells (one map tile = 2 char cells)
     if (this.cursorVisible && this.cursorBlinkOn &&
         this.cursorX >= 0 && this.cursorX < this._cols &&
         this.cursorY >= 0 && this.cursorY < this._rows) {
       const px = this.cursorX * this._cellW;
       const py = this.cursorY * this._cellH;
+      // Cursor covers 2 cells wide (character + padding cell)
+      const cw = this._cellW * 2;
       ctx.fillStyle = CURSES_COLORS.brightGreen;
-      ctx.globalAlpha = 0.7;
-      ctx.fillRect(px, py, this._cellW, this._cellH);
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(px, py, cw, this._cellH);
       ctx.globalAlpha = 1.0;
-      // Redraw character on cursor in black
+      // Green border for visibility
+      ctx.strokeStyle = CURSES_COLORS.brightGreen;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.8;
+      ctx.strokeRect(px + 0.5, py + 0.5, cw - 1, this._cellH - 1);
+      ctx.globalAlpha = 1.0;
+      // Redraw character on cursor
       const cell = this.grid[this.cursorY][this.cursorX];
       if (cell.ch !== ' ') {
         ctx.font = `${cell.bold ? 'bold ' : ''}${this._fontSize}px ${this._fontFamily}`;
-        ctx.fillStyle = CURSES_COLORS.black;
-        ctx.fillText(cell.ch, px, py + 1);
+        ctx.fillStyle = CURSES_COLORS.brightGreen;
+        ctx.fillText(cell.ch, px, py);
       }
     }
   }
