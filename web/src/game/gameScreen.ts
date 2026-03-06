@@ -17,7 +17,7 @@ import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
-import { registerTileset, getTileset as getTilesetById } from '../renderer/tilesets';
+import { registerTileset, getTileset as getTilesetById, preloadTilesetImages } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
 
@@ -63,6 +63,15 @@ export class GameScreen {
     // Load user's custom tilesets
     for (const ts of loadCustomTilesets()) {
       registerTileset(ts);
+    }
+
+    // Preload images for saved image-based tileset
+    const savedTsId = localStorage.getItem('conquer_tileset');
+    if (savedTsId) {
+      const savedTs = getTilesetById(savedTsId);
+      if (savedTs.tileType === 'image') {
+        preloadTilesetImages(savedTs);
+      }
     }
 
     // Mouse/touch pan & zoom
@@ -453,9 +462,19 @@ export class GameScreen {
     // Tileset commands
     if (cmd.startsWith('tileset_')) {
       const tsId = cmd.substring(8);
+      const ts = getTilesetById(tsId);
       this.state.tilesetId = tsId;
       localStorage.setItem('conquer_tileset', tsId);
-      this.setStatus(`Tileset: ${tsId}`);
+      // Preload images for image-based tilesets
+      if (ts.tileType === 'image') {
+        this.setStatus(`Loading tileset: ${ts.name}...`);
+        preloadTilesetImages(ts).then(() => {
+          this.setStatus(`Tileset: ${ts.name}`);
+          this.renderFrame();
+        });
+      } else {
+        this.setStatus(`Tileset: ${ts.name}`);
+      }
       return;
     }
 

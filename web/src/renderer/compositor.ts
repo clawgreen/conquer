@@ -76,6 +76,8 @@ function drawTile(
   } else if (tile.type === 'image') {
     const img = getCachedImage(tile.value);
     if (img) {
+      // Pixel art: disable smoothing for crisp nearest-neighbor scaling
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, px, py, cw, ch);
     }
   } else if (tile.type === 'char') {
@@ -113,10 +115,15 @@ export function compositeRenderSector(
   if (layers.vegetation && sector.altitude >= 2 && sector.vegetation < 11) {
     const vegTile = ts.vegetation[sector.vegetation];
     if (vegTile) {
-      // Draw with slight transparency so terrain shows through
-      ctx.globalAlpha = 0.85;
-      drawTile(ctx, vegTile, px, py, cw, ch);
-      ctx.globalAlpha = 1.0;
+      if (ts.tileType === 'image') {
+        // Image tilesets: vegetation IS the base tile, draw full-cell opaque
+        drawTile(ctx, vegTile, px, py, cw, ch);
+      } else {
+        // Emoji/char: semi-transparent overlay
+        ctx.globalAlpha = 0.85;
+        drawTile(ctx, vegTile, px, py, cw, ch);
+        ctx.globalAlpha = 1.0;
+      }
     }
   }
 
@@ -124,11 +131,16 @@ export function compositeRenderSector(
   if (layers.designation && sector.owner > 0 && sector.designation !== 18) {
     const desTile = ts.designation[sector.designation];
     if (desTile) {
-      // Draw smaller in the center so terrain/veg shows around edges
-      const inset = Math.max(2, cw * 0.15);
-      const dw = cw - inset * 2;
-      const dh = ch - inset * 2;
-      drawTile(ctx, desTile, px + inset, py + inset, dw, dh);
+      if (ts.tileType === 'image') {
+        // Image tilesets: designation tile is a full scene, draw full-cell
+        drawTile(ctx, desTile, px, py, cw, ch);
+      } else {
+        // Emoji/char: draw smaller in center so terrain/veg shows around edges
+        const inset = Math.max(2, cw * 0.15);
+        const dw = cw - inset * 2;
+        const dh = ch - inset * 2;
+        drawTile(ctx, desTile, px + inset, py + inset, dw, dh);
+      }
     }
   }
 
@@ -200,6 +212,11 @@ export function renderCompositedMap(
 ): void {
   const { cw, ch } = getScaledCellSize(ts, fontSize);
   const activeLayers = layers ?? layersForMode(state.displayMode);
+
+  // Pixel art: ensure nearest-neighbor scaling for crisp tiles
+  if (ts.tileType === 'image') {
+    ctx.imageSmoothingEnabled = false;
+  }
 
   const tilesX = Math.floor(canvasWidth / cw);
   const tilesY = Math.floor(canvasHeight / ch);

@@ -247,6 +247,66 @@ export const TILESET_FANTASY: TileSet = {
   unknown: emojiTile('❓'),
 };
 
+// ─── Pixel32 SNES-era image tileset ───
+
+const P32 = '/tilesets/pixel32/';
+
+export const TILESET_PIXEL32: TileSet = {
+  id: 'pixel32',
+  name: 'SNES Pixel Art',
+  tileType: 'image',
+  cellWidth: 32,
+  cellHeight: 32,
+  elevation: [
+    imgTile(P32 + 'elevation_water.png'),     // 0: WATER
+    imgTile(P32 + 'elevation_peak.png'),      // 1: PEAK
+    imgTile(P32 + 'elevation_mountain.png'),  // 2: MOUNTAIN
+    imgTile(P32 + 'elevation_hill.png'),      // 3: HILL
+    imgTile(P32 + 'elevation_flat.png'),      // 4: FLAT
+  ],
+  vegetation: [
+    imgTile(P32 + 'vegetation_volcano.png'),   // 0: VOLCANO
+    imgTile(P32 + 'vegetation_desert.png'),    // 1: DESERT
+    imgTile(P32 + 'vegetation_tundra.png'),    // 2: TUNDRA
+    imgTile(P32 + 'vegetation_barren.png'),    // 3: BARREN
+    imgTile(P32 + 'vegetation_light_veg.png'), // 4: LT_VEG
+    imgTile(P32 + 'vegetation_good.png'),      // 5: GOOD
+    imgTile(P32 + 'vegetation_wood.png'),      // 6: WOOD
+    imgTile(P32 + 'vegetation_forest.png'),    // 7: FOREST
+    imgTile(P32 + 'vegetation_jungle.png'),    // 8: JUNGLE
+    imgTile(P32 + 'vegetation_swamp.png'),     // 9: SWAMP
+    imgTile(P32 + 'vegetation_ice.png'),       // 10: ICE
+    imgTile(P32 + 'elevation_flat.png'),       // 11: NONE (use flat terrain)
+  ],
+  designation: [
+    imgTile(P32 + 'designation_town.png'),        // 0: TOWN
+    imgTile(P32 + 'designation_city.png'),        // 1: CITY
+    imgTile(P32 + 'designation_mine.png'),        // 2: MINE
+    imgTile(P32 + 'designation_farm.png'),        // 3: FARM
+    imgTile(P32 + 'designation_devastated.png'),  // 4: DEVASTATED
+    imgTile(P32 + 'designation_goldmine.png'),    // 5: GOLDMINE
+    imgTile(P32 + 'designation_fort.png'),        // 6: FORT
+    imgTile(P32 + 'designation_ruin.png'),        // 7: RUIN
+    imgTile(P32 + 'designation_stockade.png'),    // 8: STOCKADE
+    imgTile(P32 + 'designation_capitol.png'),     // 9: CAPITOL
+    imgTile(P32 + 'designation_special.png'),     // 10: SPECIAL
+    imgTile(P32 + 'designation_lumberyard.png'),  // 11: LUMBERYARD
+    imgTile(P32 + 'designation_blacksmith.png'),  // 12: BLACKSMITH
+    imgTile(P32 + 'designation_road.png'),        // 13: ROAD
+    imgTile(P32 + 'designation_mill.png'),        // 14: MILL
+    imgTile(P32 + 'designation_granary.png'),     // 15: GRANARY
+    imgTile(P32 + 'designation_church.png'),      // 16: CHURCH
+    imgTile(P32 + 'designation_university.png'),  // 17: UNIVERSITY
+    imgTile(P32 + 'designation_nodesig.png'),     // 18: NODESIG
+    imgTile(P32 + 'designation_basecamp.png'),    // 19: BASECAMP
+  ],
+  army: imgTile(P32 + 'units_army.png'),
+  navy: imgTile(P32 + 'units_navy.png'),
+  cursor: charTile('+', '#00ff00'),  // green crosshair for cursor
+  fog: { type: 'image', value: '', fg: '#000000', bg: '#000000' },  // solid black fog
+  unknown: charTile('?', '#ff0000'),
+};
+
 // ─── Registry ───
 
 export const ALL_TILESETS: TileSet[] = [
@@ -254,6 +314,7 @@ export const ALL_TILESETS: TileSet[] = [
   TILESET_EMOJI,
   TILESET_UNICODE,
   TILESET_FANTASY,
+  TILESET_PIXEL32,
 ];
 
 /** Register a custom tileset at runtime (e.g. from editor) */
