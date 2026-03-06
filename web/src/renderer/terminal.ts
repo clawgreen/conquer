@@ -249,10 +249,11 @@ export class TerminalRenderer {
         this.cursorY >= 0 && this.cursorY < this._rows) {
       const px = this.cursorX * this._cellW;
       const py = this.cursorY * this._cellH;
-      // Classic terminal cursor: inverse video on one character cell
+      // Cursor spans 2 cells (one map sector = char + padding)
+      const cursorW = this._cellW * 2;
       ctx.fillStyle = CURSES_COLORS.brightGreen;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(px, py, this._cellW, this._cellH);
+      ctx.globalAlpha = 0.4;
+      ctx.fillRect(px, py, cursorW, this._cellH);
       ctx.globalAlpha = 1.0;
       // Redraw character on cursor in contrasting color
       const cell = this.grid[this.cursorY][this.cursorX];

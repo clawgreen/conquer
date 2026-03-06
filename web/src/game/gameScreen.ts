@@ -79,8 +79,11 @@ export class GameScreen {
     this.mouseHandler = new MouseHandler(this.canvas, this.term, {
       getOffset: () => ({ x: this.state.xOffset, y: this.state.yOffset }),
       setOffset: (x, y) => {
-        this.state.xOffset = Math.max(0, x);
-        this.state.yOffset = Math.max(0, y);
+        const mapW = this.state.mapData?.map_x ?? 32;
+        const mapH = this.state.mapData?.map_y ?? 32;
+        // Clamp: can't go below 0 or past the point where map edge hits right/bottom of screen
+        this.state.xOffset = Math.max(0, Math.min(x, Math.max(0, mapW - 1)));
+        this.state.yOffset = Math.max(0, Math.min(y, Math.max(0, mapH - 1)));
       },
       getFontSize: () => this.term.fontSize,
       setFontSize: (size) => {
@@ -699,7 +702,7 @@ export class GameScreen {
       this.term.clear();
       renderMap(this.term, this.state);
       renderBottomPanel(this.term, this.state, this.statusMessage);
-      this.term.setCursor(this.state.cursorX, this.state.cursorY);
+      this.term.setCursor(this.state.cursorX * 2, this.state.cursorY);
       this.term.render();
     }
 

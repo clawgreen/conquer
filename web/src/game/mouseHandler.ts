@@ -63,8 +63,8 @@ export class MouseHandler {
     if (ts.tileType !== 'char') {
       return getScaledCellSize(ts, this.cb.getFontSize());
     }
-    // Char mode: 1 char per sector (classic ncurses style)
-    return { cw: this.term.cellWidth, ch: this.term.cellHeight };
+    // Char mode: 2 chars per sector (character + padding = roughly square tile)
+    return { cw: this.term.cellWidth * 2, ch: this.term.cellHeight };
   }
 
   // ─── Mouse drag to pan ───
