@@ -1,0 +1,530 @@
+{
+  "$schema": "conquer-tileset-spec-v1",
+  "description": "Complete tile specification for the strategy game CONQUER (1988). Used to generate coherent visual tilesets via LLM image generation. Each tile has a semantic meaning, display context, and compositing layer.",
+  "game_context": "Medieval fantasy strategy game. Nations of humans, orcs, elves, dwarves, lizardfolk, and others compete for territory on a grid map. Sectors have terrain, vegetation, development, resources, and military units.",
+
+  "layers": {
+    "description": "Visual layers from bottom to top. Advanced tilesets composite multiple layers into single tiles.",
+    "order": [
+      {
+        "id": "terrain",
+        "z": 0,
+        "description": "Base terrain elevation. Always present on every land/water sector. Determines passability and base movement cost.",
+        "source": "sector.altitude"
+      },
+      {
+        "id": "vegetation",
+        "z": 1,
+        "description": "What grows on the terrain. Overlays terrain. Determines food production, movement modifier, and defense bonus. Not present on water or peaks.",
+        "source": "sector.vegetation"
+      },
+      {
+        "id": "designation",
+        "z": 2,
+        "description": "What has been built/developed on the sector. Only present on OWNED sectors. Represents human-made structures and improvements.",
+        "source": "sector.designation"
+      },
+      {
+        "id": "resources",
+        "z": 3,
+        "description": "Visual indicators for gold, metal, jewels, trade goods. Optional overlay showing resource richness.",
+        "source": "sector.metal, sector.jewels, sector.trade_good"
+      },
+      {
+        "id": "ownership",
+        "z": 4,
+        "description": "Border or tint showing which nation owns the sector. Could be a flag, banner, colored border, or subtle tint.",
+        "source": "sector.owner"
+      },
+      {
+        "id": "units",
+        "z": 5,
+        "description": "Military units present on the sector. Armies and navies. Should be visible on top of all other layers.",
+        "source": "armies[], navies[]"
+      },
+      {
+        "id": "cursor",
+        "z": 6,
+        "description": "Selection indicator. Blinking green semi-transparent overlay with border. Always on top.",
+        "source": "ui state"
+      },
+      {
+        "id": "fog",
+        "z": -1,
+        "description": "Fog of war. Replaces ALL layers when sector is not visible to the player. Should be dark/black/mysterious.",
+        "source": "visibility"
+      }
+    ]
+  },
+
+  "tiles": {
+    "elevation": {
+      "description": "Base terrain height. Every sector has exactly one elevation. Determines what can exist on it.",
+      "layer": "terrain",
+      "count": 5,
+      "items": [
+        {
+          "index": 0,
+          "id": "water",
+          "char": "~",
+          "name": "Water",
+          "description": "Oceans, lakes, rivers. Impassable by land armies. Only navies can traverse. No vegetation, no development possible. Should look like ocean/sea/lake.",
+          "properties": { "passable_land": false, "passable_navy": true, "can_build": false, "food": 0 },
+          "visual_notes": "Blue water, waves, could show depth variation. Tiles should seamlessly connect to adjacent water."
+        },
+        {
+          "index": 1,
+          "id": "peak",
+          "char": "#",
+          "name": "Peak",
+          "description": "Mountain peaks. Completely impassable by ALL units including flying. Permanent barrier. Snow-capped, jagged, forbidding.",
+          "properties": { "passable_land": false, "passable_navy": false, "passable_flight": false, "can_build": false, "food": 0 },
+          "visual_notes": "Tall sharp mountain peaks with snow. Should look impassable and dangerous. Distinct from regular mountains."
+        },
+        {
+          "index": 2,
+          "id": "mountain",
+          "char": "^",
+          "name": "Mountain",
+          "description": "Mountainous terrain. Passable but very slow movement (cost 4-5). High defense bonus (+40%). Good for fortification.",
+          "properties": { "passable_land": true, "move_cost": "4-5", "defense_bonus": 40, "can_build": true },
+          "visual_notes": "Rocky mountain terrain, passable trails/passes. Less extreme than peaks. Could show mining opportunities."
+        },
+        {
+          "index": 3,
+          "id": "hill",
+          "char": "%",
+          "name": "Hill",
+          "description": "Rolling hills. Moderate movement cost (2-3). Some defense bonus (+20%). Common terrain.",
+          "properties": { "passable_land": true, "move_cost": "2-3", "defense_bonus": 20, "can_build": true },
+          "visual_notes": "Gentle to moderate hills, grassy slopes. Should feel like traversable elevated terrain."
+        },
+        {
+          "index": 4,
+          "id": "flat",
+          "char": "-",
+          "name": "Flat",
+          "description": "Plains and flatland. Easy movement (cost 1-2). No terrain defense bonus. Best for farming and cities.",
+          "properties": { "passable_land": true, "move_cost": "1-2", "defense_bonus": 0, "can_build": true },
+          "visual_notes": "Open plains, grassland, fertile ground. Should feel inviting and buildable."
+        }
+      ]
+    },
+
+    "vegetation": {
+      "description": "What grows on the land. Overlays terrain. Determines food production and affects movement/defense. Every non-water, non-peak sector has vegetation.",
+      "layer": "vegetation",
+      "count": 12,
+      "items": [
+        {
+          "index": 0,
+          "id": "volcano",
+          "char": "v",
+          "name": "Volcano",
+          "description": "Active volcanic terrain. Dangerous, no food production. Lava flows, ash, sulfur. Very slow movement.",
+          "properties": { "food": 0, "move_modifier": "very slow", "defense_bonus": 0 },
+          "visual_notes": "Volcanic rock, lava cracks, smoke/steam, orange-red glow. Hostile environment."
+        },
+        {
+          "index": 1,
+          "id": "desert",
+          "char": "d",
+          "name": "Desert",
+          "description": "Arid wasteland. No food production. Sand dunes, cracked earth, extreme heat. Slow movement.",
+          "properties": { "food": 0, "move_modifier": "slow", "defense_bonus": 0 },
+          "visual_notes": "Sand dunes, dry cracked earth, occasional dead tree or bones. Yellow/tan palette."
+        },
+        {
+          "index": 2,
+          "id": "tundra",
+          "char": "t",
+          "name": "Tundra",
+          "description": "Frozen ground with sparse low vegetation. No food. Cold, harsh, windswept. Slow movement.",
+          "properties": { "food": 0, "move_modifier": "slow", "defense_bonus": 0 },
+          "visual_notes": "Frozen ground, patchy snow, sparse low scrub. Grey-white-brown palette. Cold and bleak."
+        },
+        {
+          "index": 3,
+          "id": "barren",
+          "char": "b",
+          "name": "Barren",
+          "description": "Rocky ground with minimal vegetation. Low food (4). Scrubby, sparse. Moderate movement.",
+          "properties": { "food": 4, "move_modifier": "moderate", "defense_bonus": 0 },
+          "visual_notes": "Rocky terrain with occasional tough grass or scrub brush. Grey-brown with hints of green."
+        },
+        {
+          "index": 4,
+          "id": "light_veg",
+          "char": "l",
+          "name": "Light Vegetation",
+          "description": "Grassland with scattered bushes and low plants. Decent food (6). Easy movement.",
+          "properties": { "food": 6, "move_modifier": "easy", "defense_bonus": 0 },
+          "visual_notes": "Green grassland with wildflowers, scattered low bushes. Pleasant, pastoral. Light green palette."
+        },
+        {
+          "index": 5,
+          "id": "good",
+          "char": "g",
+          "name": "Good Land",
+          "description": "Rich, fertile farmland with lush vegetation. BEST food production (9). Easy movement. Ideal for farming.",
+          "properties": { "food": 9, "move_modifier": "easy", "defense_bonus": 0 },
+          "visual_notes": "Lush green fields, rich soil visible, tall grass waving. The most desirable land. Deep green, golden wheat hints."
+        },
+        {
+          "index": 6,
+          "id": "wood",
+          "char": "w",
+          "name": "Wood",
+          "description": "Wooded area with scattered trees. Good food (7). Some defense bonus (+10%). Provides lumber.",
+          "properties": { "food": 7, "move_modifier": "slight slow", "defense_bonus": 10 },
+          "visual_notes": "Scattered deciduous trees with clearings between. Dappled sunlight. Medium green."
+        },
+        {
+          "index": 7,
+          "id": "forest",
+          "char": "f",
+          "name": "Forest",
+          "description": "Dense forest. Moderate food (4). Good defense bonus (+20%). Slow movement. Major lumber source.",
+          "properties": { "food": 4, "move_modifier": "slow", "defense_bonus": 20 },
+          "visual_notes": "Dense tree canopy, dark green. Evergreen and deciduous mix. Should feel thick and hard to traverse."
+        },
+        {
+          "index": 8,
+          "id": "jungle",
+          "char": "j",
+          "name": "Jungle",
+          "description": "Tropical jungle. NO food production despite dense growth. HIGH defense bonus (+30%). Very slow movement. Extremely difficult terrain.",
+          "properties": { "food": 0, "move_modifier": "very slow", "defense_bonus": 30 },
+          "visual_notes": "Thick tropical vegetation, vines, canopy so dense light barely penetrates. Dark green, humid feeling."
+        },
+        {
+          "index": 9,
+          "id": "swamp",
+          "char": "s",
+          "name": "Swamp",
+          "description": "Waterlogged marshland. No food. Very slow movement. Treacherous footing, standing water, reeds.",
+          "properties": { "food": 0, "move_modifier": "very slow", "defense_bonus": 0 },
+          "visual_notes": "Murky standing water, dead trees, reeds, moss. Dark green-brown, sickly. Mist/fog optional."
+        },
+        {
+          "index": 10,
+          "id": "ice",
+          "char": "i",
+          "name": "Ice",
+          "description": "Frozen ice sheets. No food. Slow, treacherous movement. Glacial terrain.",
+          "properties": { "food": 0, "move_modifier": "slow", "defense_bonus": 0 },
+          "visual_notes": "Solid ice, blue-white, crystalline. Could show cracks or glacial features. Cold palette."
+        },
+        {
+          "index": 11,
+          "id": "none",
+          "char": "~",
+          "name": "None",
+          "description": "No vegetation. Used for water and peak sectors. Should not appear on habitable land.",
+          "properties": { "food": 0 },
+          "visual_notes": "N/A — defer to terrain layer (water or peak)."
+        }
+      ]
+    },
+
+    "designation": {
+      "description": "Human-made developments on owned sectors. Only visible on sectors that belong to a nation. Represents buildings, infrastructure, and improvements built by the nation.",
+      "layer": "designation",
+      "count": 20,
+      "items": [
+        { "index": 0, "id": "town", "char": "t", "name": "Town", "description": "Small settlement. Basic sector development. A few buildings, a well, a market square.", "visual_notes": "Small cluster of medieval buildings, thatched roofs, a central square." },
+        { "index": 1, "id": "city", "char": "c", "name": "City", "description": "Large settlement. More production capacity. Walled, multiple buildings, bustling.", "visual_notes": "Walled medieval city, multiple buildings, church spire, busy streets. Larger than town." },
+        { "index": 2, "id": "mine", "char": "m", "name": "Mine", "description": "Metal extraction facility. Produces metal resource each turn. Pickaxes, mine shaft entrance, ore carts.", "visual_notes": "Mine entrance in hillside, timber supports, ore cart tracks, pile of rock/ore." },
+        { "index": 3, "id": "farm", "char": "f", "name": "Farm", "description": "Agricultural development. Boosts food production. Plowed fields, barns, crop rows.", "visual_notes": "Plowed agricultural fields, a barn, haystacks, crop rows. Pastoral and productive." },
+        { "index": 4, "id": "devastated", "char": "x", "name": "Devastated", "description": "War-ravaged sector. Destroyed by combat or magic. Burned ruins, craters, ash.", "visual_notes": "Burned buildings, smoke, rubble, craters. Destruction and desolation. Dark, scorched." },
+        { "index": 5, "id": "goldmine", "char": "$", "name": "Gold Mine", "description": "Gold and jewel extraction. Produces gold/jewels. More valuable than regular mine.", "visual_notes": "Richer mine with gold veins visible, jewel deposits, more elaborate entrance. Glittering." },
+        { "index": 6, "id": "fort", "char": "!", "name": "Fort", "description": "Military fortification. Significant defense bonus. Stone walls, towers, battlements.", "visual_notes": "Stone fortress with walls, corner towers, battlements, gate. Military and imposing." },
+        { "index": 7, "id": "ruin", "char": "&", "name": "Ruin", "description": "Destroyed city or capitol. Result of devastating attack. Crumbling walls, collapsed roofs.", "visual_notes": "Crumbling stone walls, collapsed buildings, overgrown with weeds. Once-grand, now fallen." },
+        { "index": 8, "id": "stockade", "char": "s", "name": "Stockade", "description": "Basic wooden fortification. Less defense than stone fort. Log walls, wooden towers.", "visual_notes": "Wooden palisade walls, log towers, a gate. Rougher and simpler than a stone fort." },
+        { "index": 9, "id": "capitol", "char": "C", "name": "Capitol", "description": "Nation's CAPITAL. Most important sector. If captured, devastating blow. Grand buildings, palace, throne.", "visual_notes": "Grand palace or castle, banners flying, the most impressive structure. Crown jewel of the nation. Should stand out." },
+        { "index": 10, "id": "special", "char": "?", "name": "Special", "description": "Unique or special sector. Could contain magical artifacts, ancient ruins, or quest locations.", "visual_notes": "Mysterious glowing structure, ancient monument, magical aura. Something unique and intriguing." },
+        { "index": 11, "id": "lumberyard", "char": "l", "name": "Lumber Yard", "description": "Wood production facility. Logging operation, stacked timber, sawmill.", "visual_notes": "Stacked logs, sawmill with water wheel, logging equipment, wood chips." },
+        { "index": 12, "id": "blacksmith", "char": "b", "name": "Blacksmith", "description": "Metal processing and equipment crafting. Forge, anvil, weapons.", "visual_notes": "Forge with chimney smoke, anvil, glowing metal, weapon racks. Heat and fire." },
+        { "index": 13, "id": "road", "char": "+", "name": "Road", "description": "Improved road. Faster movement through sector. Paved or well-maintained dirt road.", "visual_notes": "Clear road or path cutting through terrain. Cobblestones or packed dirt. Travel-worn." },
+        { "index": 14, "id": "mill", "char": "*", "name": "Mill", "description": "Grain or lumber mill. Production bonus. Windmill or water mill.", "visual_notes": "Windmill with turning blades, or water mill on a stream. Productive, spinning." },
+        { "index": 15, "id": "granary", "char": "g", "name": "Granary", "description": "Food storage facility. Protects food supplies, provides food bonus.", "visual_notes": "Large stone or wood storage building, grain sacks, full bins. Secure and well-stocked." },
+        { "index": 16, "id": "church", "char": "=", "name": "Church", "description": "Religious building. Affects morale and alignment. Steeple, bells, sacred ground.", "visual_notes": "Medieval church with steeple and cross/symbol, stained glass hints, graveyard optional." },
+        { "index": 17, "id": "university", "char": "u", "name": "University", "description": "Center of learning. Research and technology advancement. Scholars, books, towers.", "visual_notes": "Grand stone building with columns, tall windows, scholars. Academic and prestigious." },
+        { "index": 18, "id": "nodesig", "char": "-", "name": "Undesignated", "description": "Raw undeveloped land that belongs to a nation but has no specific development. Open for designation.", "visual_notes": "Raw cleared land, maybe a boundary marker or flag. Undeveloped but claimed." },
+        { "index": 19, "id": "basecamp", "char": "P", "name": "Base Camp", "description": "Military staging area. Temporary military base for army operations. Tents, campfires.", "visual_notes": "Military tents, campfire, weapon stacks, supply wagons. Temporary but organized." }
+      ]
+    },
+
+    "units": {
+      "description": "Military units that sit ON TOP of sectors. Multiple armies can be on one sector.",
+      "layer": "units",
+      "count": 2,
+      "items": [
+        {
+          "id": "army",
+          "char": "A",
+          "name": "Army",
+          "description": "Land military force. Has soldiers count, status (march/scout/garrison/defend/attack/fly/siege), and movement points.",
+          "statuses": [
+            { "id": "march", "name": "March", "description": "Standard movement mode. Moving across the map." },
+            { "id": "scout", "name": "Scout", "description": "Scouting — avoids engagement, moves fast, reveals terrain." },
+            { "id": "garrison", "name": "Garrison", "description": "Garrisoning a town or capitol. Defensive stance." },
+            { "id": "militia", "name": "Militia", "description": "Militia unit. Citizen soldiers, weaker than regular." },
+            { "id": "flight", "name": "Flying", "description": "Magically flying. Ignores terrain, can cross water/peaks." },
+            { "id": "defend", "name": "Defend", "description": "Defensive stance. Won't move, gets defense bonus." },
+            { "id": "magdef", "name": "Magic Defend", "description": "Magically enhanced defense. Strongest defensive stance." },
+            { "id": "attack", "name": "Attack", "description": "Aggressive. Attacks hostiles within 2 sectors." },
+            { "id": "magatt", "name": "Magic Attack", "description": "Magically enhanced attack. Most aggressive." },
+            { "id": "siege", "name": "Siege", "description": "Besieging an enemy fortification." },
+            { "id": "onboard", "name": "On Board", "description": "Loaded onto a navy fleet. Being transported by sea." }
+          ],
+          "visual_notes": "Medieval soldiers, banners, weapons. Larger armies should look more imposing. Status could be shown via pose/equipment (scouts with spyglasses, garrison behind walls, flying with wings, etc.)"
+        },
+        {
+          "id": "navy",
+          "char": "N",
+          "name": "Navy",
+          "description": "Naval fleet. Can carry armies across water. Exists on water sectors.",
+          "visual_notes": "Medieval warship, sails, multiple ships for larger fleets. Wooden hull, flag/banner."
+        }
+      ]
+    },
+
+    "races": {
+      "description": "The race of a nation's people. Affects movement costs, combat, and diplomacy. Each nation has one race.",
+      "items": [
+        { "id": "human", "char": "H", "name": "Human", "description": "Balanced race. Average at everything. Medieval European aesthetic.", "visual_notes": "Standard medieval human soldiers, castles, farms." },
+        { "id": "orc", "char": "O", "name": "Orc", "description": "Strong fighters. Move easily through mountains and rough terrain. Green-skinned, brutal.", "visual_notes": "Green-skinned warriors, crude but effective weapons, tribal structures." },
+        { "id": "elf", "char": "E", "name": "Elf", "description": "Forest-dwellers. Excel in wooded terrain. Elegant, nature-attuned.", "visual_notes": "Elegant warriors with bows, flowing cloaks, structures integrated with nature." },
+        { "id": "dwarf", "char": "D", "name": "Dwarf", "description": "Mountain-dwellers. Excel in mountains and underground. Miners, smiths, tough.", "visual_notes": "Short stout warriors with axes and hammers, stone structures, mine entrances." },
+        { "id": "lizard", "char": "L", "name": "Lizard", "description": "Reptilian race. Comfortable in swamps and water-adjacent terrain.", "visual_notes": "Reptilian humanoids, scaled, tribal, swamp-dwelling structures." },
+        { "id": "pirate", "char": "P", "name": "Pirate", "description": "Sea-faring raiders. Strong naval presence.", "visual_notes": "Skull and crossbones, pirate ships, coastal encampments." },
+        { "id": "savage", "char": "S", "name": "Savage", "description": "Primitive but fierce tribal warriors.", "visual_notes": "Tribal warriors, bone weapons, primitive structures." },
+        { "id": "nomad", "char": "N", "name": "Nomad", "description": "Desert/steppe wanderers. Mobile, hard to pin down.", "visual_notes": "Horse-mounted warriors, tents, caravan aesthetic." }
+      ]
+    },
+
+    "special": {
+      "description": "UI and state indicators",
+      "items": [
+        { "id": "cursor", "description": "Player's selection cursor. Should be a visible highlight/border effect, semi-transparent green with blink.", "visual_notes": "Green glowing border or highlight overlay. Blinks. Must be visible on ANY background." },
+        { "id": "fog", "description": "Fog of war — unexplored or non-visible sectors.", "visual_notes": "Black/very dark. Could have subtle dark clouds or just solid black." }
+      ]
+    }
+  },
+
+  "compositing": {
+    "description": "How layers combine. An advanced tileset needs tiles for common COMBINATIONS, not just individual layers. The most important composites are listed here.",
+
+    "base_combinations": {
+      "description": "Terrain + Vegetation. These are the most common backgrounds. 5 elevations × 12 vegetations = 60 possible, but only ~25 are common (water has no veg, peaks have no veg, etc.)",
+      "common": [
+        { "terrain": "flat", "vegetation": "good", "frequency": "very common", "description": "Fertile plains — the most desirable land. Lush green flatlands." },
+        { "terrain": "flat", "vegetation": "light_veg", "frequency": "common", "description": "Grassland plains. Open, pastoral." },
+        { "terrain": "flat", "vegetation": "wood", "frequency": "common", "description": "Wooded plains. Scattered trees on flat ground." },
+        { "terrain": "flat", "vegetation": "forest", "frequency": "common", "description": "Dense forest on flat ground." },
+        { "terrain": "flat", "vegetation": "desert", "frequency": "common", "description": "Desert flatland. Sandy, arid." },
+        { "terrain": "flat", "vegetation": "barren", "frequency": "common", "description": "Barren flatland. Rocky, sparse." },
+        { "terrain": "hill", "vegetation": "good", "frequency": "common", "description": "Fertile rolling hills." },
+        { "terrain": "hill", "vegetation": "light_veg", "frequency": "common", "description": "Grassy hills." },
+        { "terrain": "hill", "vegetation": "forest", "frequency": "common", "description": "Forested hills." },
+        { "terrain": "hill", "vegetation": "wood", "frequency": "common", "description": "Wooded hills." },
+        { "terrain": "mountain", "vegetation": "barren", "frequency": "common", "description": "Bare rocky mountains." },
+        { "terrain": "mountain", "vegetation": "tundra", "frequency": "common", "description": "Frozen mountain slopes." },
+        { "terrain": "mountain", "vegetation": "forest", "frequency": "less common", "description": "Mountain forest. Alpine trees." },
+        { "terrain": "flat", "vegetation": "jungle", "frequency": "less common", "description": "Tropical jungle on flat ground." },
+        { "terrain": "flat", "vegetation": "swamp", "frequency": "less common", "description": "Flat swampland. Waterlogged." },
+        { "terrain": "flat", "vegetation": "ice", "frequency": "less common", "description": "Frozen ice plain." },
+        { "terrain": "flat", "vegetation": "volcano", "frequency": "rare", "description": "Volcanic flat. Lava fields." },
+        { "terrain": "hill", "vegetation": "volcano", "frequency": "rare", "description": "Volcanic hills." },
+        { "terrain": "mountain", "vegetation": "ice", "frequency": "less common", "description": "Frozen mountain peaks." },
+        { "terrain": "water", "vegetation": "none", "frequency": "very common", "description": "Open water. No vegetation overlay." },
+        { "terrain": "peak", "vegetation": "none", "frequency": "common", "description": "Impassable mountain peak. No vegetation." }
+      ]
+    },
+
+    "development_on_terrain": {
+      "description": "Designation structures appear ON TOP of terrain+vegetation. The visual should show both the land type and the building. Most designations can appear on any habitable terrain combo.",
+      "high_priority_combos": [
+        { "designation": "capitol", "note": "Should look grand on ANY terrain. The most important tile combo." },
+        { "designation": "city", "note": "Large settlement. Common on flat+good or flat+light_veg." },
+        { "designation": "town", "note": "Small settlement. Most common designation. Appears everywhere." },
+        { "designation": "farm", "note": "Almost always on flat+good or flat+light_veg. Agricultural." },
+        { "designation": "fort", "note": "Often on hills or mountains for defense. Stone walls." },
+        { "designation": "mine", "note": "Usually on hills or mountains. Mine entrance in terrain." },
+        { "designation": "devastated", "note": "Burned/destroyed version of whatever was there before." },
+        { "designation": "road", "note": "Path through any terrain. Should modify the base terrain tile." }
+      ]
+    },
+
+    "units_on_terrain": {
+      "description": "Armies and navies displayed ON sectors. The sector's terrain/veg/designation should still be visible beneath/around the unit.",
+      "combos": [
+        { "unit": "army", "on": "any_land", "description": "Army standing on land sector. Terrain visible around them." },
+        { "unit": "army", "on": "fort", "description": "Army garrisoned in a fort. Soldiers behind walls." },
+        { "unit": "army", "on": "capitol", "description": "Army defending the capital. Soldiers at the palace." },
+        { "unit": "navy", "on": "water", "description": "Fleet on open water." },
+        { "unit": "army", "status": "flying", "on": "any", "description": "Flying army above the terrain. Shadow on ground." },
+        { "unit": "army", "status": "siege", "on": "fort", "description": "Army besieging a fortification." }
+      ]
+    },
+
+    "ownership_indicator": {
+      "description": "How to show which nation owns a sector. This overlays terrain+veg+designation.",
+      "approaches": [
+        { "method": "border", "description": "Colored border on sector edges matching nation color. Shows territory shape." },
+        { "method": "banner", "description": "Small flag or banner planted on the sector." },
+        { "method": "tint", "description": "Subtle color tint over the entire tile." },
+        { "method": "emblem", "description": "Small nation symbol in corner of tile." }
+      ]
+    }
+  },
+
+  "display_modes": {
+    "description": "The game has 12 display modes that show different DATA about the same sectors. In simple tilesets, each mode replaces the map view entirely. In advanced layered tilesets, some modes are overlays.",
+    "modes": [
+      {
+        "id": "vegetation",
+        "name": "Vegetation",
+        "key": "v",
+        "description": "Shows the vegetation type of every sector. Primary data: sector.vegetation index.",
+        "tiles_needed": "12 vegetation tiles",
+        "data_source": "sector.vegetation (0-11)"
+      },
+      {
+        "id": "designation",
+        "name": "Designation",
+        "key": "d",
+        "description": "Shows development on owned sectors, terrain on unowned. Primary data: sector.designation for owned, sector.altitude for unowned.",
+        "tiles_needed": "20 designation tiles + 5 elevation tiles (for unowned)",
+        "data_source": "sector.designation (0-19) if owned, sector.altitude (0-4) if unowned"
+      },
+      {
+        "id": "contour",
+        "name": "Contour",
+        "key": "c",
+        "description": "Shows terrain elevation for every sector. Like a topographic map.",
+        "tiles_needed": "5 elevation tiles",
+        "data_source": "sector.altitude (0-4)"
+      },
+      {
+        "id": "food",
+        "name": "Food",
+        "key": "f",
+        "description": "Shows food production value per sector. Numbers 0-9, '+' for 10+. Higher = better farming.",
+        "tiles_needed": "10 number tiles (0-9) + overflow tile + vegetation tiles for 0-food sectors",
+        "data_source": "vegfood[sector.vegetation] (0, 4, 6, 7, 9)"
+      },
+      {
+        "id": "nation",
+        "name": "Nation",
+        "key": "n",
+        "description": "Shows which nation owns each sector. Nation's mark character for owned, elevation for unowned.",
+        "tiles_needed": "Up to 35 nation indicator tiles + 5 elevation tiles",
+        "data_source": "sector.owner (0=unowned, 1-35=nation id)"
+      },
+      {
+        "id": "race",
+        "name": "Race",
+        "key": "r",
+        "description": "Shows the race of the owning nation. Race initial for owned sectors.",
+        "tiles_needed": "9 race tiles + 5 elevation tiles",
+        "data_source": "nation.race for sector.owner"
+      },
+      {
+        "id": "move",
+        "name": "Movement",
+        "key": "m",
+        "description": "Shows movement cost to enter each sector for your race. Numbers, lower = easier.",
+        "tiles_needed": "10 number tiles + water/impassable tiles",
+        "data_source": "calculated from altitude + vegetation + race"
+      },
+      {
+        "id": "defense",
+        "name": "Defense",
+        "key": "M",
+        "description": "Shows defense bonus of each sector. Combines altitude, vegetation, and fortress level.",
+        "tiles_needed": "10 number tiles + water tile",
+        "data_source": "calculated from altitude + vegetation + fortress"
+      },
+      {
+        "id": "people",
+        "name": "People",
+        "key": "D",
+        "description": "Shows population density. 0-9 for hundreds, I/V/X for thousands.",
+        "tiles_needed": "10 number tiles + magnitude tiles",
+        "data_source": "sector.people"
+      },
+      {
+        "id": "gold",
+        "name": "Gold/Jewels",
+        "key": "p",
+        "description": "Shows jewel deposits per sector. 0-9, '+' for 10+.",
+        "tiles_needed": "10 number tiles + overflow tile",
+        "data_source": "sector.jewels"
+      },
+      {
+        "id": "metal",
+        "name": "Metal",
+        "key": "J",
+        "description": "Shows metal deposits per sector. 0-9, '+' for 10+.",
+        "tiles_needed": "10 number tiles + overflow tile",
+        "data_source": "sector.metal"
+      },
+      {
+        "id": "items",
+        "name": "Trade Items",
+        "key": "i",
+        "description": "Shows trade goods present in sectors.",
+        "tiles_needed": "20 designation tiles + empty tile",
+        "data_source": "sector.trade_good < 61 means has goods"
+      }
+    ]
+  },
+
+  "tile_count_summary": {
+    "minimum_simple_tileset": {
+      "description": "Minimum tiles for a basic flat tileset (one image per tile, no compositing)",
+      "elevation": 5,
+      "vegetation": 12,
+      "designation": 20,
+      "units": 2,
+      "special": 2,
+      "numbers": 10,
+      "total": 51
+    },
+    "recommended_composited_tileset": {
+      "description": "For a visually rich tileset with terrain+vegetation backgrounds, designation overlays, and unit overlays",
+      "terrain_vegetation_combos": 25,
+      "designation_tiles": 20,
+      "unit_tiles": 4,
+      "race_styled_units": 16,
+      "numbers_and_indicators": 15,
+      "special": 5,
+      "total": "~85"
+    },
+    "full_layered_tileset": {
+      "description": "Individual layer sprites for full compositing (terrain base + vegetation overlay + designation overlay + unit overlay). Most flexible.",
+      "terrain_bases": 5,
+      "vegetation_overlays": 12,
+      "designation_overlays": 20,
+      "unit_overlays": 22,
+      "race_variants": 8,
+      "resource_indicators": 15,
+      "ui_elements": 5,
+      "total": "~87 individual sprites, composited at runtime"
+    }
+  },
+
+  "generation_prompt_template": {
+    "description": "Template for prompting an image-generation LLM to create a coherent tileset",
+    "style_prompt": "Create a {TILE_SIZE}x{TILE_SIZE} pixel art tile for a medieval fantasy strategy game. Style: {STYLE_DESC}. The tile should seamlessly tile with adjacent tiles of the same type. Consistent lighting from top-left. {PALETTE_DESC}.",
+    "suggested_styles": [
+      { "id": "pixel16", "size": 16, "description": "16x16 pixel art, retro game style, limited palette" },
+      { "id": "pixel32", "size": 32, "description": "32x32 pixel art, detailed retro style, SNES-era" },
+      { "id": "pixel64", "size": 64, "description": "64x64 pixel art, detailed, modern pixel art" },
+      { "id": "painted32", "size": 32, "description": "32x32 hand-painted miniature style, watercolor feel" },
+      { "id": "iso64", "size": 64, "description": "64x64 isometric tiles, 3/4 top-down view" }
+    ]
+  }
+}
