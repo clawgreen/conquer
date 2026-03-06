@@ -11,6 +11,7 @@ import { GameLayout } from '../ui/gameLayout';
 import { CommandSidebar } from '../ui/commandSidebar';
 import { StatsSidebar } from '../ui/statsSidebar';
 import { InputHandler, GameAction } from './inputHandler';
+import { MouseHandler } from './mouseHandler';
 import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
@@ -25,7 +26,7 @@ export class GameScreen {
   private chatPanel: ChatPanel;
   private cmdSidebar: CommandSidebar;
   private statsSidebar: StatsSidebar;
-  private _backBtn: HTMLElement | null = null;
+  private mouseHandler: MouseHandler;
   private state: GameState;
   private animFrame: number = 0;
   private statusMessage: string = '';
@@ -53,6 +54,21 @@ export class GameScreen {
 
     // Input handler
     this.input = new InputHandler((action) => this.handleAction(action));
+
+    // Mouse/touch pan & zoom
+    this.mouseHandler = new MouseHandler(this.canvas, this.term, {
+      getOffset: () => ({ x: this.state.xOffset, y: this.state.yOffset }),
+      setOffset: (x, y) => {
+        this.state.xOffset = Math.max(0, x);
+        this.state.yOffset = Math.max(0, y);
+      },
+      getFontSize: () => this.term.fontSize,
+      setFontSize: (size) => {
+        this.term.setFontSize(size);
+        this.handleResize();
+      },
+      getTilesetId: () => this.state.tilesetId ?? 'ascii',
+    });
 
     // Left sidebar: commands
     this.cmdSidebar = new CommandSidebar(this.layout.leftBar, (cmd) => this.handleCommand(cmd));
@@ -575,6 +591,7 @@ export class GameScreen {
   destroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
     this.input.destroy();
+    this.mouseHandler.destroy();
     this.chatPanel.destroy();
     this.cmdSidebar.destroy();
     this.statsSidebar.destroy();

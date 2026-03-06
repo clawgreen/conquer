@@ -54,6 +54,8 @@ export class TerminalRenderer {
   get rows(): number { return this._rows; }
   get cellW(): number { return this._cellW; }
   get cellH(): number { return this._cellH; }
+  get cellWidth(): number { return this._cellW; }
+  get cellHeight(): number { return this._cellH; }
   get fontSize(): number { return this._fontSize; }
 
   /** Expose canvas context for direct rendering (emoji/image tilesets) */
