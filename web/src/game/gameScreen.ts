@@ -5,11 +5,14 @@ import { TerminalRenderer } from '../renderer/terminal';
 import { GameClient } from '../network/client';
 import { GameState, createInitialState, buildOccupied } from '../state/gameState';
 import { renderMap, screenSize } from './mapView';
-import { renderSidePanel, renderBottomPanel } from '../ui/sidePanel';
+import { renderBottomPanel } from '../ui/sidePanel';
 import { ChatPanel } from '../ui/chatPanel';
+import { HudOverlay } from '../ui/hudOverlay';
+import { CommandBar } from '../ui/commandBar';
 import { InputHandler, GameAction } from './inputHandler';
 import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
+import { getTheme, ALL_THEMES } from '../renderer/themes';
 
 export class GameScreen {
   private canvas: HTMLCanvasElement;
@@ -17,6 +20,9 @@ export class GameScreen {
   private client: GameClient;
   private input: InputHandler;
   private chatPanel: ChatPanel;
+  private hud: HudOverlay;
+  private commandBar: CommandBar;
+  private _backBtn: HTMLElement | null = null;
   private state: GameState;
   private animFrame: number = 0;
   private statusMessage: string = '';
@@ -43,6 +49,30 @@ export class GameScreen {
     // Input handler
     this.input = new InputHandler((action) => this.handleAction(action));
 
+    // Back button — always visible, top-left
+    const backBtn = document.createElement('button');
+    backBtn.id = 'btn-back-to-lobby';
+    backBtn.textContent = '← Lobby';
+    backBtn.style.cssText = `
+      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 4px); left: 4px; z-index: 60;
+      background: rgba(0,17,0,0.9); color: #55ff55; border: 1px solid #338833;
+      border-radius: 4px; padding: 6px 10px; font-family: inherit; font-size: 12px;
+      cursor: pointer; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    `;
+    backBtn.addEventListener('click', () => {
+      localStorage.removeItem('conquer_game_id');
+      localStorage.removeItem('conquer_nation_id');
+      window.location.reload();
+    });
+    parent.appendChild(backBtn);
+    this._backBtn = backBtn;
+
+    // HTML HUD overlay (replaces canvas-rendered side panel)
+    this.hud = new HudOverlay(parent);
+
+    // Command button bar
+    this.commandBar = new CommandBar(parent, (cmd) => this.handleCommand(cmd));
+
     // Chat panel (Phase 5: T400)
     this.chatPanel = new ChatPanel(parent, this.client, this.state);
 
@@ -57,6 +87,13 @@ export class GameScreen {
       this.setStatus('Disconnected — reconnecting...');
     });
 
+    // Restore saved theme preference
+    const savedTheme = localStorage.getItem('conquer_theme');
+    if (savedTheme) {
+      this.state.themeId = savedTheme;
+      this.state.renderMode = savedTheme.startsWith('classic') ? 'classic' : 'enhanced';
+    }
+
     // Load initial data and start
     this.loadGameData().then(() => {
       this.client.connectWebSocket(gameId);
@@ -65,9 +102,10 @@ export class GameScreen {
   }
 
   private handleResize(): void {
+    const barH = this.commandBar ? this.commandBar.getHeight() : 80;
     this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    this.term.resize(window.innerWidth, window.innerHeight);
+    this.canvas.height = window.innerHeight - barH;
+    this.term.resize(window.innerWidth, window.innerHeight - barH);
   }
 
   private async loadGameData(): Promise<void> {
@@ -334,6 +372,73 @@ export class GameScreen {
     );
   }
 
+  private handleCommand(cmd: string): void {
+    // Theme commands
+    if (cmd.startsWith('theme_')) {
+      const themeId = cmd.slice(6);
+      const theme = getTheme(themeId);
+      this.state.themeId = themeId;
+      this.state.renderMode = themeId.startsWith('classic') ? 'classic' : 'enhanced';
+      this.setStatus(`Theme: ${theme.name} — ${theme.description}`);
+      // Save preference
+      localStorage.setItem('conquer_theme', themeId);
+      return;
+    }
+
+    const displayMap: Record<string, DisplayMode> = {
+      disp_veg: DisplayMode.Vegetation, disp_des: DisplayMode.Designation,
+      disp_cnt: DisplayMode.Contour, disp_food: DisplayMode.Food,
+      disp_race: DisplayMode.Race, disp_ntn: DisplayMode.Nation,
+      disp_move: DisplayMode.Move, disp_def: DisplayMode.Defense,
+      disp_pop: DisplayMode.People, disp_gold: DisplayMode.Gold,
+      disp_mtl: DisplayMode.Metal, disp_itm: DisplayMode.Items,
+    };
+    const hlMap: Record<string, HighlightMode> = {
+      hl_own: HighlightMode.Own, hl_army: HighlightMode.Army,
+      hl_yours: HighlightMode.YourArmy, hl_move: HighlightMode.Move,
+      hl_trade: HighlightMode.Good, hl_none: HighlightMode.None,
+    };
+
+    if (displayMap[cmd] !== undefined) {
+      this.handleAction({ type: 'set_display', mode: displayMap[cmd] });
+    } else if (hlMap[cmd] !== undefined) {
+      this.handleAction({ type: 'set_highlight', mode: hlMap[cmd] });
+    } else {
+      switch (cmd) {
+        case 'move_up': this.handleAction({ type: 'move_cursor', dx: 0, dy: -1 }); break;
+        case 'move_down': this.handleAction({ type: 'move_cursor', dx: 0, dy: 1 }); break;
+        case 'move_left': this.handleAction({ type: 'move_cursor', dx: -1, dy: 0 }); break;
+        case 'move_right': this.handleAction({ type: 'move_cursor', dx: 1, dy: 0 }); break;
+        case 'next_army': this.handleAction({ type: 'select_next_army' }); break;
+        case 'prev_army': this.handleAction({ type: 'select_prev_army' }); break;
+        case 'army_move': this.handleAction({ type: 'move_army', dx: 0, dy: 0 }); break;
+        case 'toggle_navy': this.handleAction({ type: 'toggle_army_navy' }); break;
+        case 'jump_capitol': this.handleAction({ type: 'jump_capitol' }); break;
+        case 'show_scores': this.handleAction({ type: 'show_scores' }); break;
+        case 'show_news': this.handleAction({ type: 'show_news' }); break;
+        case 'toggle_chat': this.handleAction({ type: 'toggle_chat' }); break;
+        case 'end_turn': this.handleAction({ type: 'end_turn' }); break;
+        case 'refresh': this.loadGameData(); this.setStatus('Refreshing...'); break;
+        case 'back_to_lobby':
+          localStorage.removeItem('conquer_game_id');
+          localStorage.removeItem('conquer_nation_id');
+          window.location.reload();
+          break;
+        case 'font_up':
+          this.term.setFontSize(this.term.fontSize + 2);
+          this.handleResize();
+          break;
+        case 'font_down':
+          this.term.setFontSize(this.term.fontSize - 2);
+          this.handleResize();
+          break;
+        case 'center_map':
+          this.handleAction({ type: 'center_map' });
+          break;
+      }
+    }
+  }
+
   private handleWsMessage(msg: ServerMessage): void {
     switch (msg.type) {
       case 'turn_end':
@@ -432,21 +537,26 @@ export class GameScreen {
   private renderFrame(): void {
     this.term.clear();
     renderMap(this.term, this.state);
-    renderSidePanel(this.term, this.state);
     renderBottomPanel(this.term, this.state, this.statusMessage);
 
     // Set cursor position on map
     this.term.setCursor(this.state.cursorX * 2, this.state.cursorY);
 
     this.term.render();
+
+    // Update HTML HUD overlay
+    this.hud.update(this.state);
   }
 
   destroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
     this.input.destroy();
     this.chatPanel.destroy();
+    this.hud.destroy();
+    this.commandBar.destroy();
     this.term.destroy();
     this.client.disconnectWebSocket();
+    this._backBtn?.remove();
     this.canvas.remove();
   }
 }

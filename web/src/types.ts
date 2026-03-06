@@ -203,6 +203,7 @@ export interface GameInfo {
   updated_at: string;
   current_turn: number;
   player_count: number;
+  my_nation_id?: number | null;
 }
 
 export interface MapResponse {

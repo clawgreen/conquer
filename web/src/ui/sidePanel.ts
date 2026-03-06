@@ -112,7 +112,7 @@ export function renderSidePanel(term: TerminalRenderer, state: GameState): void 
 export function renderBottomPanel(term: TerminalRenderer, state: GameState, statusMessage: string): void {
   if (!state.mapData) return;
 
-  const bottomStart = term.rows - 5;
+  const bottomStart = term.rows - 3;
   const absX = state.cursorX + state.xOffset;
   const absY = state.cursorY + state.yOffset;
   const sector = getSector(state, absX, absY);
@@ -123,39 +123,31 @@ export function renderBottomPanel(term: TerminalRenderer, state: GameState, stat
   }
 
   if (sector) {
-    const desName = DESIGNATION_NAMES[sector.designation] ?? 'UNKNOWN';
-    const vegName = VEGETATION_NAMES[sector.vegetation] ?? 'UNKNOWN';
-    const altName = ALTITUDE_NAMES[sector.altitude] ?? 'UNKNOWN';
-
+    const desName = DESIGNATION_NAMES[sector.designation] ?? '?';
+    const altName = ALTITUDE_NAMES[sector.altitude] ?? '?';
     const ownerStr = sector.owner === 0 ? 'Unowned' :
-      (state.publicNations.find(n => n.nation_id === sector.owner)?.name ?? `Nation ${sector.owner}`);
+      (state.publicNations.find(n => n.nation_id === sector.owner)?.name ?? `N${sector.owner}`);
 
-    term.writeStr(0, bottomStart, `Sector (${absX},${absY}): ${desName}  ${altName}  ${vegName}`, CURSES_COLORS.brightWhite);
-    term.writeStr(0, bottomStart + 1, `Owner: ${ownerStr}  Pop: ${sector.people}  Fort: ${sector.fortress}  Metal: ${sector.metal}  Jewel: ${sector.jewels}`, CURSES_COLORS.white);
+    const classicFg = state.renderMode === 'classic' ? CURSES_COLORS.green : CURSES_COLORS.brightWhite;
+    const classicDim = state.renderMode === 'classic' ? CURSES_COLORS.green : CURSES_COLORS.white;
+    const classicHl = state.renderMode === 'classic' ? CURSES_COLORS.green : CURSES_COLORS.brightYellow;
 
-    // Show armies at this location
+    // Row 0: sector position + terrain
+    term.writeStr(0, bottomStart, `(${absX},${absY}) ${desName} ${altName} ${ownerStr} Pop:${sector.people} Fort:${sector.fortress}`, classicFg);
+
+    // Row 1: armies + resources
     const armiesHere = state.armies.filter(a => a.soldiers > 0 && a.x === absX && a.y === absY);
-    if (armiesHere.length > 0) {
-      const armyStr = armiesHere.map(a => `A${a.index}:${a.soldiers}`).join(' ');
-      term.writeStr(0, bottomStart + 2, `Armies: ${armyStr}`, CURSES_COLORS.brightYellow);
-    }
+    let line1 = armiesHere.length > 0 ? armiesHere.map(a => `A${a.index}:${a.soldiers}`).join(' ') + '  ' : '';
+    if (sector.metal > 0 || sector.jewels > 0) line1 += `Metal:${sector.metal} Jewel:${sector.jewels}`;
+    if (line1) term.writeStr(0, bottomStart + 1, line1, classicHl);
   } else {
-    term.writeStr(0, bottomStart, `(${absX},${absY}): Not visible (fog of war)`, CURSES_COLORS.brightBlack);
+    term.writeStr(0, bottomStart, `(${absX},${absY}) Fog of war`, state.renderMode === 'classic' ? CURSES_COLORS.green : CURSES_COLORS.brightBlack);
   }
 
-  // Status message / command prompt
-  if (statusMessage) {
-    term.writeStr(0, bottomStart + 3, statusMessage, CURSES_COLORS.brightGreen);
-  }
-
-  // Waiting indicator
-  if (state.isDone) {
-    term.writeStr(0, bottomStart + 4, '[ DONE — waiting for other players ]', CURSES_COLORS.brightYellow);
-  }
-
-  // Notifications
-  if (state.notifications.length > 0) {
-    const latest = state.notifications[state.notifications.length - 1];
-    term.writeStr(0, bottomStart + 4, latest, CURSES_COLORS.brightRed);
+  // Row 2: status message or done indicator
+  const msg = state.isDone ? '[ DONE — waiting for other players ]' : (statusMessage || '');
+  if (msg) {
+    const msgColor = state.renderMode === 'classic' ? CURSES_COLORS.green : (state.isDone ? CURSES_COLORS.brightYellow : CURSES_COLORS.brightGreen);
+    term.writeStr(0, bottomStart + 2, msg, msgColor);
   }
 }

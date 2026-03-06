@@ -391,9 +391,9 @@ impl GameStore {
         let game = games.get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        // Check if user already in this game
-        if game.players.iter().any(|p| p.user_id == user_id) {
-            return Err(DbError::AlreadyExists("Already joined this game".to_string()));
+        // If user already in this game, return their existing player
+        if let Some(existing) = game.players.iter().find(|p| p.user_id == user_id) {
+            return Ok(existing.clone());
         }
 
         // Find first available nation slot (skip 0 = God)
@@ -404,14 +404,86 @@ impl GameStore {
             })
             .ok_or(DbError::GameFull)?;
 
-        // Initialize nation in game state
+        // Find a valid starting location — scan for unowned habitable sector
+        let map_x = game.state.world.map_x as usize;
+        let map_y = game.state.world.map_y as usize;
+        let mut start_x = 0u8;
+        let mut start_y = 0u8;
+        let mut found_start = false;
+
+        // Score each sector for this race and pick the best unowned habitable one
+        let mut best_score = -1i32;
+        for x in 1..map_x.saturating_sub(1) {
+            for y in 1..map_y.saturating_sub(1) {
+                let s = &game.state.sectors[x][y];
+                // Must be habitable land (not water, not peak, has food potential)
+                if s.altitude == 0 || s.altitude == 1 { continue; } // water or peak
+                if s.owner != 0 { continue; } // already owned
+
+                // Check not too close to existing nations (min 2 sectors away)
+                let mut too_close = false;
+                for dx in -2i32..=2 {
+                    for dy in -2i32..=2 {
+                        let nx = x as i32 + dx;
+                        let ny = y as i32 + dy;
+                        if nx >= 0 && nx < map_x as i32 && ny >= 0 && ny < map_y as i32 {
+                            if game.state.sectors[nx as usize][ny as usize].owner != 0 {
+                                too_close = true;
+                                break;
+                            }
+                        }
+                    }
+                    if too_close { break; }
+                }
+                if too_close { continue; }
+
+                // Score: prefer good vegetation, clear altitude, food
+                let veg_score = match s.vegetation {
+                    5 => 10, // Good
+                    6 => 8,  // Wood
+                    4 => 6,  // LtVeg
+                    7 => 4,  // Forest
+                    _ => 1,
+                };
+                let alt_score = match s.altitude {
+                    4 => 10, // Clear
+                    3 => 6,  // Hill
+                    2 => 2,  // Mountain
+                    _ => 0,
+                };
+                let score = veg_score + alt_score;
+                if score > best_score {
+                    best_score = score;
+                    start_x = x as u8;
+                    start_y = y as u8;
+                    found_start = true;
+                }
+            }
+        }
+
+        if !found_start {
+            return Err(DbError::GameFull);
+        }
+
+        // Initialize nation with starting position, resources, and army
         let nation = &mut game.state.nations[nation_id as usize];
         nation.name = nation_name.to_string();
         nation.leader = leader_name.to_string();
         nation.race = race;
         nation.class = class;
         nation.mark = mark;
-        nation.active = 1; // PC_GOOD default
+        nation.active = 1; // PC
+        nation.cap_x = start_x;
+        nation.cap_y = start_y;
+        nation.treasury_gold = 10000;
+        nation.total_food = 5000;
+        nation.metals = 500;
+        nation.jewels = 100;
+        nation.total_civ = 1000;
+        nation.total_mil = 100;
+        nation.total_sectors = 1;
+        nation.max_move = 10;
+        nation.repro = 10;
         nation.tax_rate = 15;
         nation.eat_rate = 6;
         nation.popularity = 50;
@@ -422,6 +494,38 @@ impl GameStore {
         nation.mine_ability = 50;
         nation.reputation = 50;
         nation.spoil_rate = 50;
+
+        // Assign capitol sector
+        game.state.sectors[start_x as usize][start_y as usize].owner = nation_id;
+        game.state.sectors[start_x as usize][start_y as usize].people = 1000;
+        game.state.sectors[start_x as usize][start_y as usize].designation = 9; // Capitol
+        game.state.sectors[start_x as usize][start_y as usize].fortress = 2;
+
+        // Also claim surrounding habitable sectors
+        for dx in -1i32..=1 {
+            for dy in -1i32..=1 {
+                if dx == 0 && dy == 0 { continue; }
+                let nx = start_x as i32 + dx;
+                let ny = start_y as i32 + dy;
+                if nx >= 0 && nx < map_x as i32 && ny >= 0 && ny < map_y as i32 {
+                    let ns = &game.state.sectors[nx as usize][ny as usize];
+                    if ns.altitude > 1 && ns.owner == 0 {
+                        game.state.sectors[nx as usize][ny as usize].owner = nation_id;
+                        game.state.sectors[nx as usize][ny as usize].people = 500;
+                        nation.total_civ += 500;
+                        nation.total_sectors += 1;
+                    }
+                }
+            }
+        }
+
+        // Starting army at capitol
+        nation.armies[0].soldiers = 100;
+        nation.armies[0].unit_type = 3; // Infantry
+        nation.armies[0].x = start_x;
+        nation.armies[0].y = start_y;
+        nation.armies[0].status = 3; // Garrison
+        nation.armies[0].movement = 6;
 
         let player = Player {
             game_id,
@@ -669,8 +773,49 @@ impl GameStore {
             apply_action_to_state(&mut game.state, &sa.action);
         }
 
-        // Run the turn update pipeline
-        // For now, just advance the turn counter and do basic updates
+        // Run the full turn update pipeline via the engine
+        let mut rng = conquer_core::rng::ConquerRng::new(
+            (game.state.world.turn as u32).wrapping_mul(42) + 12345
+        );
+
+        // 1. Combat — resolve all battles
+        conquer_engine::combat::run_combat(&mut game.state, &mut rng);
+
+        // 2. Military update — reset movement, maintenance, recount total_mil
+        conquer_engine::economy::updmil(&mut game.state, &mut rng);
+
+        // 3. NPC AI — NPC nations take their actions
+        for i in 1..conquer_core::constants::NTOTAL {
+            let active = game.state.nations[i].active;
+            if active > 0 && active > 16 {
+                // NPC nation — run AI
+                // npc::nationrun would go here but it needs fixed-size arrays
+                // For now, NPCs are passive (they have starting armies/sectors)
+            }
+        }
+
+        // 4. Sector updates — population growth, spreadsheet, inflation
+        conquer_engine::economy::updsectors(&mut game.state, &mut rng);
+
+        // 5. Commodities — food consumption, spoilage, starvation
+        conquer_engine::economy::updcomodities(&mut game.state, &mut rng);
+
+        // 6. Random events (per-sector, skipped for now — not critical for gameplay)
+
+        // 7. Destroy nations with no people and no military
+        for i in 1..conquer_core::constants::NTOTAL {
+            let n = &game.state.nations[i];
+            if n.active > 0 && n.active <= 16 {
+                if n.total_civ < 100 && n.total_mil < 50 {
+                    game.state.nations[i].active = 0;
+                }
+            }
+        }
+
+        // 8. Recalculate scores
+        conquer_engine::turn::calculate_scores_gs(&mut game.state);
+
+        // 9. Advance turn
         game.state.world.turn += 1;
         let new_turn = game.state.world.turn;
 

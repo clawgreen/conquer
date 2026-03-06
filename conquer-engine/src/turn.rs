@@ -210,7 +210,7 @@ fn destroy_nation_gs(state: &mut GameState, nation_idx: usize) {
 }
 
 /// Score all nations (GameState version)
-fn calculate_scores_gs(state: &mut GameState) {
+pub fn calculate_scores_gs(state: &mut GameState) {
     for i in 1..NTOTAL {
         if !is_nation_active_gs(&state.nations[i]) { continue; }
         state.nations[i].score += calculate_nation_score(&state.nations[i]);

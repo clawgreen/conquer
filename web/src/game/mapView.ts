@@ -10,6 +10,7 @@ import {
   DES_CHARS, VEG_CHARS, ELE_CHARS,
   Sector,
 } from '../types';
+import { getTheme, terrainStyle, ThemeDef, SectorStyle } from '../renderer/themes';
 
 // Food value per vegetation type (from conquer-core vegfood)
 const VEGFOOD = [0, 0, 0, 4, 6, 9, 7, 4, 0, 0, 0, 0];
@@ -176,12 +177,58 @@ function shouldHighlight(
   }
 }
 
+/** Get themed color style for a sector */
+function getThemedSectorStyle(
+  theme: ThemeDef,
+  sector: Sector,
+  dmode: DisplayMode,
+  nationId: number,
+): SectorStyle {
+  // Vegetation display mode uses vegColors if defined
+  if (dmode === DisplayMode.Vegetation && theme.vegColors[sector.vegetation]) {
+    return theme.vegColors[sector.vegetation];
+  }
+
+  // Food, Move, Defense, People, Gold, Metal, Items — use terrain base
+  if (dmode === DisplayMode.Food || dmode === DisplayMode.Move ||
+      dmode === DisplayMode.Defense || dmode === DisplayMode.People ||
+      dmode === DisplayMode.Gold || dmode === DisplayMode.Metal ||
+      dmode === DisplayMode.Items) {
+    // Use veg color if available, otherwise terrain
+    if (theme.vegColors[sector.vegetation]) {
+      return theme.vegColors[sector.vegetation];
+    }
+    return terrainStyle(theme, sector.altitude);
+  }
+
+  // Designation mode
+  if (dmode === DisplayMode.Designation) {
+    if (sector.owner === 0) {
+      // Unowned: show terrain
+      return terrainStyle(theme, sector.altitude);
+    }
+    if (sector.owner === nationId) {
+      return theme.ownSector;
+    }
+    return theme.enemySector(sector.owner);
+  }
+
+  // Nation / Race mode
+  if (dmode === DisplayMode.Nation || dmode === DisplayMode.Race) {
+    if (sector.owner === 0) return terrainStyle(theme, sector.altitude);
+    if (sector.owner === nationId) return theme.ownSector;
+    return theme.enemySector(sector.owner);
+  }
+
+  // Contour mode — always terrain
+  return terrainStyle(theme, sector.altitude);
+}
+
 /** Calculate viewport screen size based on terminal dimensions */
 export function screenSize(term: TerminalRenderer): { screenX: number; screenY: number } {
-  // Map takes left portion, right 10 cols for side panel
-  // Each map cell uses 2 columns (matching C: 2*x), bottom 5 rows for status
-  const screenX = Math.floor((term.cols - 10) / 2);
-  const screenY = term.rows - 5;
+  // Map uses full width (HUD is HTML overlay now), bottom 3 rows for sector info
+  const screenX = Math.floor(term.cols / 2);
+  const screenY = term.rows - 3;
   return { screenX: Math.max(1, screenX), screenY: Math.max(1, screenY) };
 }
 
@@ -212,9 +259,10 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
       const colPos = sx * 2; // 2 columns per cell (matching C)
 
       if (!sector) {
-        // Fog of war — dark/blank
-        term.setCell(colPos, sy, { ch: ' ', fg: CURSES_COLORS.black, bg: CURSES_COLORS.black });
-        term.setCell(colPos + 1, sy, { ch: ' ', fg: CURSES_COLORS.black, bg: CURSES_COLORS.black });
+        // Fog of war — themed
+        const theme = getTheme(state.themeId);
+        term.setCell(colPos, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
+        term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
         continue;
       }
 
@@ -222,22 +270,24 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
         sector, state.displayMode, nationId,
         state.nation.mark, nationMarks, nationRaces,
       );
-      const fg = getSectorFgColor(sector, state.displayMode, nationId);
-      const inverse = shouldHighlight(sector, state.highlightMode, nationId, state, absX, absY);
+      const isHighlighted = shouldHighlight(sector, state.highlightMode, nationId, state, absX, absY);
 
-      term.setCell(colPos, sy, {
-        ch,
-        fg,
-        bg: CURSES_COLORS.black,
-        inverse,
-        bold: false,
-      });
-      // Second column — blank or second display
-      term.setCell(colPos + 1, sy, {
-        ch: ' ',
-        fg: CURSES_COLORS.black,
-        bg: inverse ? fg : CURSES_COLORS.black,
-      });
+      // Get style from theme
+      const theme = getTheme(state.themeId);
+      const style = getThemedSectorStyle(theme, sector, state.displayMode, nationId);
+
+      if (isHighlighted) {
+        if (theme.highlightStyle === 'inverse') {
+          term.setCell(colPos, sy, { ch, fg: style.fg, bg: style.bg, inverse: true, bold: style.bold });
+          term.setCell(colPos + 1, sy, { ch: ' ', fg: style.bg, bg: style.fg });
+        } else {
+          term.setCell(colPos, sy, { ch, fg: style.fg, bg: theme.highlightBg, bold: style.bold });
+          term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.highlightBg, bg: theme.highlightBg });
+        }
+      } else {
+        term.setCell(colPos, sy, { ch, fg: style.fg, bg: style.bg, bold: style.bold, inverse: false });
+        term.setCell(colPos + 1, sy, { ch: ' ', fg: style.bg, bg: style.bg });
+      }
     }
   }
 }

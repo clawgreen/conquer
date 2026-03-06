@@ -233,17 +233,21 @@ export class LobbyScreen {
   }
 
   private async renderGameList(): Promise<void> {
-    // Show notification bell (T432)
-    if (!this.notifBell) {
-      this.notifBell = new NotificationBell(document.body, this.client);
-    }
+    // Notification bell is attached after render (needs DOM element)
 
     this.container.innerHTML = `
-      <h1>CONQUER</h1>
-      <p style="color:#55ff55;">Welcome, ${localStorage.getItem('conquer_username') ?? 'player'}!</p>
-      <div style="position:absolute;top:10px;right:10px;display:flex;gap:8px;">
-        <button id="btn-profile" style="font-family:inherit;background:#222;color:#55ffff;border:1px solid #55ffff;padding:6px 12px;cursor:pointer;">⚡ Profile</button>
-        <button id="btn-logout" style="font-family:inherit;background:#222;color:#ff5555;border:1px solid #ff5555;padding:6px 12px;cursor:pointer;">Logout</button>
+      <header style="position:sticky;top:0;z-index:100;background:#0a0a0a;border-bottom:1px solid #222;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
+        <div style="color:#55ff55;font-weight:bold;font-size:16px;letter-spacing:2px;white-space:nowrap;">CONQUER</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="color:#555;font-size:12px;">${localStorage.getItem('conquer_username') ?? ''}</span>
+          <button id="btn-profile" style="font-family:inherit;background:none;color:#55ffff;border:1px solid #333;padding:6px 12px;cursor:pointer;font-size:12px;border-radius:3px;">Profile</button>
+          <span id="bell-slot"></span>
+          <button id="btn-logout" style="font-family:inherit;background:none;color:#ff5555;border:1px solid #333;padding:6px 12px;cursor:pointer;font-size:12px;border-radius:3px;">Logout</button>
+        </div>
+      </header>
+      <div style="text-align:center;padding:20px 0 10px;">
+        <h1 style="margin:0;font-size:28px;color:#55ff55;letter-spacing:6px;text-shadow:0 0 20px #003300;">⚔ CONQUER ⚔</h1>
+        <p style="color:#338833;margin:4px 0 0;font-size:11px;letter-spacing:2px;">A Strategy Game of Strife and Diplomacy</p>
       </div>
 
       <div class="section">
@@ -257,50 +261,67 @@ export class LobbyScreen {
         <div id="game-list" class="game-list">Loading...</div>
       </div>
 
-      <div id="join-section" class="section" style="display:none;">
-        <h2>Join Game</h2>
-        <div id="join-game-name" style="color:#55ffff;margin-bottom:10px;"></div>
-        <div class="form-row">
-          <label>Nation:</label>
-          <input id="join-nation" type="text" placeholder="nation name" maxlength="9">
+      <div id="join-modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:center;justify-content:center;">
+        <div id="join-section" style="background:#001100;border:2px solid #55ff55;border-radius:8px;padding:16px;width:90%;max-width:360px;max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h2 style="margin:0;color:#55ff55;font-size:18px;">⚔ Join Game</h2>
+            <button id="btn-join-close" style="background:none;border:1px solid #55ff55;color:#55ff55;font-size:20px;cursor:pointer;padding:2px 8px;line-height:1;">✕</button>
+          </div>
+          <div id="join-game-name" style="color:#55ffff;margin-bottom:12px;font-size:14px;"></div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+            <div>
+              <label style="display:block;margin-bottom:2px;color:#aaffaa;font-size:12px;">Nation Name</label>
+              <input id="join-nation" type="text" placeholder="nation name" maxlength="9" style="width:100%;padding:8px;background:#002200;color:#55ff55;border:1px solid #338833;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:2px;color:#aaffaa;font-size:12px;">Leader Name</label>
+              <input id="join-leader" type="text" placeholder="leader name" maxlength="9" style="width:100%;padding:8px;background:#002200;color:#55ff55;border:1px solid #338833;font-family:inherit;box-sizing:border-box;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="display:block;margin-bottom:2px;color:#aaffaa;font-size:12px;">Race</label>
+                <select id="join-race" style="width:100%;padding:8px;background:#002200;color:#55ff55;border:1px solid #338833;font-family:inherit;">
+                  <option value="H">Human</option>
+                  <option value="E">Elf</option>
+                  <option value="D">Dwarf</option>
+                  <option value="O">Orc</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;margin-bottom:2px;color:#aaffaa;font-size:12px;">Class</label>
+                <select id="join-class" style="width:100%;padding:8px;background:#002200;color:#55ff55;border:1px solid #338833;font-family:inherit;">
+                  <option value="1">King</option>
+                  <option value="2">Emperor</option>
+                  <option value="3">Wizard</option>
+                  <option value="4">Priest</option>
+                  <option value="6">Trader</option>
+                  <option value="7">Warlord</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style="display:block;margin-bottom:2px;color:#aaffaa;font-size:12px;">Map Mark</label>
+              <input id="join-mark" type="text" placeholder="*" maxlength="1" value="*" style="width:50px;padding:8px;background:#002200;color:#55ff55;border:1px solid #338833;font-family:inherit;text-align:center;">
+            </div>
+          </div>
+          <button id="btn-join" style="width:100%;padding:14px;font-size:16px;background:#004400;color:#55ff55;border:2px solid #55ff55;cursor:pointer;font-family:inherit;font-weight:bold;border-radius:4px;">⚔ JOIN GAME</button>
+          <div id="join-error" class="error" style="margin-top:8px;color:#ff5555;"></div>
         </div>
-        <div class="form-row">
-          <label>Leader:</label>
-          <input id="join-leader" type="text" placeholder="leader name" maxlength="9">
-        </div>
-        <div class="form-row">
-          <label>Race:</label>
-          <select id="join-race">
-            <option value="H">Human</option>
-            <option value="E">Elf</option>
-            <option value="D">Dwarf</option>
-            <option value="O">Orc</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Class:</label>
-          <select id="join-class">
-            <option value="1">King</option>
-            <option value="2">Emperor</option>
-            <option value="3">Wizard</option>
-            <option value="4">Priest</option>
-            <option value="6">Trader</option>
-            <option value="7">Warlord</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Mark:</label>
-          <input id="join-mark" type="text" placeholder="*" maxlength="1" value="*" style="width:40px;">
-        </div>
-        <button id="btn-join">Join</button>
-        <div id="join-error" class="error"></div>
       </div>
     `;
+
+    // Attach notification bell inline in header
+    const bellSlot = document.getElementById('bell-slot');
+    if (bellSlot && !this.notifBell) {
+      this.notifBell = new NotificationBell(bellSlot, this.client);
+    }
 
     document.getElementById('btn-logout')!.addEventListener('click', () => {
       localStorage.removeItem('conquer_token');
       localStorage.removeItem('conquer_user_id');
       localStorage.removeItem('conquer_username');
+      localStorage.removeItem('conquer_game_id');
+      localStorage.removeItem('conquer_nation_id');
       if (this.notifBell) { this.notifBell.destroy(); this.notifBell = null; }
       this.isLoggedIn = false;
       this.render();
@@ -316,6 +337,16 @@ export class LobbyScreen {
     document.getElementById('btn-refresh')!.addEventListener('click', () => this.loadGames());
     document.getElementById('btn-join')!.addEventListener('click', () => this.joinGame());
 
+    // Modal close handlers
+    document.getElementById('btn-join-close')!.addEventListener('click', () => {
+      document.getElementById('join-modal-overlay')!.style.display = 'none';
+    });
+    document.getElementById('join-modal-overlay')!.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('join-modal-overlay')) {
+        document.getElementById('join-modal-overlay')!.style.display = 'none';
+      }
+    });
+
     this.loadGames();
   }
 
@@ -329,27 +360,45 @@ export class LobbyScreen {
         listEl.innerHTML = '<p style="color:#555;">No games yet. Create one!</p>';
         return;
       }
-      listEl.innerHTML = games.map(g => `
+      listEl.innerHTML = games.map(g => {
+        const isInGame = g.my_nation_id != null && g.my_nation_id >= 0;
+        const actionBtn = isInGame
+          ? `<button class="btn-resume-game" data-id="${g.id}" data-nation="${g.my_nation_id}" style="font-family:inherit;background:#003300;color:#55ff55;border:2px solid #55ff55;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:bold;">▶ Resume</button>`
+          : `<button class="btn-join-game" data-id="${g.id}" data-name="${g.name}" style="font-family:inherit;background:#111;color:#55ff55;border:1px solid #338833;padding:4px 8px;cursor:pointer;font-size:12px;">⚔ Join</button>`;
+        return `
         <div class="game-item" data-id="${g.id}">
           <div>
             <span class="game-name">${g.name}</span>
             <span class="game-status">[${g.status}] Turn ${g.current_turn} | ${g.player_count} players</span>
           </div>
-          <div style="display:flex;gap:4px;">
-            <button class="btn-join-game" data-id="${g.id}" data-name="${g.name}">Join</button>
-            <button class="btn-spectate" data-id="${g.id}" style="font-family:inherit;background:#111;color:#aaa;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">👁 Watch</button>
+          <div style="display:flex;gap:4px;align-items:center;">
+            ${actionBtn}
+            <button class="btn-spectate" data-id="${g.id}" style="font-family:inherit;background:#111;color:#aaa;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">👁</button>
             <button class="btn-admin" data-id="${g.id}" style="font-family:inherit;background:#111;color:#ffff55;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">⚙</button>
             <button class="btn-invites" data-id="${g.id}" style="font-family:inherit;background:#111;color:#55ffff;border:1px solid #555;padding:4px 8px;cursor:pointer;font-size:12px;">📨</button>
           </div>
         </div>
-      `).join('');
+      `;}).join('');
 
+      // Resume buttons — go straight to game
+      listEl.querySelectorAll('.btn-resume-game').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const el = e.currentTarget as HTMLElement;
+          const gameId = el.dataset.id!;
+          const nationId = parseInt(el.dataset.nation!);
+          this.container.remove();
+          this.onGameStart(gameId, nationId);
+        });
+      });
+
+      // Join buttons — show modal
       listEl.querySelectorAll('.btn-join-game').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const el = e.target as HTMLElement;
           this.joinGameId = el.dataset.id!;
           document.getElementById('join-game-name')!.textContent = el.dataset.name ?? '';
-          document.getElementById('join-section')!.style.display = 'block';
+          const overlay = document.getElementById('join-modal-overlay')!;
+          overlay.style.display = 'flex';
         });
       });
 

@@ -49,6 +49,10 @@ function showGame(gameId: string, nationId: number): void {
   }
   app.innerHTML = '';
 
+  // Persist active game so refresh resumes it
+  localStorage.setItem('conquer_game_id', gameId);
+  localStorage.setItem('conquer_nation_id', String(nationId));
+
   currentScreen = new GameScreen(app, client, gameId, nationId);
 }
 
@@ -61,6 +65,20 @@ if (inviteMatch) {
     showGame(gameId, nationId);
   }) as any;
 } else {
-  // Start with lobby
-  showLobby();
+  // Resume active game if we have one saved
+  const savedGameId = localStorage.getItem('conquer_game_id');
+  const savedNationId = localStorage.getItem('conquer_nation_id');
+  if (savedToken && savedGameId && savedNationId) {
+    // Verify the game still exists before resuming
+    client.getGame(savedGameId).then(() => {
+      showGame(savedGameId, parseInt(savedNationId));
+    }).catch(() => {
+      // Game gone — clear and show lobby
+      localStorage.removeItem('conquer_game_id');
+      localStorage.removeItem('conquer_nation_id');
+      showLobby();
+    });
+  } else {
+    showLobby();
+  }
 }

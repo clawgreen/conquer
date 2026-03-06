@@ -55,6 +55,10 @@ export interface GameState {
 
   // Connection
   connected: boolean;
+
+  // Render theme
+  renderMode: 'classic' | 'enhanced';  // kept for compat
+  themeId: string;
 }
 
 export function createInitialState(): GameState {
@@ -93,6 +97,8 @@ export function createInitialState(): GameState {
     chatUnread: {},
     onlineNations: new Set(),
     connected: false,
+    renderMode: 'classic',
+    themeId: 'classic-green',
   };
 }
 

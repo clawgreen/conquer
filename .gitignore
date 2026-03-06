@@ -6,3 +6,4 @@ conquer
 oracle/oracle
 snapshots/*.json
 target/
+conquer-ss*.png

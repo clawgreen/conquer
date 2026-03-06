@@ -16,7 +16,7 @@ export class NotificationBell {
     this.client = client;
 
     this.container = document.createElement('div');
-    this.container.style.cssText = `position:fixed;top:10px;right:60px;z-index:200;`;
+    this.container.style.cssText = `position:relative;z-index:200;display:inline-block;`;
 
     this.bell = document.createElement('button');
     this.bell.style.cssText = `

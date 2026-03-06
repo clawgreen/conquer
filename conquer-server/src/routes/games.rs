@@ -73,12 +73,22 @@ pub async fn create_game(
     Ok(Json(game))
 }
 
+/// Game list entry with optional user's nation info
+#[derive(Serialize)]
+pub struct GameListEntry {
+    #[serde(flatten)]
+    pub info: GameInfo,
+    pub my_nation_id: Option<u8>,
+}
+
 /// GET /api/games — List games (T289)
 pub async fn list_games(
     State(state): State<AppState>,
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<ListGamesQuery>,
-) -> Result<Json<Vec<GameInfo>>, ApiError> {
+) -> Result<Json<Vec<GameListEntry>>, ApiError> {
+    let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims).ok();
+
     let status_filter = query.status.and_then(|s| match s.as_str() {
         "waiting" | "waiting_for_players" => Some(GameStatus::WaitingForPlayers),
         "active" => Some(GameStatus::Active),
@@ -88,7 +98,17 @@ pub async fn list_games(
     });
 
     let games = state.store.list_games(status_filter).await;
-    Ok(Json(games))
+
+    let mut entries = Vec::new();
+    for info in games {
+        let my_nation_id = if let Some(uid) = user_id {
+            state.store.get_player_nation_id(info.id, uid).await.ok()
+        } else {
+            None
+        };
+        entries.push(GameListEntry { info, my_nation_id });
+    }
+    Ok(Json(entries))
 }
 
 /// GET /api/games/:id — Game details (T290)
