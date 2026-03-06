@@ -36,6 +36,20 @@ const CMD_GROUPS: CmdGroup[] = [
     ],
   },
   {
+    name: 'Layers',
+    collapsed: true,
+    cmds: [
+      { label: '🗺 Terrain', cmd: 'layer_terrain' },
+      { label: '🌿 Vegetation', cmd: 'layer_vegetation' },
+      { label: '🏘 Designations', cmd: 'layer_designation' },
+      { label: '💎 Resources', cmd: 'layer_resources' },
+      { label: '🏳 Ownership', cmd: 'layer_ownership' },
+      { label: '⚔ Units', cmd: 'layer_units' },
+      { label: '📊 All Layers', cmd: 'layer_all' },
+      { label: '🗺 Mode Default', cmd: 'layer_mode_default' },
+    ],
+  },
+  {
     name: 'Highlight',
     cmds: [
       { label: 'Own Sectors', cmd: 'hl_own', key: 'o' },

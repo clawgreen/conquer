@@ -60,6 +60,7 @@ export interface GameState {
   renderMode: 'classic' | 'enhanced';  // kept for compat
   themeId: string;
   tilesetId: string;
+  layerOverrides: Record<string, boolean> | null; // null = use mode defaults
 }
 
 export function createInitialState(): GameState {
@@ -100,6 +101,7 @@ export function createInitialState(): GameState {
     connected: false,
     renderMode: 'classic',
     tilesetId: localStorage.getItem('conquer_tileset') ?? 'ascii',
+    layerOverrides: null,
     themeId: 'classic-green',
   };
 }

@@ -18,6 +18,7 @@ import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
 import { registerTileset, getTileset as getTilesetById } from '../renderer/tilesets';
+import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
 
 export class GameScreen {
@@ -400,6 +401,27 @@ export class GameScreen {
       return;
     }
 
+    // Layer toggle commands
+    if (cmd.startsWith('layer_')) {
+      const layerName = cmd.substring(6);
+      if (layerName === 'all') {
+        this.state.layerOverrides = { terrain: true, vegetation: true, designation: true, resources: true, ownership: true, units: true, cursor: true };
+        this.setStatus('All layers ON');
+      } else if (layerName === 'mode_default') {
+        this.state.layerOverrides = null;
+        this.setStatus('Layers: mode default');
+      } else {
+        // Toggle individual layer
+        if (!this.state.layerOverrides) {
+          this.state.layerOverrides = { ...layersForMode(this.state.displayMode) };
+        }
+        const current = (this.state.layerOverrides as any)[layerName] ?? false;
+        (this.state.layerOverrides as any)[layerName] = !current;
+        this.setStatus(`${layerName}: ${!current ? 'ON' : 'OFF'}`);
+      }
+      return;
+    }
+
     // UI theme commands
     if (cmd.startsWith('uitheme_')) {
       const uiId = cmd.substring(8);
@@ -609,14 +631,25 @@ export class GameScreen {
     const isDirectCanvas = tsId !== 'ascii' && tsId !== 'unicode';
 
     if (isDirectCanvas) {
-      // Emoji/image tilesets: clear canvas, render tiles directly, then overlay text
       const ctx = this.term.getContext();
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-      renderMap(this.term, this.state);
+
+      const ts = getTilesetById(tsId);
+      const layers: LayerConfig = this.state.layerOverrides
+        ? { ...DEFAULT_LAYERS, ...this.state.layerOverrides, cursor: true } as LayerConfig
+        : layersForMode(this.state.displayMode);
+
+      // Use compositor for multi-layer rendering
+      if (this.state.layerOverrides || layers.vegetation || layers.designation) {
+        renderCompositedMap(ctx, this.state, ts, this.term.fontSize, ctx.canvas.width, ctx.canvas.height, layers);
+      } else {
+        // Single-mode rendering (data overlays like food/move/defense)
+        renderMap(this.term, this.state);
+      }
 
       // Blinking cursor overlay
-      renderTilesetCursor(ctx, this.state, getTilesetById(tsId), this.term.fontSize);
+      renderTilesetCursor(ctx, this.state, ts, this.term.fontSize);
 
       // Render bottom panel as text overlay on canvas
       const fontSize = this.term.fontSize;
