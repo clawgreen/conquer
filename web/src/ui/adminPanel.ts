@@ -2,6 +2,7 @@
 
 import { GameClient } from '../network/client';
 import { AdminPlayerInfo, TurnSnapshotInfo, GameInfo } from '../types';
+import { showConfirm, showAlert } from './modalDialog';
 
 export class AdminPanel {
   private container: HTMLDivElement;
@@ -121,18 +122,18 @@ export class AdminPanel {
     document.getElementById('btn-delete')!.addEventListener('click', () => this.deleteGame());
 
     this.container.querySelectorAll('.kick-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const nid = parseInt((e.target as HTMLElement).dataset.nid!);
-        if (confirm(`Kick nation ${nid}? This cannot be undone.`)) {
+        if (await showConfirm(`Kick nation ${nid}? This cannot be undone.`, { title: 'Kick Player', danger: true, confirmText: 'Kick' })) {
           this.kickPlayer(nid);
         }
       });
     });
 
     this.container.querySelectorAll('.rollback-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const turn = parseInt((e.target as HTMLElement).dataset.turn!);
-        if (confirm(`Rollback to turn ${turn}? All progress after will be lost.`)) {
+        if (await showConfirm(`Rollback to turn ${turn}? All progress after will be lost.`, { title: 'Rollback', danger: true, confirmText: 'Rollback' })) {
           this.rollback(turn);
         }
       });
@@ -170,7 +171,7 @@ export class AdminPanel {
       await this.client.adminKickPlayer(this.gameId, nationId);
       this.load();
     } catch (e) {
-      alert(`Kick failed: ${(e as Error).message}`);
+      await showAlert(`Kick failed: ${(e as Error).message}`, 'Error');
     }
   }
 
@@ -179,19 +180,19 @@ export class AdminPanel {
       await this.client.adminRollback(this.gameId, turn);
       this.load();
     } catch (e) {
-      alert(`Rollback failed: ${(e as Error).message}`);
+      await showAlert(`Rollback failed: ${(e as Error).message}`, 'Error');
     }
   }
 
   private async deleteGame(): Promise<void> {
-    if (!confirm('DELETE this game permanently? This cannot be undone!')) return;
-    if (!confirm('Are you really sure? All game data will be lost forever.')) return;
+    if (!await showConfirm('DELETE this game permanently? This cannot be undone!', { title: '🗑 Delete Game', danger: true, confirmText: 'Delete' })) return;
+    if (!await showConfirm('Are you really sure? All game data will be lost forever.', { title: '⚠ Final Warning', danger: true, confirmText: 'Delete Forever' })) return;
     try {
       await this.client.adminDeleteGame(this.gameId);
-      alert('Game deleted.');
+      await showAlert('Game deleted.', 'Done');
       this.onClose();
     } catch (e) {
-      alert(`Delete failed: ${(e as Error).message}`);
+      await showAlert(`Delete failed: ${(e as Error).message}`, 'Error');
     }
   }
 

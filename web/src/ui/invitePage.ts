@@ -2,6 +2,7 @@
 
 import { GameClient } from '../network/client';
 import { InviteInfo, RACE_NAMES, CLASS_NAMES } from '../types';
+import { showAlert } from './modalDialog';
 
 export class InviteManager {
   private container: HTMLDivElement;
@@ -96,7 +97,7 @@ export class InviteManager {
           await this.client.revokeInvite(this.gameId, code);
           this.load();
         } catch (err) {
-          alert(`Revoke failed: ${(err as Error).message}`);
+          showAlert(`Revoke failed: ${(err as Error).message}`, 'Error');
         }
       });
     });

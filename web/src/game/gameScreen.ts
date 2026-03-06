@@ -18,6 +18,7 @@ import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
 import { KeybindingsManager, KeybindingsModal } from '../ui/keybindingsModal';
+import { showConfirm, showAlert } from '../ui/modalDialog';
 import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
@@ -492,7 +493,10 @@ export class GameScreen {
     // Exit movement mode first
     this.state.movementMode = false;
     // Confirm
-    if (!confirm('End your turn? All army movements will be submitted.')) return;
+    const yes = await showConfirm('End your turn? All army movements will be submitted.', {
+      title: '⚔ End Turn', confirmText: 'End Turn', cancelText: 'Keep Playing',
+    });
+    if (!yes) return;
     try {
       await this.client.endTurn(this.state.gameId);
       this.state.isDone = true;

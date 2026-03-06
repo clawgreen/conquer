@@ -8,6 +8,7 @@ import { GameCreationWizard } from './gameCreationWizard';
 import { AdminPanel } from './adminPanel';
 import { InviteManager } from './invitePage';
 import { NotificationBell } from './notifications';
+import { showAlert } from './modalDialog';
 
 // Terminal-retro styles for the lobby
 const LOBBY_CSS = `
@@ -411,7 +412,7 @@ export class LobbyScreen {
             // Connect as spectator — for now just go to game with nation -1
             this.onGameStart(gameId, -1);
           } catch (err) {
-            alert(`Spectate failed: ${(err as Error).message}`);
+            showAlert(`Spectate failed: ${(err as Error).message}`, 'Error');
           }
         });
       });
