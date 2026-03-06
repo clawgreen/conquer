@@ -6,6 +6,7 @@ import { DisplayMode, HighlightMode } from '../types';
 
 export type GameAction =
   | { type: 'move_cursor'; dx: number; dy: number }
+  | { type: 'move_or_cursor'; dx: number; dy: number }
   | { type: 'center_map' }
   | { type: 'jump_capitol' }
   | { type: 'set_display'; mode: DisplayMode }
@@ -14,6 +15,8 @@ export type GameAction =
   | { type: 'select_prev_army' }
   | { type: 'toggle_army_navy' }
   | { type: 'move_army'; dx: number; dy: number }
+  | { type: 'toggle_movement_mode' }
+  | { type: 'exit_movement_mode' }
   | { type: 'end_turn' }
   | { type: 'show_scores' }
   | { type: 'show_news' }
@@ -61,17 +64,11 @@ export class InputHandler {
     const key = e.key;
     const shift = e.shiftKey;
 
-    // Shift+Arrow = move selected army; Arrow = move cursor
-    if (shift && key === 'ArrowUp') return { type: 'move_army', dx: 0, dy: -1 };
-    if (shift && key === 'ArrowDown') return { type: 'move_army', dx: 0, dy: 1 };
-    if (shift && key === 'ArrowLeft') return { type: 'move_army', dx: -1, dy: 0 };
-    if (shift && key === 'ArrowRight') return { type: 'move_army', dx: 1, dy: 0 };
-
-    // Arrow keys — cursor movement
-    if (key === 'ArrowUp' || key === 'k') return { type: 'move_cursor', dx: 0, dy: -1 };
-    if (key === 'ArrowDown' || key === 'j') return { type: 'move_cursor', dx: 0, dy: 1 };
-    if (key === 'ArrowLeft' || key === 'h') return { type: 'move_cursor', dx: -1, dy: 0 };
-    if (key === 'ArrowRight' || key === 'l') return { type: 'move_cursor', dx: 1, dy: 0 };
+    // Arrow keys — in movement mode they move the army, otherwise the cursor
+    if (key === 'ArrowUp' || key === 'k') return { type: 'move_or_cursor', dx: 0, dy: -1 };
+    if (key === 'ArrowDown' || key === 'j') return { type: 'move_or_cursor', dx: 0, dy: 1 };
+    if (key === 'ArrowLeft' || key === 'h') return { type: 'move_or_cursor', dx: -1, dy: 0 };
+    if (key === 'ArrowRight' || key === 'l') return { type: 'move_or_cursor', dx: 1, dy: 0 };
 
     // Diagonal movement (vi keys)
     if (key === 'y') return { type: 'set_highlight', mode: HighlightMode.YourArmy }; // y = your army highlight
@@ -88,7 +85,7 @@ export class InputHandler {
     if (key === 'f') return { type: 'set_display', mode: DisplayMode.Food };
     if (key === 'c') return { type: 'set_display', mode: DisplayMode.Contour };
     if (key === 'v') return { type: 'set_display', mode: DisplayMode.Vegetation };
-    if (key === 'm' && !shift) return { type: 'set_display', mode: DisplayMode.Metal };
+    // 'm' is movement mode (original game), metal display via sidebar only
     // 'j' is cursor down (vi), so we use 'J' for jewels/gold display
     if (key === 'J' || (key === 'j' && shift)) return { type: 'set_display', mode: DisplayMode.Gold };
     if (key === 'i') return { type: 'set_display', mode: DisplayMode.Items };
@@ -108,6 +105,10 @@ export class InputHandler {
     // Center map
     if (key === 'C' || (key === 'c' && shift && e.ctrlKey)) return { type: 'center_map' };
     if (key === 'g') return { type: 'jump_capitol' };
+
+    // Movement mode (like original: m = enter move mode, space = done)
+    if (key === 'm' && !shift) return { type: 'toggle_movement_mode' };
+    if (key === ' ') return { type: 'exit_movement_mode' };
 
     // Commands
     if (key === 'R' && shift) return { type: 'redesignate' };

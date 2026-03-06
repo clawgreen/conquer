@@ -253,6 +253,41 @@ export class GameScreen {
         break;
       }
 
+      case 'move_or_cursor':
+        if (this.state.movementMode) {
+          // In movement mode: arrows move the selected army
+          this.handleAction({ type: 'move_army', dx: action.dx, dy: action.dy });
+        } else {
+          // Normal mode: arrows move cursor
+          this.handleAction({ type: 'move_cursor', dx: action.dx, dy: action.dy });
+        }
+        break;
+
+      case 'toggle_movement_mode': {
+        // Select army at cursor position, enter movement mode
+        const curMapX = this.state.cursorX + this.state.xOffset;
+        const curMapY = this.state.cursorY + this.state.yOffset;
+        const armyAtCursor = this.state.armies.findIndex(
+          a => a.soldiers > 0 && a.x === curMapX && a.y === curMapY
+        );
+        if (armyAtCursor >= 0) {
+          this.state.selectedArmy = armyAtCursor;
+          this.state.movementMode = true;
+          const army = this.state.armies[armyAtCursor];
+          this.setStatus(`🚩 MOVEMENT MODE — Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves left. Arrows=move, Space=done`);
+        } else {
+          this.setStatus('No army at cursor position. Move cursor to an army and press M.');
+        }
+        break;
+      }
+
+      case 'exit_movement_mode':
+        if (this.state.movementMode) {
+          this.state.movementMode = false;
+          this.setStatus('Movement done.');
+        }
+        break;
+
       case 'center_map':
         this.centerOn(
           this.state.cursorX + this.state.xOffset,
@@ -283,7 +318,10 @@ export class GameScreen {
           this.state.selectedArmy = (this.state.selectedArmy + 1) % active.length;
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
-          this.setStatus(`Army ${army.index}: ${army.soldiers} soldiers`);
+          this.state.movementMode = true;
+          this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
+        } else {
+          this.setStatus('No armies available.');
         }
         break;
       }
@@ -294,7 +332,8 @@ export class GameScreen {
           this.state.selectedArmy = (this.state.selectedArmy - 1 + active.length) % active.length;
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
-          this.setStatus(`Army ${army.index}: ${army.soldiers} soldiers`);
+          this.state.movementMode = true;
+          this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
         }
         break;
       }
@@ -310,11 +349,17 @@ export class GameScreen {
           const army = active[this.state.selectedArmy];
           const nx = army.x + action.dx;
           const ny = army.y + action.dy;
-          // Submit move action
+          // Submit move action to server
           this.submitAction({
             MoveArmy: { nation: this.state.nationId, army: army.index, x: nx, y: ny }
           });
-          this.setStatus(`Moving army ${army.index} to (${nx},${ny})`);
+          // Optimistically update local position and follow with cursor
+          army.x = nx;
+          army.y = ny;
+          this.centerOn(nx, ny);
+          this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). Arrows=move, Space=done`);
+        } else {
+          this.setStatus('No army selected. Press Tab to select, or move cursor to army and press M.');
         }
         break;
       }
@@ -441,6 +486,10 @@ export class GameScreen {
 
   private async doEndTurn(): Promise<void> {
     if (!this.state.gameId) return;
+    // Exit movement mode first
+    this.state.movementMode = false;
+    // Confirm
+    if (!confirm('End your turn? All army movements will be submitted.')) return;
     try {
       await this.client.endTurn(this.state.gameId);
       this.state.isDone = true;

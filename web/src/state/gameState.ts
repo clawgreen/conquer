@@ -38,6 +38,7 @@ export interface GameState {
   xOffset: number;
   yOffset: number;
   selectedArmy: number;  // index into armies array, -1 = none
+  movementMode: boolean; // true = arrows move army, false = arrows move cursor
   selectedNavy: number;
   armyOrNavy: 'army' | 'navy';
   notifications: string[];
@@ -86,6 +87,7 @@ export function createInitialState(): GameState {
     xOffset: 0,
     yOffset: 0,
     selectedArmy: -1,
+    movementMode: false,
     selectedNavy: -1,
     armyOrNavy: 'army',
     notifications: [],
