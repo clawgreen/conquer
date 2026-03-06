@@ -225,7 +225,13 @@ function getThemedSectorStyle(
   return terrainStyle(theme, sector.altitude);
 }
 
-/** Get the tileset tile for a sector based on display mode */
+// Number tiles for numeric display modes (food, people, gold, metal, defense, move)
+function numberTile(n: number, maxChar: string = '+'): TileDef {
+  const s = n >= 10 ? maxChar : String(n);
+  return { type: 'emoji', value: ['0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'][n] ?? (n >= 10 ? '🔟' : '❓') };
+}
+
+/** Get the tileset tile for a sector based on display mode — per-mode semantic mapping */
 function getTileForSector(
   ts: TileSet,
   sector: Sector,
@@ -235,25 +241,107 @@ function getTileForSector(
   absX: number,
   absY: number,
 ): TileDef | null {
-  // For non-char tilesets, map by terrain/designation indices
-  if (ts.tileType !== 'char') {
-    // Check army overlay first
-    const hasArmy = state.armies.some(a => a.soldiers > 0 && a.x === absX && a.y === absY);
-    if (hasArmy) return ts.army;
+  // Char tilesets use the existing getDisplayChar path
+  if (ts.tileType === 'char') return null;
 
-    // Designation mode: show designation for owned sectors
-    if (dmode === DisplayMode.Designation && sector.owner !== 0) {
-      return ts.designation[sector.designation] ?? ts.unknown;
-    }
+  // Army overlay — always takes priority
+  const hasArmy = state.armies.some(a => a.soldiers > 0 && a.x === absX && a.y === absY);
+  if (hasArmy) return ts.army;
 
-    // Default: show by elevation, overlay vegetation for veg mode
-    if (dmode === DisplayMode.Vegetation) {
+  // Per-mode mapping based on sector DATA, not display character
+  switch (dmode) {
+    case DisplayMode.Vegetation:
+      // Show what grows here
       return ts.vegetation[sector.vegetation] ?? ts.unknown;
+
+    case DisplayMode.Designation:
+      if (sector.owner === 0) {
+        // Unowned: show terrain (habitable → elevation, else vegetation)
+        if (tofood(sector) !== 0) return ts.elevation[sector.altitude] ?? ts.unknown;
+        return ts.vegetation[sector.vegetation] ?? ts.unknown;
+      }
+      // Owned: show what it's been developed into
+      return ts.designation[sector.designation] ?? ts.unknown;
+
+    case DisplayMode.Contour:
+      // Show terrain height
+      return ts.elevation[sector.altitude] ?? ts.unknown;
+
+    case DisplayMode.Food: {
+      if (sector.altitude === 0) return ts.elevation[0]; // water
+      const food = tofood(sector);
+      if (food === 0) return ts.vegetation[sector.vegetation] ?? ts.unknown;
+      return numberTile(food);
     }
 
-    return ts.elevation[sector.altitude] ?? ts.unknown;
+    case DisplayMode.Nation:
+      if (sector.owner === 0) return ts.elevation[sector.altitude] ?? ts.unknown;
+      // For nations, show their mark — fall back to a colored marker
+      return { type: 'emoji', value: sector.owner === nationId ? '🟢' : '🔴' };
+
+    case DisplayMode.Race:
+      if (sector.owner === 0) return ts.elevation[sector.altitude] ?? ts.unknown;
+      // Show race icon
+      const raceIcons: Record<string, string> = {
+        'H': '🧑', 'O': '👹', 'E': '🧝', 'D': '⛏️', 'L': '🦎',
+        'P': '🏴‍☠️', 'S': '🗡️', 'N': '🐪', 'G': '👁️',
+      };
+      const race = state.publicNations.find(n => n.nation_id === sector.owner)?.race ?? '?';
+      return { type: 'emoji', value: raceIcons[race] ?? '❓' };
+
+    case DisplayMode.Move: {
+      if (sector.altitude === 0) return ts.elevation[0]; // water
+      if (sector.altitude === 1) return { type: 'emoji', value: '🚫' }; // impassable peak
+      // Movement cost by altitude
+      const costs = [0, 0, 4, 3, 2]; // rough approx for human
+      return numberTile(costs[sector.altitude] ?? 2);
+    }
+
+    case DisplayMode.Defense: {
+      if (sector.altitude === 0) return ts.elevation[0];
+      let bonus = 0;
+      if (sector.altitude === 2) bonus += 40;
+      else if (sector.altitude === 3) bonus += 20;
+      if (sector.vegetation === 8) bonus += 30; // jungle
+      else if (sector.vegetation === 7) bonus += 20; // forest
+      else if (sector.vegetation === 6) bonus += 10; // wood
+      bonus += sector.fortress * 5;
+      return numberTile(Math.min(9, Math.floor(bonus / 20)));
+    }
+
+    case DisplayMode.People: {
+      if (sector.altitude === 0) return ts.elevation[0];
+      if (sector.people >= 9950) return { type: 'emoji', value: '🏙️' };
+      if (sector.people >= 4950) return { type: 'emoji', value: '🏘️' };
+      if (sector.people >= 950) return { type: 'emoji', value: '🏠' };
+      const popDigit = Math.floor((50 + sector.people) / 100);
+      return numberTile(Math.min(9, popDigit));
+    }
+
+    case DisplayMode.Gold: {
+      if (sector.altitude === 0) return ts.elevation[0];
+      if (tofood(sector) === 0) return { type: 'emoji', value: '🚫' };
+      if (sector.jewels >= 10) return { type: 'emoji', value: '💎' };
+      return numberTile(sector.jewels);
+    }
+
+    case DisplayMode.Metal: {
+      if (sector.altitude === 0) return ts.elevation[0];
+      if (tofood(sector) === 0) return { type: 'emoji', value: '🚫' };
+      if (sector.metal >= 10) return { type: 'emoji', value: '⛏️' };
+      return numberTile(sector.metal);
+    }
+
+    case DisplayMode.Items: {
+      if (sector.altitude === 0) return ts.elevation[0];
+      if (tofood(sector) === 0) return { type: 'emoji', value: '🚫' };
+      if (sector.trade_good < 61) return ts.designation[sector.designation] ?? ts.unknown;
+      return { type: 'emoji', value: '📦' };
+    }
+
+    default:
+      return ts.elevation[sector.altitude] ?? ts.unknown;
   }
-  return null; // char mode falls through to existing logic
 }
 
 /** Calculate viewport screen size based on terminal dimensions */

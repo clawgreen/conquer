@@ -18,6 +18,7 @@ import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
 import { registerTileset } from '../renderer/tilesets';
+import { MapTooltip } from '../ui/mapTooltip';
 
 export class GameScreen {
   private layout: GameLayout;
@@ -29,6 +30,7 @@ export class GameScreen {
   private cmdSidebar: CommandSidebar;
   private statsSidebar: StatsSidebar;
   private mouseHandler: MouseHandler;
+  private tooltip: MapTooltip;
   private state: GameState;
   private animFrame: number = 0;
   private statusMessage: string = '';
@@ -72,10 +74,14 @@ export class GameScreen {
       getFontSize: () => this.term.fontSize,
       setFontSize: (size) => {
         this.term.setFontSize(size);
+        localStorage.setItem('conquer_font_size', String(size));
         this.handleResize();
       },
       getTilesetId: () => this.state.tilesetId ?? 'ascii',
     });
+
+    // Map tooltip
+    this.tooltip = new MapTooltip(this.canvas);
 
     // Left sidebar: commands
     this.cmdSidebar = new CommandSidebar(this.layout.leftBar, (cmd) => this.handleCommand(cmd));
@@ -633,12 +639,16 @@ export class GameScreen {
 
     // Update right sidebar stats
     this.statsSidebar.update(this.state);
+
+    // Update tooltip state
+    this.tooltip.setState(this.state);
   }
 
   destroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
     this.input.destroy();
     this.mouseHandler.destroy();
+    this.tooltip.destroy();
     this.chatPanel.destroy();
     this.cmdSidebar.destroy();
     this.statsSidebar.destroy();
