@@ -131,3 +131,31 @@ export const UI_THEMES: Record<string, UiTheme> = {
 export function getUiTheme(id: string): UiTheme {
   return UI_THEMES[id] ?? UI_THEMES.terminal;
 }
+
+/** Apply UI theme as CSS custom properties on :root for menu styling */
+export function applyUiThemeCss(id: string): void {
+  const t = getUiTheme(id);
+  const root = document.documentElement.style;
+  root.setProperty('--ui-bezel-bg', t.bezelBg);
+  root.setProperty('--ui-bezel-border', t.bezelBorder);
+  root.setProperty('--ui-bezel-shadow', t.bezelShadow);
+  root.setProperty('--ui-bezel-radius', t.bezelRadius);
+  root.setProperty('--ui-screen-glow', t.screenGlow);
+  root.setProperty('--ui-sidebar-bg', t.sidebarBg);
+  root.setProperty('--ui-sidebar-border', t.sidebarBorder);
+  root.setProperty('--ui-sidebar-text', t.sidebarText);
+  root.setProperty('--ui-sidebar-dim', t.sidebarDim);
+  root.setProperty('--ui-sidebar-accent', t.sidebarAccent);
+  root.setProperty('--ui-sidebar-header-bg', t.sidebarHeaderBg);
+  root.setProperty('--ui-btn-bg', t.btnBg);
+  root.setProperty('--ui-btn-text', t.btnText);
+  root.setProperty('--ui-btn-border', t.btnBorder);
+  root.setProperty('--ui-btn-active-bg', t.btnActiveBg);
+  root.setProperty('--ui-btn-active-text', t.btnActiveText);
+  root.setProperty('--ui-btn-hover-bg', t.btnHoverBg);
+  root.setProperty('--ui-header-bg', t.headerBg);
+  root.setProperty('--ui-header-text', t.headerText);
+  root.setProperty('--ui-header-border', t.headerBorder);
+}
+
+export const ALL_UI_THEMES = Object.values(UI_THEMES);

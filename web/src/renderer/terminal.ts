@@ -56,6 +56,9 @@ export class TerminalRenderer {
   get cellH(): number { return this._cellH; }
   get fontSize(): number { return this._fontSize; }
 
+  /** Expose canvas context for direct rendering (emoji/image tilesets) */
+  getContext(): CanvasRenderingContext2D { return this.ctx; }
+
   setFontSize(size: number): void {
     this._fontSize = Math.max(8, Math.min(32, size));
     this.measureCell();

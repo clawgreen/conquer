@@ -11,6 +11,7 @@ import {
   Sector,
 } from '../types';
 import { getTheme, terrainStyle, ThemeDef, SectorStyle } from '../renderer/themes';
+import { TileSet, TileDef, getTileset, getCachedImage, TILESET_ASCII } from '../renderer/tilesets';
 
 // Food value per vegetation type (from conquer-core vegfood)
 const VEGFOOD = [0, 0, 0, 4, 6, 9, 7, 4, 0, 0, 0, 0];
@@ -224,6 +225,37 @@ function getThemedSectorStyle(
   return terrainStyle(theme, sector.altitude);
 }
 
+/** Get the tileset tile for a sector based on display mode */
+function getTileForSector(
+  ts: TileSet,
+  sector: Sector,
+  dmode: DisplayMode,
+  nationId: number,
+  state: GameState,
+  absX: number,
+  absY: number,
+): TileDef | null {
+  // For non-char tilesets, map by terrain/designation indices
+  if (ts.tileType !== 'char') {
+    // Check army overlay first
+    const hasArmy = state.armies.some(a => a.soldiers > 0 && a.x === absX && a.y === absY);
+    if (hasArmy) return ts.army;
+
+    // Designation mode: show designation for owned sectors
+    if (dmode === DisplayMode.Designation && sector.owner !== 0) {
+      return ts.designation[sector.designation] ?? ts.unknown;
+    }
+
+    // Default: show by elevation, overlay vegetation for veg mode
+    if (dmode === DisplayMode.Vegetation) {
+      return ts.vegetation[sector.vegetation] ?? ts.unknown;
+    }
+
+    return ts.elevation[sector.altitude] ?? ts.unknown;
+  }
+  return null; // char mode falls through to existing logic
+}
+
 /** Calculate viewport screen size based on terminal dimensions */
 export function screenSize(term: TerminalRenderer): { screenX: number; screenY: number } {
   // Map uses full width (HUD is HTML overlay now), bottom 3 rows for sector info
@@ -236,6 +268,9 @@ export function screenSize(term: TerminalRenderer): { screenX: number; screenY: 
 export function renderMap(term: TerminalRenderer, state: GameState): void {
   if (!state.mapData || !state.nation) return;
 
+  const ts = getTileset(state.tilesetId ?? 'ascii');
+  const useDirectCanvas = ts.tileType !== 'char';
+
   const { screenX, screenY } = screenSize(term);
   const nationId = state.nationId ?? 0;
 
@@ -246,21 +281,25 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
     nationMarks.set(n.nation_id, n.mark);
     nationRaces.set(n.nation_id, n.race);
   }
-  // Add own nation
   nationMarks.set(nationId, state.nation.mark);
   nationRaces.set(nationId, state.nation.race);
 
+  // For emoji/image tilesets, render directly to canvas context
+  if (useDirectCanvas) {
+    renderTilesetMap(term, state, ts, screenX, screenY, nationId, nationMarks, nationRaces);
+    return;
+  }
+
+  // Classic char-based rendering
+  const theme = getTheme(state.themeId);
   for (let sx = 0; sx < screenX; sx++) {
     for (let sy = 0; sy < screenY; sy++) {
       const absX = sx + state.xOffset;
       const absY = sy + state.yOffset;
       const sector = getSector(state, absX, absY);
-
-      const colPos = sx * 2; // 2 columns per cell (matching C)
+      const colPos = sx * 2;
 
       if (!sector) {
-        // Fog of war — themed
-        const theme = getTheme(state.themeId);
         term.setCell(colPos, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
         term.setCell(colPos + 1, sy, { ch: ' ', fg: theme.fogFg, bg: theme.fogBg });
         continue;
@@ -271,9 +310,6 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
         state.nation.mark, nationMarks, nationRaces,
       );
       const isHighlighted = shouldHighlight(sector, state.highlightMode, nationId, state, absX, absY);
-
-      // Get style from theme
-      const theme = getTheme(state.themeId);
       const style = getThemedSectorStyle(theme, sector, state.displayMode, nationId);
 
       if (isHighlighted) {
@@ -287,6 +323,87 @@ export function renderMap(term: TerminalRenderer, state: GameState): void {
       } else {
         term.setCell(colPos, sy, { ch, fg: style.fg, bg: style.bg, bold: style.bold, inverse: false });
         term.setCell(colPos + 1, sy, { ch: ' ', fg: style.bg, bg: style.bg });
+      }
+    }
+  }
+}
+
+/** Render map using emoji or image tileset directly to canvas */
+function renderTilesetMap(
+  term: TerminalRenderer,
+  state: GameState,
+  ts: TileSet,
+  screenX: number,
+  screenY: number,
+  nationId: number,
+  nationMarks: Map<number, string>,
+  nationRaces: Map<number, string>,
+): void {
+  const ctx = term.getContext();
+  if (!ctx) return;
+
+  const theme = getTheme(state.themeId);
+  const cw = ts.cellWidth;
+  const ch = ts.cellHeight;
+
+  // How many tiles fit in the canvas
+  const canvasW = ctx.canvas.width;
+  const canvasH = ctx.canvas.height;
+  const tilesX = Math.min(screenX, Math.floor(canvasW / cw));
+  const tilesY = Math.min(screenY, Math.floor(canvasH / ch));
+
+  for (let sx = 0; sx < tilesX; sx++) {
+    for (let sy = 0; sy < tilesY; sy++) {
+      const absX = sx + state.xOffset;
+      const absY = sy + state.yOffset;
+      const sector = getSector(state, absX, absY);
+
+      const px = sx * cw;
+      const py = sy * ch;
+
+      if (!sector) {
+        // Fog
+        const fogTile = ts.fog;
+        ctx.fillStyle = theme.fogBg;
+        ctx.fillRect(px, py, cw, ch);
+        if (fogTile.type === 'emoji') {
+          ctx.font = `${ch - 4}px serif`;
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'center';
+          ctx.fillText(fogTile.value, px + cw / 2, py + ch / 2);
+        }
+        continue;
+      }
+
+      const isHighlighted = shouldHighlight(sector, state.highlightMode, nationId, state, absX, absY);
+      const tile = getTileForSector(ts, sector, state.displayMode, nationId, state, absX, absY) ?? ts.unknown;
+
+      // Background
+      const bg = tile.bg ?? theme.mapBg;
+      ctx.fillStyle = isHighlighted ? (theme.highlightBg ?? '#333') : bg;
+      ctx.fillRect(px, py, cw, ch);
+
+      if (tile.type === 'emoji') {
+        ctx.font = `${ch - 4}px serif`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.fillText(tile.value, px + cw / 2, py + ch / 2);
+      } else if (tile.type === 'image') {
+        const img = getCachedImage(tile.value);
+        if (img) {
+          ctx.drawImage(img, px, py, cw, ch);
+        } else {
+          // Fallback: draw placeholder
+          ctx.fillStyle = '#333';
+          ctx.fillRect(px + 2, py + 2, cw - 4, ch - 4);
+        }
+      }
+
+      // Highlight border
+      if (isHighlighted) {
+        ctx.strokeStyle = theme.highlightBg ?? '#ff0';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 0.5, py + 0.5, cw - 1, ch - 1);
       }
     }
   }

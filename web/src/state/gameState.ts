@@ -59,6 +59,7 @@ export interface GameState {
   // Render theme
   renderMode: 'classic' | 'enhanced';  // kept for compat
   themeId: string;
+  tilesetId: string;
 }
 
 export function createInitialState(): GameState {
@@ -98,6 +99,7 @@ export function createInitialState(): GameState {
     onlineNations: new Set(),
     connected: false,
     renderMode: 'classic',
+    tilesetId: localStorage.getItem('conquer_tileset') ?? 'ascii',
     themeId: 'classic-green',
   };
 }

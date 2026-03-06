@@ -14,6 +14,7 @@ import { InputHandler, GameAction } from './inputHandler';
 import { ServerMessage, DisplayMode, HighlightMode } from '../types';
 import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
+import { applyUiThemeCss } from '../ui/uiThemes';
 
 export class GameScreen {
   private layout: GameLayout;
@@ -367,6 +368,26 @@ export class GameScreen {
     // Sidebar font sync
     if (cmd === '_sidebar_font_changed') {
       this.statsSidebar.fontSize = this.cmdSidebar.fontSize;
+      return;
+    }
+
+    // UI theme commands
+    if (cmd.startsWith('uitheme_')) {
+      const uiId = cmd.substring(8);
+      this.layout.uiThemeId = uiId;
+      this.cmdSidebar.themeId = uiId;
+      this.statsSidebar.themeId = uiId;
+      applyUiThemeCss(uiId);
+      this.setStatus(`UI Theme: ${uiId}`);
+      return;
+    }
+
+    // Tileset commands
+    if (cmd.startsWith('tileset_')) {
+      const tsId = cmd.substring(8);
+      this.state.tilesetId = tsId;
+      localStorage.setItem('conquer_tileset', tsId);
+      this.setStatus(`Tileset: ${tsId}`);
       return;
     }
 
