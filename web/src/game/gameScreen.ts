@@ -448,14 +448,28 @@ export class GameScreen {
             break;
           }
 
-          // Submit move action to server
-          this.submitAction({
-            MoveArmy: { nation: this.state.nationId, army: army.index, x: nx, y: ny }
-          });
+          // Save for rollback
+          const oldX = army.x;
+          const oldY = army.y;
+          const oldMove = army.movement;
+
           // Optimistically update local position and deduct movement
           army.x = nx;
           army.y = ny;
           army.movement -= cost;
+
+          // Submit move action to server (with snap-back on failure)
+          this.submitAction(
+            { MoveArmy: { nation: this.state.nationId, army: army.index, x: nx, y: ny } },
+            () => {
+              // VAL-T17: Snap army back to previous position on server rejection
+              army.x = oldX;
+              army.y = oldY;
+              army.movement = oldMove;
+              this.centerOn(oldX, oldY);
+              this.updateReachableSet();
+            },
+          );
           this.centerOn(nx, ny);
           if (army.movement > 0) {
             this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). ${army.movement} moves left. Arrows=move, Space=done`);
@@ -666,12 +680,50 @@ export class GameScreen {
     }
   }
 
-  private async submitAction(action: unknown): Promise<void> {
-    if (!this.state.gameId) return;
+  /** VAL-T17: Enhanced action submission with feedback and snap-back */
+  private async submitAction(
+    action: unknown,
+    rollback?: () => void,
+  ): Promise<boolean> {
+    if (!this.state.gameId) return false;
     try {
       await this.client.submitActions(this.state.gameId, [action]);
+      return true;
     } catch (e) {
-      this.setStatus(`Action failed: ${(e as Error).message}`);
+      const msg = (e as Error).message || 'Unknown error';
+      // Parse action type for context
+      const actionType = typeof action === 'object' && action !== null
+        ? Object.keys(action)[0] ?? 'Action' : 'Action';
+
+      // Build user-friendly error message
+      let friendlyMsg = `❌ ${actionType} rejected: ${msg}`;
+      if (msg.includes('engine-internal')) {
+        friendlyMsg = `❌ ${actionType}: This action cannot be performed by players`;
+      } else if (msg.includes('movement') || msg.includes('move')) {
+        friendlyMsg = `❌ Move failed: ${msg}`;
+      } else if (msg.includes('gold') || msg.includes('afford') || msg.includes('cost')) {
+        const nation = this.state.nation;
+        friendlyMsg = `❌ Not enough gold (have ${nation?.treasury_gold ?? 0}): ${msg}`;
+      } else if (msg.includes('population') || msg.includes('people')) {
+        friendlyMsg = `❌ Not enough population: ${msg}`;
+      } else if (msg.includes('slot') || msg.includes('army')) {
+        friendlyMsg = `❌ No empty army slots available`;
+      }
+
+      this.setStatus(friendlyMsg);
+
+      // Flash the status bar red
+      const statusEl = document.querySelector('.game-status-bar') as HTMLElement;
+      if (statusEl) {
+        statusEl.style.transition = 'background 0.1s';
+        statusEl.style.background = '#8b0000';
+        setTimeout(() => { statusEl.style.background = ''; }, 1500);
+      }
+
+      // Execute rollback if provided (e.g., snap army back)
+      if (rollback) rollback();
+
+      return false;
     }
   }
 
