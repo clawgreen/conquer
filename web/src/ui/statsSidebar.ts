@@ -43,20 +43,33 @@ export class StatsSidebar {
       const vegName = VEGETATION_NAMES[sector.vegetation] ?? '?';
       const ownerStr = sector.owner === 0 ? 'Unowned' :
         (state.publicNations.find(nn => nn.nation_id === sector.owner)?.name ?? `N${sector.owner}`);
+      const isOwn = sector.owner === state.nationId;
       const armiesHere = state.armies.filter(a => a.soldiers > 0 && a.x === absX && a.y === absY);
-      const armyStr = armiesHere.map(a => `A${a.index}:${a.soldiers}`).join(' ');
+      const armyDetails = armiesHere.map(a => {
+        const status = ARMY_STATUS_NAMES[a.status] ?? '?';
+        return `<div class="stat-row" style="padding-left:12px;font-size:12px;">` +
+          `<span>A${a.index}: ${a.soldiers} ${status}</span>` +
+          `<span>mv:${a.movement}</span></div>`;
+      }).join('');
+      const naviesHere = state.navies.filter(nv => nv.x === absX && nv.y === absY);
+      const navyDetails = naviesHere.map(nv =>
+        `<div class="stat-row" style="padding-left:12px;font-size:12px;">` +
+        `<span>F${nv.index}: ${nv.warships}W ${nv.merchant}M ${nv.galleys}G</span></div>`
+      ).join('');
 
       sectorHtml = `
         <div class="stat-row"><span class="stat-label">Pos</span><span class="stat-value">(${absX},${absY})</span></div>
         <div class="stat-row"><span class="stat-label">Terrain</span><span class="stat-value">${altName}</span></div>
         <div class="stat-row"><span class="stat-label">Veg</span><span class="stat-value">${vegName}</span></div>
         <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value">${desName}</span></div>
-        <div class="stat-row"><span class="stat-label">Owner</span><span class="stat-value">${ownerStr}</span></div>
+        <div class="stat-row"><span class="stat-label">Owner</span><span class="stat-value">${isOwn ? '★ ' : ''}${ownerStr}</span></div>
         <div class="stat-row"><span class="stat-label">Pop</span><span class="stat-value">${sector.people.toLocaleString()}</span></div>
-        <div class="stat-row"><span class="stat-label">Fort</span><span class="stat-value">${sector.fortress}</span></div>
-        ${sector.metal > 0 ? `<div class="stat-row"><span class="stat-label">Metal</span><span class="stat-value">${sector.metal}</span></div>` : ''}
-        ${sector.jewels > 0 ? `<div class="stat-row"><span class="stat-label">Jewels</span><span class="stat-value">${sector.jewels}</span></div>` : ''}
-        ${armyStr ? `<div class="stat-row"><span class="stat-label">Armies</span><span class="stat-value">${armyStr}</span></div>` : ''}
+        ${sector.fortress > 0 ? `<div class="stat-row"><span class="stat-label">Fort</span><span class="stat-value">Lv ${sector.fortress}</span></div>` : ''}
+        ${sector.metal > 0 ? `<div class="stat-row"><span class="stat-label">⛏ Metal</span><span class="stat-value">${sector.metal}</span></div>` : ''}
+        ${sector.jewels > 0 ? `<div class="stat-row"><span class="stat-label">💎 Jewels</span><span class="stat-value">${sector.jewels}</span></div>` : ''}
+        ${sector.trade_good > 0 ? `<div class="stat-row"><span class="stat-label">📦 Trade</span><span class="stat-value">${sector.trade_good}</span></div>` : ''}
+        ${armyDetails ? `<div class="stat-row" style="opacity:0.7;font-size:11px;">⚔ Armies:</div>${armyDetails}` : ''}
+        ${navyDetails ? `<div class="stat-row" style="opacity:0.7;font-size:11px;">🚢 Navies:</div>${navyDetails}` : ''}
       `;
     }
 

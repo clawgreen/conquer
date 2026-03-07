@@ -41,18 +41,49 @@ const DEFAULT_BINDINGS: Omit<KeyBinding, 'key'>[] = [
   { action: 'hl_yours',     label: 'Highlight Your Armies',    category: 'Highlight', defaultKey: 'y' },
   { action: 'hl_none',      label: 'No Highlight',              category: 'Highlight', defaultKey: 'x' },
 
+  // Army Status Commands
+  { action: 'set_army_attack',   label: 'Army: Attack',    category: 'Army', defaultKey: 'Shift+A' },
+  { action: 'set_army_defend',   label: 'Army: Defend',    category: 'Army', defaultKey: '' },
+  { action: 'set_army_garrison', label: 'Army: Garrison',  category: 'Army', defaultKey: 'Shift+G' },
+  { action: 'set_army_scout',    label: 'Army: Scout',     category: 'Army', defaultKey: '' },
+  { action: 'set_army_rule',     label: 'Army: Rule',      category: 'Army', defaultKey: '' },
+  { action: 'set_army_march',    label: 'Army: March',     category: 'Army', defaultKey: '' },
+  { action: 'split_army',        label: 'Split Army',      category: 'Army', defaultKey: '-' },
+  { action: 'combine_army',      label: 'Combine Army',    category: 'Army', defaultKey: '' },
+  { action: 'divide_army',       label: 'Divide Army',     category: 'Army', defaultKey: '/' },
+
+  // Sector Commands
+  { action: 'redesignate',  label: 'Redesignate Sector',  category: 'Sector', defaultKey: 'Shift+R' },
+  { action: 'draft',        label: 'Draft Troops',         category: 'Sector', defaultKey: 'Shift+P' },
+  { action: 'build_fort',   label: 'Build Fort',           category: 'Sector', defaultKey: 'Shift+F' },
+  { action: 'build_road',   label: 'Build Road',           category: 'Sector', defaultKey: 'Shift+W' },
+
   // Game Commands
   { action: 'end_turn',     label: 'End Turn',          category: 'Game',    defaultKey: 'E' },
   { action: 'jump_capitol', label: 'Jump to Capitol',   category: 'Game',    defaultKey: 'g' },
   { action: 'show_scores',  label: 'Show Scores',       category: 'Game',    defaultKey: 'S' },
   { action: 'show_news',    label: 'Show News',         category: 'Game',    defaultKey: 'N' },
-  { action: 'show_budget',  label: 'Budget',            category: 'Game',    defaultKey: 'B' },
+  { action: 'show_budget',  label: 'Budget Report',     category: 'Game',    defaultKey: 'B' },
+  { action: 'diplomacy',    label: 'Diplomacy',         category: 'Game',    defaultKey: 'Shift+X' },
   { action: 'toggle_chat',  label: 'Toggle Chat',       category: 'Game',    defaultKey: 't' },
   { action: 'show_help',    label: 'Help',               category: 'Game',    defaultKey: '?' },
 
+  // Magic & Trade
+  { action: 'cast_spell',     label: 'Cast Spell',       category: 'Magic',   defaultKey: 'Shift+Z' },
+  { action: 'buy_power',      label: 'Buy Power',        category: 'Magic',   defaultKey: 'Shift+Q' },
+  { action: 'propose_trade',  label: 'Propose Trade',    category: 'Trade',   defaultKey: '$' },
+  { action: 'hire_mercs',     label: 'Hire Mercenaries',  category: 'Trade',   defaultKey: '' },
+  { action: 'bribe',          label: 'Bribe Nation',      category: 'Trade',   defaultKey: '' },
+  { action: 'send_tribute',   label: 'Send Tribute',      category: 'Trade',   defaultKey: '' },
+
+  // Navy
+  { action: 'build_ship',   label: 'Build Ship',        category: 'Navy',    defaultKey: '' },
+  { action: 'load_fleet',   label: 'Load Fleet',        category: 'Navy',    defaultKey: '' },
+  { action: 'unload_fleet', label: 'Unload Fleet',      category: 'Navy',    defaultKey: '' },
+
   // Zoom
   { action: 'font_up',      label: 'Zoom In',          category: 'View',    defaultKey: '+' },
-  { action: 'font_down',    label: 'Zoom Out',         category: 'View',    defaultKey: '-' },
+  { action: 'font_down',    label: 'Zoom Out',         category: 'View',    defaultKey: '' },
 ];
 
 const STORAGE_KEY = 'conquer_keybindings';

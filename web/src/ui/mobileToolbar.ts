@@ -101,7 +101,7 @@ export class MobileToolbar {
     row2.appendChild(this.btn('🏗 Redes', 'tb-btn', () => this.onAction({ type: 'redesignate' })));
     row2.appendChild(this.btn('👥 Draft', 'tb-btn', () => this.onAction({ type: 'draft' })));
     row2.appendChild(this.btn('🤝 Diplo', 'tb-btn', () => this.onAction({ type: 'diplomacy' })));
-    row2.appendChild(this.btn('✨ Magic', 'tb-btn', () => this.onAction({ type: 'magic' })));
+    row2.appendChild(this.btn('✨ Magic', 'tb-btn', () => this.onAction({ type: 'cast_spell' })));
     row2.appendChild(this.btn('⏩ End', 'tb-btn tb-btn-end', () => this.onAction({ type: 'end_turn' })));
     row2.appendChild(this.btn('···', 'tb-btn tb-btn-more', () => this.toggleInfo()));
     this.container.appendChild(row2);
@@ -116,6 +116,51 @@ export class MobileToolbar {
     row3.appendChild(this.btn('💰 Budget', 'tb-btn', () => this.onAction({ type: 'show_budget' })));
     row3.appendChild(this.btn('❓ Help', 'tb-btn', () => this.onAction({ type: 'show_help' })));
     row3.appendChild(this.btn('💬 Chat', 'tb-btn', () => this.onAction({ type: 'toggle_chat' })));
+
+    // Army command dropdown
+    const armyCmds: { label: string; action: GameAction }[] = [
+      { label: '⚔ Attack', action: { type: 'set_army_attack' } },
+      { label: '🛡 Defend', action: { type: 'set_army_defend' } },
+      { label: '🏰 Garrison', action: { type: 'set_army_garrison' } },
+      { label: '👁 Scout', action: { type: 'set_army_scout' } },
+      { label: '👑 Rule', action: { type: 'set_army_rule' } },
+      { label: '🚩 March', action: { type: 'set_army_march' } },
+      { label: '✂ Split', action: { type: 'split_army' } },
+      { label: '⊕ Combine', action: { type: 'combine_army' } },
+      { label: '÷ Divide', action: { type: 'divide_army' } },
+    ];
+    const armySelect = this.createSelect('⚔ Army', armyCmds.map(c => ({ ...c, mode: 0 })), (_item, idx) => {
+      this.onAction(armyCmds[idx].action);
+    });
+    row3.appendChild(armySelect);
+
+    // Sector command dropdown
+    const sectorCmds: { label: string; action: GameAction }[] = [
+      { label: '🏗 Redesignate', action: { type: 'redesignate' } },
+      { label: '👥 Draft', action: { type: 'draft' } },
+      { label: '🏰 Build Fort', action: { type: 'build_fort' } },
+      { label: '🛤 Build Road', action: { type: 'build_road' } },
+      { label: '🚢 Build Ship', action: { type: 'build_ship' } },
+    ];
+    const sectorSelect = this.createSelect('🏘 Sector', sectorCmds.map(c => ({ ...c, mode: 0 })), (_item, idx) => {
+      this.onAction(sectorCmds[idx].action);
+    });
+    row3.appendChild(sectorSelect);
+
+    // More commands dropdown
+    const moreCmds: { label: string; action: GameAction }[] = [
+      { label: '📖 Buy Power', action: { type: 'buy_power' } },
+      { label: '💲 Trade', action: { type: 'propose_trade' } },
+      { label: '💂 Mercs', action: { type: 'hire_mercs' } },
+      { label: '💰 Bribe', action: { type: 'bribe' } },
+      { label: '🎁 Tribute', action: { type: 'send_tribute' } },
+      { label: '📥 Load Fleet', action: { type: 'load_fleet' } },
+      { label: '📤 Unload Fleet', action: { type: 'unload_fleet' } },
+    ];
+    const moreSelect = this.createSelect('📋 More', moreCmds.map(c => ({ ...c, mode: 0 })), (_item, idx) => {
+      this.onAction(moreCmds[idx].action);
+    });
+    row3.appendChild(moreSelect);
 
     // Display mode dropdown
     const dispSelect = this.createSelect('🗺 Display', DISPLAY_MODES, (item) => {
@@ -178,7 +223,7 @@ export class MobileToolbar {
   private createSelect<T extends { label: string }>(
     placeholder: string,
     items: T[],
-    onSelect: (item: T) => void,
+    onSelect: (item: T, idx: number) => void,
   ): HTMLDivElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'tb-select-wrap';
@@ -203,7 +248,7 @@ export class MobileToolbar {
     sel.addEventListener('change', () => {
       const idx = parseInt(sel.value);
       if (!isNaN(idx) && items[idx]) {
-        onSelect(items[idx]);
+        onSelect(items[idx], idx);
       }
       // Reset to placeholder
       sel.selectedIndex = 0;
