@@ -12,13 +12,18 @@ import { CommandSidebar } from '../ui/commandSidebar';
 import { StatsSidebar } from '../ui/statsSidebar';
 import { InputHandler, GameAction } from './inputHandler';
 import { MouseHandler } from './mouseHandler';
-import { ServerMessage, DisplayMode, HighlightMode } from '../types';
+import {
+  ServerMessage, DisplayMode, HighlightMode,
+  DESIGNATION_NAMES, ARMY_STATUS_NAMES, DIPLO_NAMES,
+  ALTITUDE_NAMES, VEGETATION_NAMES,
+} from '../types';
+import { getSector } from '../state/gameState';
 import { CURSES_COLORS } from '../renderer/colors';
 import { getTheme, ALL_THEMES } from '../renderer/themes';
 import { applyUiThemeCss } from '../ui/uiThemes';
 import { TilesetEditor, loadCustomTilesets } from '../ui/tilesetEditor';
 import { KeybindingsManager, KeybindingsModal } from '../ui/keybindingsModal';
-import { showConfirm, showAlert } from '../ui/modalDialog';
+import { showConfirm, showAlert, showInput, showSelect, showForm } from '../ui/modalDialog';
 import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
@@ -381,7 +386,7 @@ export class GameScreen {
         break;
 
       case 'show_budget':
-        this.setStatus('Budget view — press any key to return');
+        this.showBudget();
         break;
 
       case 'show_help':
@@ -389,19 +394,90 @@ export class GameScreen {
         break;
 
       case 'redesignate':
-        this.setStatus('Redesignate: select sector, then press designation key');
+        this.doRedesignate();
         break;
 
       case 'draft':
-        this.setStatus('Draft: not yet implemented in frontend');
+        this.doDraft();
         break;
 
       case 'diplomacy':
-        this.setStatus('Diplomacy: not yet implemented in frontend');
+        this.doDiplomacy();
         break;
 
       case 'magic':
-        this.setStatus('Magic: not yet implemented in frontend');
+      case 'cast_spell':
+        this.doCastSpell();
+        break;
+
+      case 'buy_power':
+        this.doBuyPower();
+        break;
+
+      // Army status commands (T1)
+      case 'set_army_attack':
+        this.setArmyStatus(9, 'ATTACK');
+        break;
+      case 'set_army_defend':
+        this.setArmyStatus(7, 'DEFEND');
+        break;
+      case 'set_army_garrison':
+        this.setArmyStatus(3, 'GARRISON');
+        break;
+      case 'set_army_scout':
+        this.setArmyStatus(2, 'SCOUT');
+        break;
+      case 'set_army_rule':
+        this.setArmyStatus(16, 'RULE');
+        break;
+      case 'set_army_march':
+        this.setArmyStatus(1, 'MARCH');
+        break;
+
+      // Army split/combine/divide (T2-T4)
+      case 'split_army':
+        this.doSplitArmy();
+        break;
+      case 'combine_army':
+        this.doCombineArmy();
+        break;
+      case 'divide_army':
+        this.doDivideArmy();
+        break;
+
+      // Building (T7-T9)
+      case 'build_fort':
+        this.doBuildFort();
+        break;
+      case 'build_road':
+        this.doBuildRoad();
+        break;
+      case 'build_ship':
+        this.doBuildShip();
+        break;
+
+      // Navy (T10)
+      case 'load_fleet':
+        this.doLoadFleet();
+        break;
+      case 'unload_fleet':
+        this.doUnloadFleet();
+        break;
+
+      // Trade (T14-T15)
+      case 'propose_trade':
+        this.doProposeTrade();
+        break;
+
+      // Misc commands (T16-T18)
+      case 'hire_mercs':
+        this.doHireMercs();
+        break;
+      case 'bribe':
+        this.doBribe();
+        break;
+      case 'send_tribute':
+        this.doSendTribute();
         break;
 
       case 'toggle_chat':
@@ -533,10 +609,635 @@ export class GameScreen {
     }
   }
 
-  private showHelp(): void {
-    this.setStatus(
-      'Keys: arrows/hjkl=move  Tab=army  d/v/c/f/r/m/M/D/p/J/i/n=display  o/a/y/L/s/x=hl  T=chat  E=end turn  ?=help  +/-=font'
+  private async showHelp(): Promise<void> {
+    this.input.enabled = false;
+    await showAlert(
+      'MOVEMENT: Arrow/hjkl=move  Tab=next army  m=move mode  Space=done\n' +
+      'DISPLAY: d=designation v=vegetation c=contour f=food r=race n=nation\n' +
+      '  M=move D=defense p=people J=gold i=items\n' +
+      'HIGHLIGHT: o=own a=armies y=yours L=range s=trade x=none\n' +
+      'ARMY: A=attack G=garrison -=split /=divide\n' +
+      'SECTOR: R=redesignate P=draft F=fort W=road\n' +
+      'GAME: E=end turn S=scores N=news B=budget X=diplomacy\n' +
+      'MAGIC: Z=cast spell Q=buy power\n' +
+      'TRADE: $=propose trade  NAVY: `=toggle\n' +
+      'VIEW: +/-=font C=center g=capitol T=chat ?=help',
+      '❓ Command Reference'
     );
+    this.input.enabled = true;
+  }
+
+  // ============ T1: Army Status ============
+
+  private setArmyStatus(status: number, name: string): void {
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    if (this.state.selectedArmy < 0 || this.state.selectedArmy >= active.length) {
+      this.setStatus('No army selected. Press Tab to select an army first.');
+      return;
+    }
+    const army = active[this.state.selectedArmy];
+    this.submitAction({
+      AdjustArmyStat: { nation: this.state.nationId, army: army.index, status }
+    });
+    army.status = status;
+    this.setStatus(`Army ${army.index} set to ${name}`);
+  }
+
+  // ============ T2: Split Army ============
+
+  private async doSplitArmy(): Promise<void> {
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    if (this.state.selectedArmy < 0 || this.state.selectedArmy >= active.length) {
+      this.setStatus('No army selected. Press Tab to select an army first.');
+      return;
+    }
+    const army = active[this.state.selectedArmy];
+    if (army.soldiers < 2) {
+      this.setStatus('Army too small to split.');
+      return;
+    }
+    this.input.enabled = false;
+    const half = Math.floor(army.soldiers / 2);
+    const result = await showInput(
+      `Army ${army.index} has ${army.soldiers} soldiers. Split how many?`,
+      { title: '✂ Split Army', defaultValue: String(half), inputType: 'number', confirmText: 'Split' }
+    );
+    this.input.enabled = true;
+    if (result === null) return;
+    const count = parseInt(result);
+    if (isNaN(count) || count < 1 || count >= army.soldiers) {
+      this.setStatus('Invalid split count.');
+      return;
+    }
+    this.submitAction({
+      SplitArmy: { nation: this.state.nationId, army: army.index, soldiers: count }
+    });
+    this.setStatus(`Split ${count} soldiers from Army ${army.index}`);
+  }
+
+  // ============ T3: Combine Army ============
+
+  private async doCombineArmy(): Promise<void> {
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    if (this.state.selectedArmy < 0 || this.state.selectedArmy >= active.length) {
+      this.setStatus('No army selected. Press Tab to select an army first.');
+      return;
+    }
+    const army = active[this.state.selectedArmy];
+    const others = active.filter(a => a.index !== army.index && a.x === army.x && a.y === army.y);
+    if (others.length === 0) {
+      this.setStatus('No other armies at this location to combine with.');
+      return;
+    }
+    let targetArmy: typeof others[0];
+    if (others.length === 1) {
+      targetArmy = others[0];
+    } else {
+      this.input.enabled = false;
+      const idx = await showSelect(
+        `Combine Army ${army.index} (${army.soldiers} soldiers) with:`,
+        others.map(a => ({
+          label: `Army ${a.index}: ${a.soldiers} soldiers (${ARMY_STATUS_NAMES[a.status] ?? '?'})`,
+        })),
+        { title: '⊕ Combine Armies' }
+      );
+      this.input.enabled = true;
+      if (idx < 0) return;
+      targetArmy = others[idx];
+    }
+    this.submitAction({
+      CombineArmies: { nation: this.state.nationId, army1: army.index, army2: targetArmy.index }
+    });
+    this.setStatus(`Combining Army ${army.index} with Army ${targetArmy.index}`);
+  }
+
+  // ============ T4: Divide Army ============
+
+  private doDivideArmy(): void {
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    if (this.state.selectedArmy < 0 || this.state.selectedArmy >= active.length) {
+      this.setStatus('No army selected. Press Tab to select an army first.');
+      return;
+    }
+    const army = active[this.state.selectedArmy];
+    if (army.soldiers < 2) {
+      this.setStatus('Army too small to divide.');
+      return;
+    }
+    this.submitAction({
+      DivideArmy: { nation: this.state.nationId, army: army.index }
+    });
+    this.setStatus(`Dividing Army ${army.index} in half`);
+  }
+
+  // ============ T5: Redesignate Sector ============
+
+  private async doRedesignate(): Promise<void> {
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+    const sector = getSector(this.state, absX, absY);
+    if (!sector) { this.setStatus('Cannot see this sector.'); return; }
+    if (sector.owner !== this.state.nationId) { this.setStatus('You do not own this sector.'); return; }
+
+    const designations = [
+      { label: 'Town (t)', value: 't' },
+      { label: 'City (c)', value: 'c' },
+      { label: 'Mine (m)', value: 'm' },
+      { label: 'Farm (f)', value: 'f' },
+      { label: 'Gold Mine ($)', value: '$' },
+      { label: 'Fort (!)', value: '!' },
+      { label: 'Stockade (s)', value: 's' },
+      { label: 'Capitol (C)', value: 'C' },
+      { label: 'Lumberyard (l)', value: 'l' },
+      { label: 'Blacksmith (b)', value: 'b' },
+      { label: 'Road (+)', value: '+' },
+      { label: 'Mill (*)', value: '*' },
+      { label: 'Granary (g)', value: 'g' },
+      { label: 'Church (=)', value: '=' },
+      { label: 'University (u)', value: 'u' },
+    ];
+
+    this.input.enabled = false;
+    const idx = await showSelect(
+      `Redesignate sector at (${absX},${absY}) — currently ${DESIGNATION_NAMES[sector.designation] ?? '?'}`,
+      designations.map(d => ({ label: d.label })),
+      { title: '🏗 Redesignate Sector' }
+    );
+    this.input.enabled = true;
+    if (idx < 0) return;
+
+    this.submitAction({
+      DesignateSector: { nation: this.state.nationId, x: absX, y: absY, designation: designations[idx].value }
+    });
+    this.setStatus(`Redesignated (${absX},${absY}) to ${designations[idx].label}`);
+  }
+
+  // ============ T6: Draft Troops ============
+
+  private async doDraft(): Promise<void> {
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+    const sector = getSector(this.state, absX, absY);
+    if (!sector) { this.setStatus('Cannot see this sector.'); return; }
+    if (sector.owner !== this.state.nationId) { this.setStatus('You do not own this sector.'); return; }
+    if (sector.people < 1) { this.setStatus('No population to draft from.'); return; }
+
+    const unitTypes = [
+      { label: 'Infantry (type 0)', value: '0' },
+      { label: 'Cavalry (type 1)', value: '1' },
+      { label: 'Archers (type 2)', value: '2' },
+    ];
+
+    this.input.enabled = false;
+    const result = await showForm(
+      [
+        { id: 'unit_type', label: 'Unit Type', type: 'select', options: unitTypes, defaultValue: '0' },
+        { id: 'count', label: `How many? (pop: ${sector.people})`, type: 'number', defaultValue: String(Math.min(100, Math.floor(sector.people / 2))) },
+      ],
+      { title: `👥 Draft Troops at (${absX},${absY})`, confirmText: 'Draft' }
+    );
+    this.input.enabled = true;
+    if (!result) return;
+
+    const count = parseInt(result.count);
+    if (isNaN(count) || count < 1) { this.setStatus('Invalid count.'); return; }
+    const unitType = parseInt(result.unit_type);
+
+    this.submitAction({
+      DraftUnit: { nation: this.state.nationId, x: absX, y: absY, unit_type: unitType, count }
+    });
+    this.setStatus(`Drafted ${count} soldiers at (${absX},${absY})`);
+  }
+
+  // ============ T7: Build Fort ============
+
+  private async doBuildFort(): Promise<void> {
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+    const sector = getSector(this.state, absX, absY);
+    if (!sector) { this.setStatus('Cannot see this sector.'); return; }
+    if (sector.owner !== this.state.nationId) { this.setStatus('You do not own this sector.'); return; }
+
+    this.input.enabled = false;
+    const yes = await showConfirm(
+      `Build fortification at (${absX},${absY})?\nCurrent fort level: ${sector.fortress}`,
+      { title: '🏰 Build Fortification', confirmText: 'Build' }
+    );
+    this.input.enabled = true;
+    if (!yes) return;
+
+    this.submitAction({
+      ConstructFort: { nation: this.state.nationId, x: absX, y: absY }
+    });
+    this.setStatus(`Building fortification at (${absX},${absY})`);
+  }
+
+  // ============ T8: Build Road ============
+
+  private async doBuildRoad(): Promise<void> {
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+    const sector = getSector(this.state, absX, absY);
+    if (!sector) { this.setStatus('Cannot see this sector.'); return; }
+    if (sector.owner !== this.state.nationId) { this.setStatus('You do not own this sector.'); return; }
+
+    this.input.enabled = false;
+    const yes = await showConfirm(
+      `Build road at (${absX},${absY})?`,
+      { title: '🛤 Build Road', confirmText: 'Build' }
+    );
+    this.input.enabled = true;
+    if (!yes) return;
+
+    this.submitAction({
+      BuildRoad: { nation: this.state.nationId, x: absX, y: absY }
+    });
+    this.setStatus(`Building road at (${absX},${absY})`);
+  }
+
+  // ============ T9: Build Ship ============
+
+  private async doBuildShip(): Promise<void> {
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+    const sector = getSector(this.state, absX, absY);
+    if (!sector) { this.setStatus('Cannot see this sector.'); return; }
+    if (sector.owner !== this.state.nationId) { this.setStatus('You do not own this sector.'); return; }
+
+    const shipTypes = [
+      { label: 'Warship', value: '0' },
+      { label: 'Merchant', value: '1' },
+      { label: 'Galley', value: '2' },
+    ];
+    const shipSizes = [
+      { label: 'Small', value: '0' },
+      { label: 'Medium', value: '1' },
+      { label: 'Large', value: '2' },
+    ];
+
+    this.input.enabled = false;
+    const result = await showForm(
+      [
+        { id: 'ship_type', label: 'Ship Type', type: 'select', options: shipTypes, defaultValue: '0' },
+        { id: 'ship_size', label: 'Ship Size', type: 'select', options: shipSizes, defaultValue: '1' },
+        { id: 'count', label: 'How many?', type: 'number', defaultValue: '1' },
+      ],
+      { title: `🚢 Build Ships at (${absX},${absY})`, confirmText: 'Build' }
+    );
+    this.input.enabled = true;
+    if (!result) return;
+
+    this.submitAction({
+      ConstructShip: {
+        nation: this.state.nationId, x: absX, y: absY,
+        ship_type: parseInt(result.ship_type), ship_size: parseInt(result.ship_size),
+        count: parseInt(result.count),
+      }
+    });
+    this.setStatus(`Building ships at (${absX},${absY})`);
+  }
+
+  // ============ T10: Navy Load/Unload ============
+
+  private async doLoadFleet(): Promise<void> {
+    if (this.state.navies.length === 0) { this.setStatus('No navies available.'); return; }
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    if (active.length === 0) { this.setStatus('No armies to load.'); return; }
+
+    this.input.enabled = false;
+    const fleetIdx = await showSelect(
+      'Select fleet to load onto:',
+      this.state.navies.map(n => ({
+        label: `Fleet ${n.index}: ${n.warships}W ${n.merchant}M ${n.galleys}G at (${n.x},${n.y})`,
+      })),
+      { title: '📥 Load Fleet' }
+    );
+    if (fleetIdx < 0) { this.input.enabled = true; return; }
+    const fleet = this.state.navies[fleetIdx];
+
+    const armiesHere = active.filter(a => a.x === fleet.x && a.y === fleet.y);
+    if (armiesHere.length === 0) { this.input.enabled = true; this.setStatus('No armies at fleet location.'); return; }
+
+    const armyIdx = await showSelect(
+      'Select army to load:',
+      armiesHere.map(a => ({
+        label: `Army ${a.index}: ${a.soldiers} soldiers`,
+      })),
+      { title: '📥 Load Army' }
+    );
+    this.input.enabled = true;
+    if (armyIdx < 0) return;
+
+    this.submitAction({
+      LoadArmyOnFleet: { nation: this.state.nationId, army: armiesHere[armyIdx].index, fleet: fleet.index }
+    });
+    this.setStatus(`Loading Army ${armiesHere[armyIdx].index} onto Fleet ${fleet.index}`);
+  }
+
+  private async doUnloadFleet(): Promise<void> {
+    if (this.state.navies.length === 0) { this.setStatus('No navies available.'); return; }
+
+    this.input.enabled = false;
+    const fleetIdx = await showSelect(
+      'Select fleet to unload from:',
+      this.state.navies.map(n => ({
+        label: `Fleet ${n.index}: ${n.warships}W ${n.merchant}M ${n.galleys}G at (${n.x},${n.y})`,
+      })),
+      { title: '📤 Unload Fleet' }
+    );
+    this.input.enabled = true;
+    if (fleetIdx < 0) return;
+
+    const fleet = this.state.navies[fleetIdx];
+    this.submitAction({
+      UnloadArmyFromFleet: { nation: this.state.nationId, fleet: fleet.index }
+    });
+    this.setStatus(`Unloading from Fleet ${fleet.index}`);
+  }
+
+  // ============ T11: Cast Spell ============
+
+  private async doCastSpell(): Promise<void> {
+    if (!this.state.nation) return;
+    const spells = [
+      { label: '🐉 Summon Creature', detail: 'Summon a monster to fight for you', value: 0 },
+      { label: '🦅 Flight', detail: 'Grant an army the ability to fly', value: 1 },
+      { label: '⚔ Attack Enhancement', detail: 'Boost attack power', value: 2 },
+      { label: '🛡 Defense Enhancement', detail: 'Boost defense power', value: 3 },
+      { label: '💥 Destroy', detail: 'Destroy a target sector', value: 4 },
+    ];
+
+    this.input.enabled = false;
+    const idx = await showSelect(
+      `Spell Points: ${this.state.nation.spell_points}`,
+      spells.map(s => ({ label: s.label, detail: s.detail })),
+      { title: '✨ Cast Spell' }
+    );
+    this.input.enabled = true;
+    if (idx < 0) return;
+
+    const absX = this.state.cursorX + this.state.xOffset;
+    const absY = this.state.cursorY + this.state.yOffset;
+
+    this.submitAction({
+      CastSpell: {
+        nation: this.state.nationId,
+        spell_type: spells[idx].value,
+        target_x: absX, target_y: absY,
+        target_nation: 0,
+      }
+    });
+    this.setStatus(`Cast ${spells[idx].label} at (${absX},${absY})`);
+  }
+
+  // ============ T12: Buy Power ============
+
+  private async doBuyPower(): Promise<void> {
+    if (!this.state.nation) return;
+    const powers = [
+      { label: '🔥 Fire Magic', detail: 'Offensive fire spells', value: 0 },
+      { label: '❄ Ice Magic', detail: 'Defensive ice barriers', value: 1 },
+      { label: '⚡ Lightning', detail: 'Ranged attack spells', value: 2 },
+      { label: '🌍 Earth Magic', detail: 'Fortification enhancement', value: 3 },
+      { label: '💨 Wind Magic', detail: 'Movement and flight', value: 4 },
+      { label: '🌑 Dark Magic', detail: 'Destruction and summoning', value: 5 },
+    ];
+
+    this.input.enabled = false;
+    const idx = await showSelect(
+      `Gold: ${this.state.nation.treasury_gold} — Select power to purchase:`,
+      powers.map(p => ({ label: p.label, detail: p.detail })),
+      { title: '📖 Buy Magic Power' }
+    );
+    this.input.enabled = true;
+    if (idx < 0) return;
+
+    this.submitAction({
+      BuyMagicPower: { nation: this.state.nationId, power_type: powers[idx].value }
+    });
+    this.setStatus(`Purchased ${powers[idx].label}`);
+  }
+
+  // ============ T13: Diplomacy ============
+
+  private async doDiplomacy(): Promise<void> {
+    if (!this.state.nation || !this.state.publicNations.length) return;
+
+    const nations = this.state.publicNations.filter(
+      n => n.nation_id !== this.state.nationId && n.active > 0
+    );
+    if (nations.length === 0) { this.setStatus('No other nations to negotiate with.'); return; }
+
+    const diplomacy = this.state.nation.diplomacy || [];
+    const items = nations.map(n => {
+      const diploStatus = diplomacy[n.nation_id] ?? 0;
+      const statusName = DIPLO_NAMES[diploStatus] ?? 'UNMET';
+      return {
+        label: `${n.name} (${n.race}) — ${statusName}`,
+        detail: `Score: ${n.score}`,
+      };
+    });
+
+    this.input.enabled = false;
+    const idx = await showSelect(
+      'Select a nation to adjust diplomacy:',
+      items,
+      { title: '🤝 Diplomacy' }
+    );
+    if (idx < 0) { this.input.enabled = true; return; }
+
+    const target = nations[idx];
+    const currentStatus = diplomacy[target.nation_id] ?? 0;
+    const statusOptions = DIPLO_NAMES.map((name, i) => ({
+      label: name + (i === currentStatus ? ' (current)' : ''),
+      disabled: i === currentStatus,
+    }));
+
+    const newStatus = await showSelect(
+      `Set diplomacy with ${target.name}:`,
+      statusOptions,
+      { title: '🤝 Adjust Diplomacy' }
+    );
+    this.input.enabled = true;
+    if (newStatus < 0) return;
+
+    this.submitAction({
+      AdjustDiplomacy: { nation_a: this.state.nationId, nation_b: target.nation_id, status: newStatus }
+    });
+    this.setStatus(`Diplomacy with ${target.name} set to ${DIPLO_NAMES[newStatus]}`);
+  }
+
+  // ============ T14: Propose Trade ============
+
+  private async doProposeTrade(): Promise<void> {
+    if (!this.state.publicNations.length) return;
+
+    const nations = this.state.publicNations.filter(
+      n => n.nation_id !== this.state.nationId && n.active > 0
+    );
+    if (nations.length === 0) { this.setStatus('No nations to trade with.'); return; }
+
+    const tradeTypes = [
+      { label: 'Gold', value: '0' },
+      { label: 'Food', value: '1' },
+      { label: 'Metal', value: '2' },
+      { label: 'Jewels', value: '3' },
+    ];
+
+    this.input.enabled = false;
+    const result = await showForm(
+      [
+        { id: 'target', label: 'Target Nation', type: 'select',
+          options: nations.map(n => ({ label: `${n.name} (${n.race})`, value: String(n.nation_id) })),
+          defaultValue: String(nations[0].nation_id),
+        },
+        { id: 'offer_type', label: 'Offer Type', type: 'select', options: tradeTypes, defaultValue: '0' },
+        { id: 'offer_amount', label: 'Offer Amount', type: 'number', defaultValue: '100' },
+        { id: 'request_type', label: 'Request Type', type: 'select', options: tradeTypes, defaultValue: '1' },
+        { id: 'request_amount', label: 'Request Amount', type: 'number', defaultValue: '100' },
+      ],
+      { title: '💲 Propose Trade', confirmText: 'Propose' }
+    );
+    this.input.enabled = true;
+    if (!result) return;
+
+    this.submitAction({
+      ProposeTrade: {
+        nation: this.state.nationId,
+        target_nation: parseInt(result.target),
+        offer_type: parseInt(result.offer_type),
+        offer_amount: parseInt(result.offer_amount),
+        request_type: parseInt(result.request_type),
+        request_amount: parseInt(result.request_amount),
+      }
+    });
+    this.setStatus('Trade proposal sent!');
+  }
+
+  // ============ T15: Pending Trades ============
+
+  private async showPendingTrades(): Promise<void> {
+    this.input.enabled = false;
+    await showAlert('No pending trade proposals at this time.', '📨 Pending Trades');
+    this.input.enabled = true;
+  }
+
+  // ============ T16: Hire Mercs ============
+
+  private async doHireMercs(): Promise<void> {
+    if (!this.state.nation) return;
+
+    this.input.enabled = false;
+    const result = await showInput(
+      `How many mercenaries to hire?\nYour gold: ${this.state.nation.treasury_gold}`,
+      { title: '💂 Hire Mercenaries', defaultValue: '50', inputType: 'number', confirmText: 'Hire' }
+    );
+    this.input.enabled = true;
+    if (result === null) return;
+
+    const count = parseInt(result);
+    if (isNaN(count) || count < 1) { this.setStatus('Invalid count.'); return; }
+
+    this.submitAction({
+      HireMercenaries: { nation: this.state.nationId, men: count }
+    });
+    this.setStatus(`Hiring ${count} mercenaries`);
+  }
+
+  // ============ T17: Bribe ============
+
+  private async doBribe(): Promise<void> {
+    if (!this.state.publicNations.length) return;
+
+    const nations = this.state.publicNations.filter(
+      n => n.nation_id !== this.state.nationId && n.active > 0
+    );
+    if (nations.length === 0) { this.setStatus('No nations to bribe.'); return; }
+
+    this.input.enabled = false;
+    const result = await showForm(
+      [
+        { id: 'target', label: 'Target Nation', type: 'select',
+          options: nations.map(n => ({ label: `${n.name} (${n.race})`, value: String(n.nation_id) })),
+          defaultValue: String(nations[0].nation_id),
+        },
+        { id: 'amount', label: `Gold to spend (have: ${this.state.nation?.treasury_gold ?? 0})`, type: 'number', defaultValue: '500' },
+      ],
+      { title: '💰 Bribe Nation', confirmText: 'Bribe' }
+    );
+    this.input.enabled = true;
+    if (!result) return;
+
+    this.submitAction({
+      BribeNation: { nation: this.state.nationId, cost: parseInt(result.amount), target: parseInt(result.target) }
+    });
+    this.setStatus(`Bribe attempted on nation ${result.target}`);
+  }
+
+  // ============ T18: Send Tribute ============
+
+  private async doSendTribute(): Promise<void> {
+    if (!this.state.publicNations.length) return;
+
+    const nations = this.state.publicNations.filter(
+      n => n.nation_id !== this.state.nationId && n.active > 0
+    );
+    if (nations.length === 0) { this.setStatus('No nations to send tribute to.'); return; }
+
+    this.input.enabled = false;
+    const result = await showForm(
+      [
+        { id: 'target', label: 'Target Nation', type: 'select',
+          options: nations.map(n => ({ label: `${n.name} (${n.race})`, value: String(n.nation_id) })),
+          defaultValue: String(nations[0].nation_id),
+        },
+        { id: 'gold', label: 'Gold', type: 'number', defaultValue: '0' },
+        { id: 'food', label: 'Food', type: 'number', defaultValue: '0' },
+        { id: 'metal', label: 'Metal', type: 'number', defaultValue: '0' },
+        { id: 'jewels', label: 'Jewels', type: 'number', defaultValue: '0' },
+      ],
+      { title: '🎁 Send Tribute', confirmText: 'Send' }
+    );
+    this.input.enabled = true;
+    if (!result) return;
+
+    this.submitAction({
+      SendTribute: {
+        nation: this.state.nationId,
+        target: parseInt(result.target),
+        gold: parseInt(result.gold) || 0,
+        food: parseInt(result.food) || 0,
+        metal: parseInt(result.metal) || 0,
+        jewels: parseInt(result.jewels) || 0,
+      }
+    });
+    this.setStatus(`Tribute sent to ${result.target}`);
+  }
+
+  // ============ T19: Budget ============
+
+  private async showBudget(): Promise<void> {
+    if (!this.state.nation) return;
+    const n = this.state.nation;
+
+    this.input.enabled = false;
+    await showAlert(
+      `═══ NATION BUDGET ═══\n` +
+      `Gold: ${n.treasury_gold.toLocaleString()}   Food: ${n.total_food.toLocaleString()}\n` +
+      `Metal: ${n.metals.toLocaleString()}   Jewels: ${n.jewels.toLocaleString()}\n` +
+      `───────────────────────\n` +
+      `Military: ${n.total_mil.toLocaleString()} soldiers\n` +
+      `Civilians: ${n.total_civ.toLocaleString()} people\n` +
+      `Sectors: ${n.total_sectors}   Ships: ${n.total_ships}\n` +
+      `───────────────────────\n` +
+      `Tax Rate: ${n.tax_rate}%   Charity: ${n.charity}\n` +
+      `Popularity: ${n.popularity}  Terror: ${n.terror}\n` +
+      `Reputation: ${n.reputation}\n` +
+      `Attack+: ${n.attack_plus}  Defense+: ${n.defense_plus}\n` +
+      `Spell Points: ${n.spell_points}  Score: ${n.score}`,
+      '💰 Budget Report'
+    );
+    this.input.enabled = true;
   }
 
   private handleCommand(cmd: string): void {
@@ -689,8 +1390,33 @@ export class GameScreen {
         case 'jump_capitol': this.handleAction({ type: 'jump_capitol' }); break;
         case 'show_scores': this.handleAction({ type: 'show_scores' }); break;
         case 'show_news': this.handleAction({ type: 'show_news' }); break;
+        case 'show_budget': this.handleAction({ type: 'show_budget' }); break;
         case 'toggle_chat': this.handleAction({ type: 'toggle_chat' }); break;
         case 'end_turn': this.handleAction({ type: 'end_turn' }); break;
+        case 'redesignate': this.handleAction({ type: 'redesignate' }); break;
+        case 'draft': this.handleAction({ type: 'draft' }); break;
+        case 'build_fort': this.handleAction({ type: 'build_fort' }); break;
+        case 'build_road': this.handleAction({ type: 'build_road' }); break;
+        case 'build_ship': this.handleAction({ type: 'build_ship' }); break;
+        case 'diplomacy': this.handleAction({ type: 'diplomacy' }); break;
+        case 'cast_spell': this.handleAction({ type: 'cast_spell' }); break;
+        case 'buy_power': this.handleAction({ type: 'buy_power' }); break;
+        case 'propose_trade': this.handleAction({ type: 'propose_trade' }); break;
+        case 'pending_trades': this.showPendingTrades(); break;
+        case 'hire_mercs': this.handleAction({ type: 'hire_mercs' }); break;
+        case 'bribe': this.handleAction({ type: 'bribe' }); break;
+        case 'send_tribute': this.handleAction({ type: 'send_tribute' }); break;
+        case 'set_army_attack': this.handleAction({ type: 'set_army_attack' }); break;
+        case 'set_army_defend': this.handleAction({ type: 'set_army_defend' }); break;
+        case 'set_army_garrison': this.handleAction({ type: 'set_army_garrison' }); break;
+        case 'set_army_scout': this.handleAction({ type: 'set_army_scout' }); break;
+        case 'set_army_rule': this.handleAction({ type: 'set_army_rule' }); break;
+        case 'set_army_march': this.handleAction({ type: 'set_army_march' }); break;
+        case 'split_army': this.handleAction({ type: 'split_army' }); break;
+        case 'combine_army': this.handleAction({ type: 'combine_army' }); break;
+        case 'divide_army': this.handleAction({ type: 'divide_army' }); break;
+        case 'load_fleet': this.handleAction({ type: 'load_fleet' }); break;
+        case 'unload_fleet': this.handleAction({ type: 'unload_fleet' }); break;
         case 'refresh': this.loadGameData(); this.setStatus('Refreshing...'); break;
         case 'font_up':
           this.zoomCentered(2);
