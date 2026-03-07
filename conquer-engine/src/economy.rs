@@ -793,6 +793,11 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
 }
 
 // ── T8: att_bonus — tradegood attribute bonuses ──
+// Verified against C admin.c att_bonus() line 605.
+// Sector type compatibility: tg_stype 'x' = any, 'f' = farm, 't' = town/city/capitol,
+// 'u' = university/city/capitol, 'l' = lumberyard, 'c' = church, 'm' = mine, '$' = goldmine.
+// Bonuses: popularity, communication, spoilrate (subtract), knowledge, farm_ability,
+//          spell_points (from people), terror.
 
 /// att_bonus() — tradegoods in sectors provide attribute bonuses to owning nations.
 /// Matches C att_bonus() from admin.c line 605.
