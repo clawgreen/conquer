@@ -487,12 +487,54 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                 let move_idx = (at % UTYPE) as usize;
                 let unit_move = UNIT_MOVE.get(move_idx).copied().unwrap_or(10) as u8;
 
+                // VAL-T11: Movement point reset matching C updmil() exactly
                 match ArmyStatus::from_value(stat) {
                     ArmyStatus::March => {
                         ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 5;
                     }
                     ArmyStatus::Militia | ArmyStatus::OnBoard => {
                         ntn.armies[armynum].movement = 0;
+                    }
+                    ArmyStatus::Garrison => {
+                        // C: garrison in owned fort = 0 move; otherwise reset to defend
+                        let ax = ntn.armies[armynum].x as usize;
+                        let ay = ntn.armies[armynum].y as usize;
+                        if ax < state.sectors.len() && ay < state.sectors[0].len()
+                            && state.sectors[ax][ay].owner == country as u8
+                            && state.sectors[ax][ay].fortress > 0
+                        {
+                            ntn.armies[armynum].movement = 0;
+                        } else {
+                            ntn.armies[armynum].status = ArmyStatus::Defend.to_value();
+                            ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 10;
+                        }
+                    }
+                    ArmyStatus::Rule => {
+                        // C: rule in owned city with leader = 0 move; otherwise reset to defend
+                        let ax = ntn.armies[armynum].x as usize;
+                        let ay = ntn.armies[armynum].y as usize;
+                        let is_leader = at >= UnitType::MIN_LEADER && at < UnitType::MIN_MONSTER;
+                        let in_city = ax < state.sectors.len() && ay < state.sectors[0].len()
+                            && state.sectors[ax][ay].owner == country as u8
+                            && (state.sectors[ax][ay].designation == Designation::City as u8
+                                || state.sectors[ax][ay].designation == Designation::Capitol as u8
+                                || state.sectors[ax][ay].designation == Designation::Town as u8);
+                        if is_leader && in_city {
+                            ntn.armies[armynum].movement = 0;
+                        } else {
+                            ntn.armies[armynum].status = ArmyStatus::Defend.to_value();
+                            ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 10;
+                        }
+                    }
+                    ArmyStatus::Siege => {
+                        // C: siege = 0 movement (validated elsewhere)
+                        ntn.armies[armynum].movement = 0;
+                    }
+                    ArmyStatus::Sieged | ArmyStatus::Sortie
+                        | ArmyStatus::Flight | ArmyStatus::MagDef | ArmyStatus::MagAtt => {
+                        // C: reset to DEFEND
+                        ntn.armies[armynum].status = ArmyStatus::Defend.to_value();
+                        ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 10;
                     }
                     _ => {
                         ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 10;
