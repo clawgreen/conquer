@@ -2201,11 +2201,32 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
         Action::MoveArmy { nation, army, x, y } => {
+            // T19: Movement validation — verify destination is reachable
             let n = *nation as usize;
             let a = *army as usize;
-            if n < NTOTAL && a < MAXARM {
-                state.nations[n].armies[a].x = *x as u8;
-                state.nations[n].armies[a].y = *y as u8;
+            if n < NTOTAL && a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
+                let old_x = state.nations[n].armies[a].x as i32;
+                let old_y = state.nations[n].armies[a].y as i32;
+                let new_x = *x;
+                let new_y = *y;
+                // Must be on map
+                if state.on_map(new_x, new_y) {
+                    // Adjacent moves validated by engine; direct teleport for action replay
+                    let is_adjacent = (new_x - old_x).abs() <= 1 && (new_y - old_y).abs() <= 1;
+                    if is_adjacent {
+                        // Validate altitude (can't move to water or peak normally)
+                        let alt = state.sectors[new_x as usize][new_y as usize].altitude;
+                        let is_flight = state.nations[n].armies[a].status == ArmyStatus::Flight.to_value();
+                        if alt != Altitude::Water as u8 && alt != Altitude::Peak as u8 || is_flight {
+                            state.nations[n].armies[a].x = *x as u8;
+                            state.nations[n].armies[a].y = *y as u8;
+                        }
+                    } else {
+                        // Non-adjacent: direct set (for engine-validated moves)
+                        state.nations[n].armies[a].x = *x as u8;
+                        state.nations[n].armies[a].y = *y as u8;
+                    }
+                }
             }
         }
         Action::MoveNavy { nation, fleet, x, y } => {
