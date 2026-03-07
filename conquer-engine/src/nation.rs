@@ -36,8 +36,8 @@ pub fn create_nation(
     password: &str,
     class: NationClass,
     world: &mut World,
-    nations: &mut [Nation; MAXNTOTAL],
-    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    nations: &mut Vec<Nation>,
+    sectors: &mut Vec<Vec<Sector>>,
     start_x: u8,
     start_y: u8,
 ) -> NationCreationResult {
@@ -45,9 +45,9 @@ pub fn create_nation(
     let mut nation_id = 0u8;
     let mut found = false;
     
-    for i in 1..MAXNTOTAL as u8 {
-        if nations[i as usize].active == 0 {
-            nation_id = i;
+    for i in 1..nations.len() {
+        if nations[i].active == 0 {
+            nation_id = i as u8;
             found = true;
             break;
         }
@@ -71,7 +71,9 @@ pub fn create_nation(
     }
     
     // Validate location
-    if start_x as usize >= MAPX || start_y as usize >= MAPY {
+    let map_x = sectors.len();
+    let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
+    if start_x as usize >= map_x || start_y as usize >= map_y {
         return NationCreationResult {
             success: false,
             nation_id: 0,
@@ -237,7 +239,7 @@ fn init_new_nation(
 /// Assign starting sector to new nation
 fn assign_starting_sector(
     nation_id: u8,
-    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    sectors: &mut Vec<Vec<Sector>>,
     x: u8,
     y: u8,
 ) {
@@ -351,16 +353,18 @@ fn power_cost(power: Power) -> i32 {
 /// Find best starting location for new nation
 /// Matches C: findcap()
 pub fn find_starting_location(
-    sectors: &[[Sector; MAPY as usize]; MAPX as usize],
+    sectors: &Vec<Vec<Sector>>,
     desired_race: Race,
 ) -> Option<(u8, u8)> {
     let mut best_x = 0u8;
     let mut best_y = 0u8;
     let mut best_score = -1i32;
     
-    for x in 0..MAPX {
-        for y in 0..MAPY {
-            let sector = &sectors[x as usize][y as usize];
+    let map_x = sectors.len();
+    let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
+    for x in 0..map_x {
+        for y in 0..map_y {
+            let sector = &sectors[x][y];
             
             // Must be habitable
             if !is_habitable(sector) {
@@ -455,7 +459,7 @@ fn score_starting_location(sector: &Sector, race: Race) -> i32 {
 /// NPC nation initialization
 /// Matches C: initnpc() logic
 pub fn init_npc_nation(
-    nations: &mut [Nation; MAXNTOTAL],
+    nations: &mut Vec<Nation>,
     npc_type: NpcType,
     race: Race,
     start_x: u8,
@@ -465,9 +469,10 @@ pub fn init_npc_nation(
 ) -> Option<u8> {
     // Find empty slot
     let mut nation_id = 0u8;
-    for i in NPC_FIRST..MAXNTOTAL as u8 {
-        if nations[i as usize].active == 0 {
-            nation_id = i;
+    let max_npc = nations.len().min(MAXNTOTAL);
+    for i in NPC_FIRST as usize..max_npc {
+        if nations[i].active == 0 {
+            nation_id = i as u8;
             break;
         }
     }

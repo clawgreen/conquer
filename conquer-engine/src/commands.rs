@@ -326,16 +326,18 @@ pub fn fort_bonus(sector: &Sector, powers: i64) -> i32 {
 }
 
 /// Check if sector is next to water (for ship building)
-pub fn is_next_to_water(sectors: &[[Sector; MAPY as usize]; MAPX as usize], x: u8, y: u8) -> bool {
+pub fn is_next_to_water(sectors: &Vec<Vec<Sector>>, x: u8, y: u8) -> bool {
     let x = x as i32;
     let y = y as i32;
+    let map_x = sectors.len() as i32;
+    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
     
     for dx in -1..=1 {
         for dy in -1..=1 {
             let nx = x + dx;
             let ny = y + dy;
             
-            if nx < 0 || ny < 0 || nx >= MAPX as i32 || ny >= MAPY as i32 {
+            if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y {
                 continue;
             }
             

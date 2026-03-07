@@ -212,11 +212,13 @@ pub fn process_storm(
 
 /// Volcano damage to adjacent sectors
 pub fn volcano_damage(
-    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    sectors: &mut Vec<Vec<Sector>>,
     vx: i32,
     vy: i32,
 ) -> Vec<EventResult> {
     let mut results = Vec::new();
+    let map_x = sectors.len() as i32;
+    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
     
     // Check 3x3 area around volcano
     for dx in -1..=1 {
@@ -224,7 +226,7 @@ pub fn volcano_damage(
             let x = vx + dx;
             let y = vy + dy;
             
-            if x < 0 || y < 0 || x >= MAPX as i32 || y >= MAPY as i32 {
+            if x < 0 || y < 0 || x >= map_x || y >= map_y {
                 continue;
             }
             
@@ -466,9 +468,11 @@ pub fn process_nation_events(
     rng: &mut ConquerRng,
     nation: &mut Nation,
     nation_idx: usize,
-    sectors: &mut [[Sector; MAPY as usize]; MAPX as usize],
+    sectors: &mut Vec<Vec<Sector>>,
 ) -> Vec<EventResult> {
     let mut results = Vec::new();
+    let map_x = sectors.len();
+    let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
     
     // Check for tax revolt
     if check_tax_revolt(rng, nation, nation.treasury_gold, nation.total_civ) {
@@ -478,8 +482,8 @@ pub fn process_nation_events(
     }
     
     // Process each sector for random events
-    for x in 0..MAPX {
-        for y in 0..MAPY {
+    for x in 0..map_x {
+        for y in 0..map_y {
             let sector = &mut sectors[x as usize][y as usize];
             
             // Skip unowned sectors
@@ -537,19 +541,21 @@ pub fn process_nation_events(
 
 /// Check if a sector is a harbor (next to water)
 fn is_sector_harbor(
-    sectors: &[[Sector; MAPY as usize]; MAPX as usize],
+    sectors: &Vec<Vec<Sector>>,
     x: u8,
     y: u8,
 ) -> bool {
     let x = x as i32;
     let y = y as i32;
+    let map_x = sectors.len() as i32;
+    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
 
     for dx in -1..=1 {
         for dy in -1..=1 {
             let nx = x + dx;
             let ny = y + dy;
 
-            if nx < 0 || ny < 0 || nx >= MAPX as i32 || ny >= MAPY as i32 {
+            if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y {
                 continue;
             }
 
