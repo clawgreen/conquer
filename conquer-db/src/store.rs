@@ -2692,12 +2692,26 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].navies[f].people = *people as u8;
             }
         }
-        Action::AdjustPopulation { nation, popularity, terror, reputation } => {
+        Action::AdjustPopulation { nation, popularity: _, terror, reputation: _ } => {
+            // VAL-T8: Players can only adjust terror (propaganda) — matching C case '5'
+            // The 'terror' field here is the INCREASE amount (1-5), not absolute value.
+            // Costs: popularity -= increase, reputation -= (increase+1)/2
+            // popularity and reputation fields are ignored from player API.
             let n = *nation as usize;
             if n < NTOTAL {
-                state.nations[n].popularity = *popularity as u8;
-                state.nations[n].terror = *terror as u8;
-                state.nations[n].reputation = *reputation as u8;
+                let increase = *terror;
+                // Must be 1-5 (C: "That is over the allowed 5%")
+                if increase < 1 || increase > 5 { return; }
+                let cur_terror = state.nations[n].terror as i32;
+                let cur_pop = state.nations[n].popularity as i32;
+                let cur_rep = state.nations[n].reputation as i32;
+                // Can't go over 100 terror
+                if cur_terror + increase > 100 { return; }
+                // Would cause underflow (C: "Sorry - this would cause underflow")
+                if increase > cur_pop || increase > cur_rep { return; }
+                state.nations[n].terror = (cur_terror + increase) as u8;
+                state.nations[n].popularity = (cur_pop - increase) as u8;
+                state.nations[n].reputation = (cur_rep - (increase + 1) / 2) as u8;
             }
         }
         Action::AdjustTax { nation, tax_rate, active: _, charity } => {
