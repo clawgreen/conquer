@@ -768,41 +768,94 @@ impl GameStore {
             .collect();
         turn_actions.sort_by_key(|a| (a.nation_id, a.order));
 
-        // Apply actions to game state via the engine's execute system
+        // Track which PC nations submitted actions this turn (for CMOVE logic)
+        let nations_with_actions: std::collections::HashSet<u8> = turn_actions.iter()
+            .map(|a| a.nation_id)
+            .collect();
+
+        // Apply player actions to game state
         for sa in &turn_actions {
             apply_action_to_state(&mut game.state, &sa.action);
         }
 
-        // Run the full turn update pipeline via the engine
+        // Seed RNG from turn number for determinism
         let mut rng = conquer_core::rng::ConquerRng::new(
             (game.state.world.turn as u32).wrapping_mul(42) + 12345
         );
 
-        // 1. Combat — resolve all battles
-        conquer_engine::combat::run_combat(&mut game.state, &mut rng);
-
-        // 2. Military update — reset movement, maintenance, recount total_mil
-        conquer_engine::economy::updmil(&mut game.state, &mut rng);
-
-        // 3. NPC AI — NPC nations take their actions
-        for i in 1..conquer_core::constants::NTOTAL {
-            let active = game.state.nations[i].active;
-            if active > 0 && active > 16 {
-                // NPC nation — run AI
-                // npc::nationrun would go here but it needs fixed-size arrays
-                // For now, NPCs are passive (they have starting armies/sectors)
+        // ── T1: updexecs — NPC AI runs in random order.
+        // Also run NPC AI for PC nations that didn't submit actions (CMOVE).
+        {
+            let mut nation_order: Vec<usize> = (1..conquer_core::constants::NTOTAL).collect();
+            // Shuffle for random execution order (matches C updexecs random order)
+            for i in (1..nation_order.len()).rev() {
+                let j = (rng.rand() as usize) % (i + 1);
+                nation_order.swap(i, j);
+            }
+            for &nation_idx in &nation_order {
+                let active = game.state.nations[nation_idx].active;
+                if active == 0 { continue; }
+                let strat = conquer_core::NationStrategy::from_value(active);
+                let is_npc = strat.map_or(false, |s| s.is_npc());
+                let is_pc = strat.map_or(false, |s| s.is_pc());
+                // Run NPC AI for NPC nations, and for PC nations that didn't move (CMOVE)
+                let should_run_npc = is_npc || (is_pc && !nations_with_actions.contains(&(nation_idx as u8)));
+                if should_run_npc {
+                    let _news = conquer_engine::npc::nation_run(&mut game.state, nation_idx, &mut rng);
+                    // Could push news items to game.news here
+                }
             }
         }
 
-        // 4. Sector updates — population growth, spreadsheet, inflation
+        // ── T2: monster() — update monster nations (nomad, pirate, savage, lizard)
+        let _monster_news = conquer_engine::monster::update_monsters(&mut game.state, &mut rng);
+
+        // ── combat() — resolve all battles
+        conquer_engine::combat::run_combat(&mut game.state, &mut rng);
+
+        // ── T3: updcapture() — capture unoccupied/enemy sectors
+        {
+            let capture_news = conquer_engine::movement::update_capture(&mut game.state);
+            for msg in capture_news {
+                game.news.push(NewsEntry {
+                    turn: current_turn,
+                    message: msg,
+                    timestamp: Utc::now(),
+                });
+            }
+        }
+
+        // ── T4: uptrade() — process turn-level trade deals
+        let _trade_news = conquer_engine::trade::process_trades_gs(&mut game.state);
+
+        // ── updmil() — reset military movement, maintenance, recount total_mil
+        conquer_engine::economy::updmil(&mut game.state, &mut rng);
+
+        // ── T5: randomevent() — random events (storms, plagues, revolts, discoveries)
+        {
+            let event_news = conquer_engine::events::process_events_gs(&mut game.state, &mut rng);
+            for msg in event_news {
+                game.news.push(NewsEntry {
+                    turn: current_turn,
+                    message: msg,
+                    timestamp: Utc::now(),
+                });
+            }
+        }
+
+        // ── updsectors() — population growth, spreadsheet, inflation
         conquer_engine::economy::updsectors(&mut game.state, &mut rng);
 
-        // 5. Commodities — food consumption, spoilage, starvation
+        // ── T9: move_people() — civilian migration between sectors
+        conquer_engine::economy::move_people_gs(&mut game.state);
+
+        // ── updcomodities() — food consumption, spoilage, starvation
         conquer_engine::economy::updcomodities(&mut game.state, &mut rng);
 
-        // 6. Random events (per-sector, skipped for now — not critical for gameplay)
+        // ── T6: updleader() — new leaders born, monsters spawned in Spring
+        conquer_engine::economy::update_leaders(&mut game.state, &mut rng);
 
-        // 7. Destroy nations with no people and no military
+        // Destroy nations with no people and no military (C: after updleader)
         for i in 1..conquer_core::constants::NTOTAL {
             let n = &game.state.nations[i];
             if n.active > 0 && n.active <= 16 {
@@ -812,8 +865,16 @@ impl GameStore {
             }
         }
 
-        // 8. Recalculate scores
+        // ── score() — recalculate scores
         conquer_engine::turn::calculate_scores_gs(&mut game.state);
+
+        // ── T7: cheat() — give NPC nations bonus gold/attributes if they fall behind
+        if game.info.settings.npc_cheat {
+            conquer_engine::economy::npc_cheat(&mut game.state, &mut rng);
+        }
+
+        // ── T8: att_bonus() — tradegood attribute bonuses
+        conquer_engine::economy::att_bonus_gs(&mut game.state);
 
         // 9. Advance turn
         game.state.world.turn += 1;

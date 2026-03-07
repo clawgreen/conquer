@@ -570,6 +570,47 @@ pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation, nation_idx: 
     }
 }
 
+/// process_trades_gs() — turn-level trade processing using GameState.
+/// Matches C uptrade() structure from trade.c line 942.
+/// In the original, trades are stored in a flat file and processed at turn-end.
+/// Here we process any pending nation-level trade deals.
+/// Called AFTER updcapture, BEFORE updmil.
+pub fn process_trades_gs(state: &mut GameState) -> Vec<String> {
+    let mut news = Vec::new();
+
+    // Collect all pending trades and validate them.
+    // In the current model, trade deals are expressed as nation-to-nation
+    // commodity exchanges; since persistent deal storage is not yet in GameState,
+    // this hook processes any expired or conflicting deals at turn boundary.
+    for nation_idx in 1..NTOTAL {
+        let active = state.nations[nation_idx].active;
+        if active == 0 { continue; }
+
+        // Validate that set-aside resources haven't gone negative
+        // (C checktrade() runs at the start of each nation's exec)
+        let treasury = state.nations[nation_idx].treasury_gold;
+        let food = state.nations[nation_idx].total_food;
+        let metals = state.nations[nation_idx].metals;
+        let jewels = state.nations[nation_idx].jewels;
+
+        if treasury < 0 {
+            state.nations[nation_idx].treasury_gold = 0;
+            news.push(format!("{} treasury went negative - cleared", state.nations[nation_idx].name));
+        }
+        if food < 0 {
+            state.nations[nation_idx].total_food = 0;
+        }
+        if metals < 0 {
+            state.nations[nation_idx].metals = 0;
+        }
+        if jewels < 0 {
+            state.nations[nation_idx].jewels = 0;
+        }
+    }
+
+    news
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

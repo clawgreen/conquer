@@ -638,6 +638,275 @@ const MAXTGVAL: i32 = 100;
 const GODJEWL: i64 = 3000;
 const GODPRICE: i64 = 25000;
 
+// ── T6: updleader — leader births and monster spawning ──
+
+/// updleader() — new leaders are born, old ones age; monster nations spawn in Spring.
+/// Matches C updleader() structure from update.c line 1471.
+pub fn update_leaders(state: &mut GameState, rng: &mut ConquerRng) {
+    for nation in 0..NTOTAL {
+        let active = state.nations[nation].active;
+        let strat = NationStrategy::from_value(active);
+        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+
+        // Monster nations spawn new monsters in Spring
+        let is_spring = (state.world.turn % 4) == 1;
+        if is_spring && Power::has_power(state.nations[nation].powers, Power::MI_MONST) {
+            // Find free army slot
+            let cap_x = state.nations[nation].cap_x;
+            let cap_y = state.nations[nation].cap_y;
+            for armynum in 0..MAXARM {
+                if state.nations[nation].armies[armynum].soldiers != 0 { continue; }
+                // Spawn a basic monster (spirit = 150, minimal strength)
+                state.nations[nation].armies[armynum].unit_type = UnitType::MIN_MONSTER;
+                state.nations[nation].armies[armynum].soldiers = 1;
+                state.nations[nation].armies[armynum].x = cap_x;
+                state.nations[nation].armies[armynum].y = cap_y;
+                state.nations[nation].armies[armynum].status = ArmyStatus::Defend.to_value();
+                state.nations[nation].armies[armynum].movement = state.nations[nation].max_move * 2;
+                break;
+            }
+        }
+
+        // Leader birth rate by class (C: switch(curntn->class))
+        let born: i32 = match state.nations[nation].class {
+            c if c == NationClass::Npc as i16
+              || c == NationClass::King as i16
+              || c == NationClass::Trader as i16
+              || c == NationClass::Emperor as i16 => 50,
+            c if c == NationClass::Wizard as i16
+              || c == NationClass::Priest as i16
+              || c == NationClass::Pirate as i16
+              || c == NationClass::Warlord as i16
+              || c == NationClass::Demon as i16 => 25,
+            c if c == NationClass::Dragon as i16
+              || c == NationClass::Shadow as i16 => 2,
+            _ => 50,
+        };
+
+        // born represents yearly birth rate (out of 400 turns/year)
+        if rng.rand() % 400 >= born { continue; }
+
+        // Find free army slot for a new leader
+        let cap_x = state.nations[nation].cap_x;
+        let cap_y = state.nations[nation].cap_y;
+        for armynum in 0..MAXARM {
+            if state.nations[nation].armies[armynum].soldiers != 0 { continue; }
+            // Spawn a basic leader unit
+            state.nations[nation].armies[armynum].unit_type = UnitType::MIN_LEADER;
+            state.nations[nation].armies[armynum].soldiers = 1;
+            state.nations[nation].armies[armynum].x = cap_x;
+            state.nations[nation].armies[armynum].y = cap_y;
+            state.nations[nation].armies[armynum].status = ArmyStatus::Defend.to_value();
+            state.nations[nation].armies[armynum].movement = state.nations[nation].max_move * 2;
+            break;
+        }
+    }
+}
+
+// ── T7: cheat — NPC bonus gold when behind ──
+
+/// cheat() — give NPC nations bonus gold/attributes if they fall behind.
+/// Matches C cheat() structure from update.c line 459.
+pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
+    // Collect PC and NPC nations
+    let mut pc_score: i64 = 0;
+    let mut pc_bonus: i32 = 0;
+    let mut pc_count: i32 = 0;
+    let mut npc_bonus: i32 = 0;
+    let mut npc_count: i32 = 0;
+
+    for x in 1..NTOTAL {
+        let strat = NationStrategy::from_value(state.nations[x].active);
+        match strat {
+            Some(s) if s.is_pc() => {
+                pc_bonus += state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
+                pc_score += state.nations[x].score;
+                pc_count += 1;
+            }
+            Some(s) if s.is_npc() => {
+                // NPC nations get gold if treasury < civ count (5% chance)
+                if state.nations[x].treasury_gold < state.nations[x].total_civ
+                    && rng.rand() % 5 == 0
+                {
+                    state.nations[x].treasury_gold += 10_000;
+                }
+                npc_bonus += state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
+                npc_count += 1;
+            }
+            _ => {}
+        }
+    }
+
+    if pc_count == 0 || npc_count == 0 { return; }
+    let pc_avg = pc_bonus / pc_count;
+    let npc_avg = npc_bonus / npc_count;
+    let avg_score = pc_score / pc_count as i64;
+
+    // If NPC behind PC in combat skill, give them a +1 bonus
+    for x in 1..NTOTAL {
+        let strat = NationStrategy::from_value(state.nations[x].active);
+        if !strat.map_or(false, |s| s.is_npc()) { continue; }
+        if state.nations[x].race == 'O' { continue; } // No cheat for orcs
+        if state.nations[x].score < avg_score
+            && rng.rand() % 100 < (pc_avg - npc_avg).max(0)
+        {
+            if state.nations[x].attack_plus > state.nations[x].defense_plus {
+                state.nations[x].defense_plus += 1;
+            } else {
+                state.nations[x].attack_plus += 1;
+            }
+        }
+    }
+}
+
+// ── T8: att_bonus — tradegood attribute bonuses ──
+
+/// att_bonus() — tradegoods in sectors provide attribute bonuses to owning nations.
+/// Matches C att_bonus() from admin.c line 605.
+pub fn att_bonus_gs(state: &mut GameState) {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+
+    for x in 0..map_x {
+        for y in 0..map_y {
+            let owner = state.sectors[x][y].owner as usize;
+            if owner == 0 { continue; }
+            let strat = NationStrategy::from_value(state.nations[owner].active);
+            if !strat.map_or(false, |s| s.is_nation()) { continue; }
+
+            let sct = &state.sectors[x][y];
+            if !tg_ok(&state.nations[owner], sct) { continue; }
+
+            let good = sct.trade_good as usize;
+            if good >= TG_SECTOR_TYPE.len() { continue; }
+
+            let tg_stype = TG_SECTOR_TYPE.as_bytes()[good] as char;
+            let des = sct.designation;
+
+            // Check sector type compatibility (matches C tg_stype logic)
+            let compatible = tg_stype == 'x'
+                || (tg_stype == 'f' && (des == Designation::Farm as u8))
+                || (tg_stype == 't' && (des == Designation::Town as u8
+                    || des == Designation::City as u8
+                    || des == Designation::Capitol as u8))
+                || (tg_stype == 'l' && des == Designation::LumberYard as u8)
+                || (tg_stype == 'u' && (des == Designation::University as u8
+                    || des == Designation::City as u8
+                    || des == Designation::Capitol as u8))
+                || (tg_stype == 'c' && des == Designation::Church as u8)
+                || (tg_stype == 'm' && des == Designation::Mine as u8)
+                || (tg_stype == '$' && des == Designation::GoldMine as u8);
+
+            if !compatible { continue; }
+
+            let val = tg_value(good);
+            let good_u8 = good as u8;
+            let ntn = &mut state.nations[owner];
+
+            if good_u8 <= END_POPULARITY {
+                ntn.popularity = ntn.popularity.saturating_add(val).min(MAXTGVAL as u8);
+            } else if good_u8 <= END_COMMUNICATION {
+                if (ntn.communications as i32 + val as i32) < 2 * MAXTGVAL {
+                    ntn.communications = ntn.communications.saturating_add(val);
+                } else {
+                    ntn.communications = (2 * MAXTGVAL) as u8;
+                }
+            } else if good_u8 <= END_EATRATE {
+                // No tradegoods for eatrate (C: just clamp)
+                ntn.eat_rate = ntn.eat_rate.min(MAXTGVAL as u8);
+            } else if good_u8 <= END_SPOILRATE {
+                ntn.spoil_rate = ntn.spoil_rate.saturating_sub(val).max(1);
+            } else if good_u8 <= END_KNOWLEDGE {
+                ntn.knowledge = ntn.knowledge.saturating_add(val).min(MAXTGVAL as u8);
+            } else if good_u8 <= END_FARM {
+                ntn.farm_ability = ntn.farm_ability.saturating_add(val).min(MAXTGVAL as u8);
+            } else if good_u8 <= END_SPELL {
+                // Spell points from people
+                let p = state.sectors[x][y].people / 1000 + 1;
+                ntn.spell_points = ntn.spell_points.saturating_add(p as i16);
+            } else if good_u8 <= END_TERROR {
+                ntn.terror = ntn.terror.saturating_add(val).min(MAXTGVAL as u8);
+            }
+        }
+    }
+}
+
+// ── T9: move_people — civilian migration ──
+
+/// move_people() — civilians migrate between adjacent sectors based on attractiveness.
+/// Matches C move_people() from update.c line 1558.
+/// Called once per nation per turn as part of updsectors.
+pub fn move_people_gs(state: &mut GameState) {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+
+    // For each owned sector, move 1/5 of the difference toward equilibrium
+    // with each neighbor. Only between sectors owned by the same nation.
+    for x in 0..map_x {
+        for y in 0..map_y {
+            let owner = state.sectors[x][y].owner as usize;
+            if owner == 0 { continue; }
+
+            let p1 = state.sectors[x][y].people;
+            if p1 == 0 { continue; }
+
+            // Check each adjacent sector
+            for (dx, dy) in &[(0i32,1i32),(1,0),(0,-1),(-1,0)] {
+                let nx = x as i32 + dx;
+                let ny = y as i32 + dy;
+                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
+                let nx = nx as usize;
+                let ny = ny as usize;
+
+                // Only migrate between sectors of the same nation
+                if state.sectors[nx][ny].owner as usize != owner { continue; }
+
+                // Skip water
+                if state.sectors[x][y].altitude == Altitude::Water as u8 { continue; }
+                if state.sectors[nx][ny].altitude == Altitude::Water as u8 { continue; }
+
+                let p2 = state.sectors[nx][ny].people;
+
+                // Attractiveness of each sector based on designation
+                let a1 = sector_attractiveness(state.sectors[x][y].designation);
+                let a2 = sector_attractiveness(state.sectors[nx][ny].designation);
+
+                if a1 + a2 == 0 { continue; }
+
+                // DELTA(1) = (A1*P2 - P1*A2) / 5*(A1+A2)
+                let delta = (a1 as i64 * p2 - p1 * a2 as i64) / (5 * (a1 + a2) as i64);
+
+                if delta > 0 {
+                    let moved = delta.min(p2 / 5);
+                    state.sectors[x][y].people += moved;
+                    state.sectors[nx][ny].people -= moved;
+                } else if delta < 0 {
+                    let moved = (-delta).min(p1 / 5);
+                    state.sectors[x][y].people -= moved;
+                    state.sectors[nx][ny].people += moved;
+                }
+            }
+        }
+    }
+}
+
+/// Sector attractiveness for migration (simplified from C attract()).
+fn sector_attractiveness(designation: u8) -> i64 {
+    if designation == Designation::City as u8 || designation == Designation::Capitol as u8 {
+        10
+    } else if designation == Designation::Town as u8 {
+        7
+    } else if designation == Designation::Farm as u8 {
+        5
+    } else if designation == Designation::Mine as u8 {
+        4
+    } else if designation == Designation::GoldMine as u8 {
+        6
+    } else {
+        2
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
