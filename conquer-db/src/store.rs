@@ -408,9 +408,9 @@ impl GameStore {
         let game = games.get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        // If user already in this game, return their existing player
-        if let Some(existing) = game.players.iter().find(|p| p.user_id == user_id) {
-            return Ok(existing.clone());
+        // If user already in this game, reject
+        if game.players.iter().any(|p| p.user_id == user_id) {
+            return Err(DbError::InvalidState("Already joined this game".to_string()));
         }
 
         // Find first available nation slot (skip 0 = God)
