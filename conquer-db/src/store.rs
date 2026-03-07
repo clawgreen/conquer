@@ -3880,4 +3880,196 @@ mod tests {
         // 6. News should have been generated
         assert!(!g.news.is_empty(), "News entries should have been generated over 5 turns");
     }
+
+    // ================================================================
+    // VAL-T13: Action validation tests
+    // ================================================================
+
+    #[test]
+    fn test_engine_only_actions_blocked() {
+        // Engine-only actions must return false for is_player_action()
+        assert!(!Action::AdjustArmyMen { nation: 1, army: 0, soldiers: 100, unit_type: 0 }.is_player_action());
+        assert!(!Action::AdjustArmyMove { nation: 1, army: 0, movement: 10 }.is_player_action());
+        assert!(!Action::AdjustNavyMove { nation: 1, fleet: 0, movement: 10 }.is_player_action());
+        assert!(!Action::AdjustNavyGold { nation: 1, gold: 1000 }.is_player_action());
+        assert!(!Action::TakeSectorOwnership { nation: 1, x: 5, y: 5 }.is_player_action());
+        assert!(!Action::IncreaseFort { nation: 1, x: 5, y: 5 }.is_player_action());
+        assert!(!Action::ChangeMagic { nation: 1, powers: 0, new_power: 1 }.is_player_action());
+        assert!(!Action::AdjustSpellPoints { nation: 1, cost: 5 }.is_player_action());
+        assert!(!Action::DestroyNation { target: 1, by: 2 }.is_player_action());
+        assert!(!Action::AdjustSectorCiv { nation: 1, people: 100, x: 5, y: 5 }.is_player_action());
+        assert!(!Action::AddSectorCiv { nation: 1, people: 100, x: 5, y: 5 }.is_player_action());
+
+        // Player actions must return true
+        assert!(Action::MoveArmy { nation: 1, army: 0, x: 5, y: 5 }.is_player_action());
+        assert!(Action::MoveNavy { nation: 1, fleet: 0, x: 5, y: 5 }.is_player_action());
+        assert!(Action::ConstructFort { nation: 1, x: 5, y: 5 }.is_player_action());
+        assert!(Action::DesignateSector { nation: 1, x: 5, y: 5, designation: 'F' }.is_player_action());
+        assert!(Action::BribeNation { nation: 1, cost: 1000, target: 2 }.is_player_action());
+    }
+
+    #[test]
+    fn test_move_army_deducts_movement() {
+        let mut state = GameState::new(16, 16);
+        // Set up nation 1 with an army
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].armies[0].soldiers = 100;
+        state.nations[1].armies[0].x = 5;
+        state.nations[1].armies[0].y = 5;
+        state.nations[1].armies[0].movement = 10;
+        state.nations[1].armies[0].status = ArmyStatus::Defend.to_value();
+        // Set terrain to passable land
+        state.sectors[5][5].altitude = Altitude::Clear as u8;
+        state.sectors[6][5].altitude = Altitude::Clear as u8;
+        state.move_cost[6][5] = 2;
+
+        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        assert_eq!(state.nations[1].armies[0].x, 6);
+        assert_eq!(state.nations[1].armies[0].y, 5);
+        assert_eq!(state.nations[1].armies[0].movement, 8); // 10 - 2 cost
+    }
+
+    #[test]
+    fn test_move_army_blocked_on_water() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].armies[0].soldiers = 100;
+        state.nations[1].armies[0].x = 5;
+        state.nations[1].armies[0].y = 5;
+        state.nations[1].armies[0].movement = 10;
+        state.nations[1].armies[0].status = ArmyStatus::Defend.to_value();
+        state.sectors[5][5].altitude = Altitude::Clear as u8;
+        state.sectors[6][5].altitude = Altitude::Water as u8;
+        state.move_cost[6][5] = -1;
+
+        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        // Should NOT have moved — still at (5,5)
+        assert_eq!(state.nations[1].armies[0].x, 5);
+        assert_eq!(state.nations[1].armies[0].y, 5);
+        assert_eq!(state.nations[1].armies[0].movement, 10); // unchanged
+    }
+
+    #[test]
+    fn test_move_army_zero_movement_blocked() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].armies[0].soldiers = 100;
+        state.nations[1].armies[0].x = 5;
+        state.nations[1].armies[0].y = 5;
+        state.nations[1].armies[0].movement = 0; // no movement left
+        state.nations[1].armies[0].status = ArmyStatus::Defend.to_value();
+        state.sectors[6][5].altitude = Altitude::Clear as u8;
+        state.move_cost[6][5] = 2;
+
+        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        assert_eq!(state.nations[1].armies[0].x, 5); // didn't move
+    }
+
+    #[test]
+    fn test_move_navy_blocked_on_land() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].navies[0].warships = 1;
+        state.nations[1].navies[0].x = 5;
+        state.nations[1].navies[0].y = 5;
+        state.nations[1].navies[0].movement = 10;
+        state.sectors[5][5].altitude = Altitude::Water as u8;
+        state.sectors[6][5].altitude = Altitude::Clear as u8; // land!
+
+        apply_action_to_state(&mut state, &Action::MoveNavy { nation: 1, fleet: 0, x: 6, y: 5 });
+        assert_eq!(state.nations[1].navies[0].x, 5); // didn't move
+    }
+
+    #[test]
+    fn test_designate_sector_requires_ownership() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].treasury_gold = 100000;
+        state.nations[1].metals = 100000;
+        // Sector owned by nation 2, not nation 1
+        state.sectors[5][5].owner = 2;
+        state.sectors[5][5].designation = Designation::NoDesig as u8;
+        state.sectors[5][5].people = 1000;
+
+        apply_action_to_state(&mut state, &Action::DesignateSector {
+            nation: 1, x: 5, y: 5, designation: 'f' // Fort
+        });
+        // Should NOT have changed
+        assert_eq!(state.sectors[5][5].designation, Designation::NoDesig as u8);
+    }
+
+    #[test]
+    fn test_construct_fort_charges_gold() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].treasury_gold = 100000;
+        state.nations[1].jewels = 10000;
+        state.sectors[5][5].owner = 1;
+        state.sectors[5][5].designation = Designation::Town as u8;
+        state.sectors[5][5].fortress = 0;
+        state.sectors[5][5].people = 1000;
+        let gold_before = state.nations[1].treasury_gold;
+
+        apply_action_to_state(&mut state, &Action::ConstructFort { nation: 1, x: 5, y: 5 });
+        assert_eq!(state.sectors[5][5].fortress, 1);
+        assert!(state.nations[1].treasury_gold < gold_before); // gold was charged
+        assert_eq!(state.nations[1].treasury_gold, gold_before - FORTCOST);
+    }
+
+    #[test]
+    fn test_bribe_nation_has_probability() {
+        // Run bribe many times — it should NOT always succeed
+        let mut successes = 0;
+        let trials = 50;
+        for seed_offset in 0..trials {
+            let mut state = GameState::new(16, 16);
+            state.nations[1].active = NationStrategy::PcGood as u8;
+            state.nations[2].active = NationStrategy::Neutral0Free as u8;
+            state.nations[1].treasury_gold = 1_000_000;
+            state.nations[1].race = 'H';
+            state.nations[2].race = 'E'; // different race
+            state.nations[2].diplomacy[1] = DiplomaticStatus::Hostile as u8;
+            state.world.turn = seed_offset as i16;
+
+            let old_status = state.nations[2].diplomacy[1];
+            apply_action_to_state(&mut state, &Action::BribeNation { nation: 1, cost: 0, target: 2 });
+            if state.nations[2].diplomacy[1] < old_status {
+                successes += 1;
+            }
+        }
+        // Should succeed sometimes but not always (~30% for neutral different race)
+        assert!(successes > 0, "Bribe should succeed at least once in {} trials", trials);
+        assert!(successes < trials, "Bribe should not always succeed ({}/{})", successes, trials);
+    }
+
+    #[test]
+    fn test_adjust_tax_clamps_range() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].tax_rate = 10;
+
+        // Try to set tax_rate above max (20)
+        apply_action_to_state(&mut state, &Action::AdjustTax { nation: 1, tax_rate: 50, active: 0, charity: 15 });
+        assert_eq!(state.nations[1].tax_rate, 20); // clamped
+        assert_eq!(state.nations[1].charity, 10); // clamped to 10
+
+        // Active field should be ignored (not changed)
+        assert_eq!(state.nations[1].active, NationStrategy::PcGood as u8);
+    }
+
+    #[test]
+    fn test_garrison_army_cant_move() {
+        let mut state = GameState::new(16, 16);
+        state.nations[1].active = NationStrategy::PcGood as u8;
+        state.nations[1].armies[0].soldiers = 100;
+        state.nations[1].armies[0].x = 5;
+        state.nations[1].armies[0].y = 5;
+        state.nations[1].armies[0].movement = 10;
+        state.nations[1].armies[0].status = ArmyStatus::Garrison.to_value();
+        state.sectors[6][5].altitude = Altitude::Clear as u8;
+        state.move_cost[6][5] = 2;
+
+        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        assert_eq!(state.nations[1].armies[0].x, 5); // didn't move
+    }
 }
