@@ -3,11 +3,33 @@
 import { GameClient } from '../network/client';
 import { GameSettings } from '../types';
 
-const MAP_PRESETS: Record<string, { x: number; y: number; label: string }> = {
+const STORAGE_KEY_CUSTOM_PRESETS = 'conquer_custom_map_presets';
+
+const DEFAULT_MAP_PRESETS: Record<string, { x: number; y: number; label: string }> = {
   small: { x: 24, y: 24, label: 'Small (24×24)' },
   medium: { x: 32, y: 32, label: 'Medium (32×32)' },
   large: { x: 48, y: 48, label: 'Large (48×48)' },
+  huge: { x: 64, y: 64, label: 'Huge (64×64)' },
+  massive: { x: 96, y: 96, label: 'Massive (96×96)' },
+  epic: { x: 128, y: 128, label: 'Epic (128×128)' },
 };
+
+function loadCustomPresets(): Record<string, { x: number; y: number; label: string }> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_PRESETS);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveCustomPreset(key: string, preset: { x: number; y: number; label: string }): void {
+  const custom = loadCustomPresets();
+  custom[key] = preset;
+  localStorage.setItem(STORAGE_KEY_CUSTOM_PRESETS, JSON.stringify(custom));
+}
+
+function getMapPresets(): Record<string, { x: number; y: number; label: string }> {
+  return { ...DEFAULT_MAP_PRESETS, ...loadCustomPresets() };
+}
 
 export class GameCreationWizard {
   private container: HTMLDivElement;
@@ -53,7 +75,14 @@ export class GameCreationWizard {
     }
   }
 
+  // Custom map size state
+  private customX = 64;
+  private customY = 64;
+
   private renderStep1(): void {
+    const presets = getMapPresets();
+    const isCustom = this.mapSize === 'custom';
+
     this.container.innerHTML = `
       <h1 style="color:#55ff55;text-shadow:0 0 10px #00aa00;">CREATE GAME</h1>
       <p style="color:#555;">Step 1/${this.totalSteps}: Basic Settings</p>
@@ -67,12 +96,28 @@ export class GameCreationWizard {
 
         <div style="margin:10px 0;">
           <label style="color:#aaa;display:block;margin-bottom:4px;">Map Size:</label>
-          ${Object.entries(MAP_PRESETS).map(([key, val]) => `
+          ${Object.entries(presets).map(([key, val]) => `
             <label style="display:block;margin:4px 0;cursor:pointer;">
               <input type="radio" name="mapsize" value="${key}" ${this.mapSize === key ? 'checked' : ''} style="accent-color:#55ff55;">
               <span style="color:${this.mapSize === key ? '#55ff55' : '#aaa'};">${val.label}</span>
             </label>
           `).join('')}
+          <label style="display:block;margin:4px 0;cursor:pointer;">
+            <input type="radio" name="mapsize" value="custom" ${isCustom ? 'checked' : ''} style="accent-color:#55ff55;">
+            <span style="color:${isCustom ? '#55ff55' : '#aaa'};">Custom...</span>
+          </label>
+          <div id="wiz-custom-size" style="margin:8px 0 0 24px;display:${isCustom ? 'block' : 'none'};">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <label style="color:#aaa;">X:</label>
+              <input id="wiz-custom-x" type="number" min="24" max="256" step="8" value="${this.customX}"
+                style="font-family:inherit;background:#111;color:#55ff55;border:1px solid #333;padding:4px 8px;width:60px;">
+              <label style="color:#aaa;">Y:</label>
+              <input id="wiz-custom-y" type="number" min="24" max="256" step="8" value="${this.customY}"
+                style="font-family:inherit;background:#111;color:#55ff55;border:1px solid #333;padding:4px 8px;width:60px;">
+            </div>
+            <p style="color:#555;font-size:12px;margin:4px 0;">Must be divisible by 8, minimum 24. Saved as a preset for future games.</p>
+            <div id="wiz-custom-error" style="color:#ff5555;font-size:12px;"></div>
+          </div>
         </div>
 
         <div style="margin:10px 0;">
@@ -94,11 +139,40 @@ export class GameCreationWizard {
       </div>
     `;
 
+    // Toggle custom size visibility
+    document.querySelectorAll('input[name="mapsize"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const customDiv = document.getElementById('wiz-custom-size')!;
+        const val = (document.querySelector('input[name="mapsize"]:checked') as HTMLInputElement).value;
+        customDiv.style.display = val === 'custom' ? 'block' : 'none';
+      });
+    });
+
     document.getElementById('wiz-cancel')!.addEventListener('click', this.onComplete);
     document.getElementById('wiz-next')!.addEventListener('click', () => {
       this.gameName = (document.getElementById('wiz-name') as HTMLInputElement).value;
       const selected = document.querySelector('input[name="mapsize"]:checked') as HTMLInputElement;
       if (selected) this.mapSize = selected.value;
+
+      if (this.mapSize === 'custom') {
+        const cx = parseInt((document.getElementById('wiz-custom-x') as HTMLInputElement).value) || 64;
+        const cy = parseInt((document.getElementById('wiz-custom-y') as HTMLInputElement).value) || 64;
+        const errorEl = document.getElementById('wiz-custom-error')!;
+
+        if (cx < 24 || cy < 24) { errorEl.textContent = 'Minimum size is 24'; return; }
+        if (cx % 8 !== 0 || cy % 8 !== 0) { errorEl.textContent = 'Must be divisible by 8'; return; }
+        if (cx > 256 || cy > 256) { errorEl.textContent = 'Maximum size is 256'; return; }
+
+        this.customX = cx;
+        this.customY = cy;
+
+        // Save as a named preset for future use
+        const presetKey = `custom_${cx}x${cy}`;
+        const presetLabel = cx === cy ? `Custom (${cx}×${cy})` : `Custom (${cx}×${cy})`;
+        saveCustomPreset(presetKey, { x: cx, y: cy, label: presetLabel });
+        this.mapSize = presetKey;
+      }
+
       this.maxPlayers = parseInt((document.getElementById('wiz-max-players') as HTMLInputElement).value) || 10;
       this.minPlayers = parseInt((document.getElementById('wiz-min-players') as HTMLInputElement).value) || 2;
       this.step = 2;
@@ -167,7 +241,8 @@ export class GameCreationWizard {
   }
 
   private renderStep3(): void {
-    const preset = MAP_PRESETS[this.mapSize];
+    const presets = getMapPresets();
+    const preset = presets[this.mapSize];
     this.container.innerHTML = `
       <h1 style="color:#55ff55;text-shadow:0 0 10px #00aa00;">CREATE GAME</h1>
       <p style="color:#555;">Step 3/${this.totalSteps}: Review & Create</p>
@@ -224,7 +299,8 @@ export class GameCreationWizard {
     this.tradeEnabled = (document.getElementById('wiz-trade') as HTMLInputElement).checked;
     this.randomEvents = (document.getElementById('wiz-events') as HTMLInputElement).checked;
 
-    const preset = MAP_PRESETS[this.mapSize];
+    const presets = getMapPresets();
+    const preset = presets[this.mapSize];
     const settings: Partial<GameSettings> = {
       map_x: preset.x,
       map_y: preset.y,
