@@ -783,6 +783,24 @@ impl GameStore {
             (game.state.world.turn as u32).wrapping_mul(42) + 12345
         );
 
+        // ── T11: Verified turn order matches C original/update.c update() ──
+        // 1.  updexecs   — apply player actions + NPC AI (+ CMOVE for idle PCs)
+        // 2.  monster    — monster nation updates (nomad, pirate, savage, lizard)
+        // 3.  combat     — resolve all land & naval battles
+        // 4.  updcapture — armies capture unoccupied/enemy sectors
+        // 5.  uptrade    — process pending trade deals
+        // 6.  updmil     — reset movement, maintenance, recount total_mil
+        // 7.  randomevent— storms, plagues, revolts, discoveries, volcanoes
+        // 8.  updsectors — population growth, taxation, inflation
+        // 9.  move_people— civilian migration (per-nation in C, global here)
+        // 10. updcomodities— food consumption, spoilage, starvation
+        // 11. updleader  — leader births, monster spawning in Spring
+        // 12. destroy    — remove nations with < 100 civ and < 50 mil
+        // 13. score      — accumulate nation scores
+        // 14. cheat      — NPC bonus gold/skills if behind PCs
+        // 15. att_bonus  — tradegood attribute bonuses
+        // 16. TURN++     — advance turn counter
+
         // ── T1: updexecs — NPC AI runs in random order.
         // Also run NPC AI for PC nations that didn't submit actions (CMOVE).
         {
