@@ -159,3 +159,41 @@ Add tests in store.rs that verify:
 - BribeNation has probability (sometimes fails)
 - Armies can't move with 0 movement points
 - Tax rate clamped to valid range
+
+### T14: Web Client — Movement Point Tracking + Enforcement
+The web client must track movement points and prevent invalid moves BEFORE submitting:
+- Display remaining movement points for selected army in the HUD/status bar
+- When army has 0 movement, disable arrow keys for that army (show "No moves left")
+- Calculate move cost for each adjacent tile and show it (color code: green=can reach, red=can't)
+- After each move, deduct the movement cost from the local army state
+- Prevent moving onto water tiles client-side (don't wait for server rejection)
+- Prevent moving armies with GARRISON/RULE status (show "Army is garrisoned")
+- When switching to next army (Tab), skip armies with 0 movement remaining
+
+### T15: Web Client — Command Availability Enforcement
+Commands should be grayed out / disabled when they can't be used:
+- Redesignate: only enabled when cursor is on an OWNED sector
+- Draft: only enabled on owned Town/City/Capitol with population
+- Build Fort: only on owned sector, must have enough gold, show cost
+- Build Road: only on owned sector with population >= 100
+- Split Army: only when selected army has >= 50 soldiers (25+25 minimum)
+- Combine: only when another same-type army exists at same location
+- Cast Spell: only when nation has spell points and magic powers
+- All gold-costing actions: show the cost, gray out if can't afford
+- Show costs inline on buttons: "⚒ Build Fort (500g)" 
+
+### T16: Web Client — Visual Move Range Indicator
+When an army is selected in movement mode:
+- Highlight all reachable tiles based on remaining movement points and terrain costs
+- Use the movement cost table from the engine (altitude + vegetation costs)
+- Tiles outside move range shown dimmed/unreachable
+- Water tiles shown as blocked (red border or X)
+- This replaces the current "highlight move range" which may not account for actual costs
+
+### T17: Web Client — Action Feedback + Error Display  
+When the server rejects an action:
+- Show the error message clearly (not just console.log)
+- Flash the status bar red with the rejection reason
+- For movement: snap army back to previous position if server rejects
+- For building: show "Not enough gold (need X, have Y)"
+- For drafting: show "Not enough population" or "No empty army slots"
