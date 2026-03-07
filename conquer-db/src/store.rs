@@ -796,8 +796,8 @@ impl GameStore {
         // 10. updcomodities— food consumption, spoilage, starvation
         // 11. updleader  — leader births, monster spawning in Spring
         // 12. destroy    — remove nations with < 100 civ and < 50 mil
-        // 13. score      — accumulate nation scores
-        // 14. cheat      — NPC bonus gold/skills if behind PCs
+        // 13. cheat      — NPC bonus gold/skills if behind PCs (C: before score)
+        // 14. score      — accumulate nation scores
         // 15. att_bonus  — tradegood attribute bonuses
         // 16. TURN++     — advance turn counter
 
@@ -883,13 +883,14 @@ impl GameStore {
             }
         }
 
-        // ── score() — recalculate scores
-        conquer_engine::turn::calculate_scores_gs(&mut game.state);
-
         // ── T7: cheat() — give NPC nations bonus gold/attributes if they fall behind
+        // C order: cheat BEFORE score (update.c lines 100, 103)
         if game.info.settings.npc_cheat {
             conquer_engine::economy::npc_cheat(&mut game.state, &mut rng);
         }
+
+        // ── score() — recalculate scores
+        conquer_engine::turn::calculate_scores_gs(&mut game.state);
 
         // ── T8: att_bonus() — tradegood attribute bonuses
         conquer_engine::economy::att_bonus_gs(&mut game.state);

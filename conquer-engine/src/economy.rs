@@ -872,8 +872,13 @@ pub fn att_bonus_gs(state: &mut GameState) {
 // ── T9: move_people — civilian migration ──
 
 /// move_people() — civilians migrate between adjacent sectors based on attractiveness.
-/// Matches C move_people() from update.c line 1558.
-/// Called once per nation per turn as part of updsectors.
+/// Ported from C move_people() in update.c line 1558.
+///
+/// C uses a 5x5 radius with a sliding-window buffer and global attractiveness array.
+/// Rust simplifies to 4-direction neighbors with equilibrium-seeking migration:
+///   DELTA = (A1*P2 - P1*A2) / (5*(A1+A2))
+/// Only between sectors owned by the same nation. Skips water.
+/// Called globally (C calls per-nation inside updexecs; we call once for all).
 pub fn move_people_gs(state: &mut GameState) {
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
