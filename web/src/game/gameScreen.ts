@@ -27,6 +27,7 @@ import { showConfirm, showAlert, showInput, showSelect, showForm } from '../ui/m
 import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
+import { canArmyMove, effectiveMoveCost, computeReachable, ALT_WATER, STATUS_GARRISON, STATUS_RULE, STATUS_MILITIA, STATUS_ONBOARD, STATUS_TRADED } from './movementCost';
 
 export class GameScreen {
   private layout: GameLayout;
@@ -322,13 +323,33 @@ export class GameScreen {
         break;
 
       case 'select_next_army': {
+        // VAL-T14: Skip armies with 0 movement remaining when cycling
         const active = this.state.armies.filter(a => a.soldiers > 0);
         if (active.length > 0) {
-          this.state.selectedArmy = (this.state.selectedArmy + 1) % active.length;
+          // Try to find next army with movement > 0
+          const startIdx = this.state.selectedArmy;
+          let found = false;
+          for (let i = 0; i < active.length; i++) {
+            const idx = (startIdx + 1 + i) % active.length;
+            if (active[idx].movement > 0 && canArmyMove(active[idx].status)) {
+              this.state.selectedArmy = idx;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            // All armies exhausted — select next anyway but warn
+            this.state.selectedArmy = (startIdx + 1) % active.length;
+          }
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
           this.state.movementMode = true;
-          this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
+          if (army.movement <= 0 || !canArmyMove(army.status)) {
+            const reason = !canArmyMove(army.status) ? 'Army is garrisoned/stationary' : 'No moves left';
+            this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers — ${reason}`);
+          } else {
+            this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
+          }
         } else {
           this.setStatus('No armies available.');
         }
@@ -336,13 +357,31 @@ export class GameScreen {
       }
 
       case 'select_prev_army': {
+        // VAL-T14: Skip armies with 0 movement remaining when cycling backward
         const active = this.state.armies.filter(a => a.soldiers > 0);
         if (active.length > 0) {
-          this.state.selectedArmy = (this.state.selectedArmy - 1 + active.length) % active.length;
+          const startIdx = this.state.selectedArmy;
+          let found = false;
+          for (let i = 0; i < active.length; i++) {
+            const idx = (startIdx - 1 - i + active.length) % active.length;
+            if (active[idx].movement > 0 && canArmyMove(active[idx].status)) {
+              this.state.selectedArmy = idx;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            this.state.selectedArmy = (startIdx - 1 + active.length) % active.length;
+          }
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
           this.state.movementMode = true;
-          this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
+          if (army.movement <= 0 || !canArmyMove(army.status)) {
+            const reason = !canArmyMove(army.status) ? 'Army is garrisoned/stationary' : 'No moves left';
+            this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers — ${reason}`);
+          } else {
+            this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves. Arrows=move, Space=done`);
+          }
         }
         break;
       }
@@ -353,20 +392,73 @@ export class GameScreen {
         break;
 
       case 'move_army': {
+        // VAL-T14: Client-side movement validation + point deduction
         const active = this.state.armies.filter(a => a.soldiers > 0);
         if (this.state.selectedArmy >= 0 && this.state.selectedArmy < active.length) {
           const army = active[this.state.selectedArmy];
+
+          // Check if army can move at all
+          if (!canArmyMove(army.status)) {
+            const reason = army.status === STATUS_GARRISON ? 'garrisoned'
+              : army.status === STATUS_RULE ? 'ruling' : 'stationary';
+            this.setStatus(`⚠️ Army ${army.index} is ${reason} — cannot move`);
+            break;
+          }
+
+          // Check movement points
+          if (army.movement <= 0) {
+            this.setStatus(`⚠️ Army ${army.index} has no movement remaining`);
+            break;
+          }
+
           const nx = army.x + action.dx;
           const ny = army.y + action.dy;
+          const mapX = this.state.mapData?.map_x || 32;
+          const mapY = this.state.mapData?.map_y || 32;
+          const sectors = this.state.mapData?.sectors;
+
+          // Bounds check
+          if (nx < 0 || nx >= mapX || ny < 0 || ny >= mapY) {
+            this.setStatus('⚠️ Cannot move off the map');
+            break;
+          }
+
+          // Get sector at destination
+          const sector = sectors?.[nx]?.[ny];
+          if (!sector) {
+            this.setStatus('⚠️ Unknown terrain — cannot move there');
+            break;
+          }
+
+          // Calculate movement cost
+          const race = this.state.nation?.race || 'H';
+          const cost = effectiveMoveCost(sector, army.status, race, sectors!, nx, ny, mapX, mapY);
+
+          if (cost < 0) {
+            const reason = sector.altitude === ALT_WATER ? 'water' : 'impassable terrain';
+            this.setStatus(`⚠️ Cannot move onto ${reason}`);
+            break;
+          }
+
+          if (cost > army.movement) {
+            this.setStatus(`⚠️ Not enough movement (need ${cost}, have ${army.movement})`);
+            break;
+          }
+
           // Submit move action to server
           this.submitAction({
             MoveArmy: { nation: this.state.nationId, army: army.index, x: nx, y: ny }
           });
-          // Optimistically update local position and follow with cursor
+          // Optimistically update local position and deduct movement
           army.x = nx;
           army.y = ny;
+          army.movement -= cost;
           this.centerOn(nx, ny);
-          this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). Arrows=move, Space=done`);
+          if (army.movement > 0) {
+            this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). ${army.movement} moves left. Arrows=move, Space=done`);
+          } else {
+            this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). No moves remaining.`);
+          }
           // Refresh map to update fog of war around new army position
           this.refreshMapFog();
         } else {
