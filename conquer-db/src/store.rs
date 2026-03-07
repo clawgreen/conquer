@@ -2413,8 +2413,37 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
         Action::BribeNation { nation: _, cost: _, target: _ } => {
             // Bribery is complex — handled by engine during turn processing
         }
-        Action::HireMercenaries { nation: _, men: _ } => {
-            // Handled by engine during turn processing
+        Action::HireMercenaries { nation, men } => {
+            // T14: Hire mercenaries from world pool
+            let n = *nation as usize;
+            if n < NTOTAL && *men > 0 {
+                // Check merc pool has enough
+                let available = state.world.merc_mil / NTOTAL as i64;
+                if *men <= available && *men <= state.world.merc_mil {
+                    // Cost: enlist_cost * men
+                    let cost = conquer_engine::commands::enlist_cost(UnitType::MERCENARY.0) * *men;
+                    if state.nations[n].treasury_gold >= cost {
+                        // Find empty army slot
+                        let mut slot = None;
+                        for i in 0..state.nations[n].armies.len() {
+                            if state.nations[n].armies[i].soldiers <= 0 {
+                                slot = Some(i);
+                                break;
+                            }
+                        }
+                        if let Some(idx) = slot {
+                            state.nations[n].treasury_gold -= cost;
+                            state.world.merc_mil -= *men;
+                            state.nations[n].armies[idx].soldiers = *men;
+                            state.nations[n].armies[idx].unit_type = UnitType::MERCENARY.0;
+                            state.nations[n].armies[idx].x = state.nations[n].cap_x;
+                            state.nations[n].armies[idx].y = state.nations[n].cap_y;
+                            state.nations[n].armies[idx].status = ArmyStatus::Defend.to_value();
+                            state.nations[n].armies[idx].movement = 0;
+                        }
+                    }
+                }
+            }
         }
         Action::DisbandToMerc { nation, men, attack, defense } => {
             // T15: Disband army soldiers to mercenary pool
