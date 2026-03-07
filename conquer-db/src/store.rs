@@ -2201,7 +2201,7 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
         Action::MoveArmy { nation, army, x, y } => {
-            // T19: Movement validation — verify destination is reachable
+            // VAL-T2: Full movement validation matching C armymove()
             let n = *nation as usize;
             let a = *army as usize;
             if n < NTOTAL && a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
@@ -2209,28 +2209,56 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 let old_y = state.nations[n].armies[a].y as i32;
                 let new_x = *x;
                 let new_y = *y;
-                // Must be on map
-                if state.on_map(new_x, new_y) {
-                    // Adjacent moves validated by engine; direct teleport for action replay
-                    let is_adjacent = (new_x - old_x).abs() <= 1 && (new_y - old_y).abs() <= 1;
-                    if is_adjacent {
-                        // Validate altitude (can't move to water or peak normally)
-                        let alt = state.sectors[new_x as usize][new_y as usize].altitude;
-                        let is_flight = state.nations[n].armies[a].status == ArmyStatus::Flight.to_value();
-                        if alt != Altitude::Water as u8 && alt != Altitude::Peak as u8 || is_flight {
-                            state.nations[n].armies[a].x = *x as u8;
-                            state.nations[n].armies[a].y = *y as u8;
-                        }
-                    } else {
-                        // Non-adjacent: validate destination (no teleporting into water/peaks)
-                        let alt = state.sectors[new_x as usize][new_y as usize].altitude;
-                        let is_flight = state.nations[n].armies[a].status == ArmyStatus::Flight.to_value();
-                        if alt != Altitude::Water as u8 && alt != Altitude::Peak as u8 || is_flight {
-                            state.nations[n].armies[a].x = *x as u8;
-                            state.nations[n].armies[a].y = *y as u8;
-                        }
-                    }
+
+                if !state.on_map(new_x, new_y) { return; }
+
+                // Must be adjacent (no teleporting)
+                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 { return; }
+
+                let status = state.nations[n].armies[a].status;
+                let movement = state.nations[n].armies[a].movement;
+
+                // GARRISON, RULE, MILITIA can't move (C: smove=0 for these)
+                if status == ArmyStatus::Garrison.to_value()
+                    || status == ArmyStatus::Rule.to_value()
+                    || status == ArmyStatus::Militia.to_value()
+                    || status == ArmyStatus::OnBoard.to_value()
+                    || status == ArmyStatus::Traded.to_value()
+                {
+                    return;
                 }
+
+                // Must have movement points
+                if movement == 0 { return; }
+
+                let is_flight = status == ArmyStatus::Flight.to_value();
+                let is_scout = status == ArmyStatus::Scout.to_value();
+
+                if is_flight {
+                    // Flight: use flightcost (can fly over water/peaks)
+                    let sct = &state.sectors[new_x as usize][new_y as usize];
+                    let fcost = conquer_engine::utils::flightcost(sct);
+                    let mcost = state.move_cost[new_x as usize][new_y as usize];
+                    let effective = if mcost > 0 && (mcost as i32) < fcost { mcost as i32 } else { fcost };
+                    if effective < 0 || effective > movement as i32 { return; }
+                    state.nations[n].armies[a].movement -= effective as u8;
+                } else {
+                    // Land movement: check terrain cost
+                    let alt = state.sectors[new_x as usize][new_y as usize].altitude;
+                    if alt == Altitude::Water as u8 || alt == Altitude::Peak as u8 { return; }
+
+                    let cost = state.move_cost[new_x as usize][new_y as usize];
+                    if cost < 0 { return; } // impassable
+
+                    // Scout moves freely (cost 1 always) but can't fight
+                    let effective_cost = if is_scout { 1.min(cost) } else { cost };
+                    if effective_cost > movement as i16 { return; }
+                    state.nations[n].armies[a].movement -= effective_cost as u8;
+                }
+
+                // Update position
+                state.nations[n].armies[a].x = *x as u8;
+                state.nations[n].armies[a].y = *y as u8;
             }
         }
         Action::MoveNavy { nation, fleet, x, y } => {
