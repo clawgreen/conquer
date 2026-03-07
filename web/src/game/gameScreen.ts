@@ -1630,6 +1630,87 @@ export class GameScreen {
     this.statusTimeout = window.setTimeout(() => {
       this.statusMessage = '';
     }, 8000);
+    // VAL-T15: Update command availability on state change
+    this.updateCommandAvailability();
+  }
+
+  /** VAL-T15: Compute and apply command enabled/disabled states */
+  private updateCommandAvailability(): void {
+    const states: Record<string, { enabled: boolean; hint?: string }> = {};
+    const nation = this.state.nation;
+    const gold = nation?.treasury_gold ?? 0;
+    const metals = nation?.metals ?? 0;
+    const cx = this.state.cursorX + this.state.xOffset;
+    const cy = this.state.cursorY + this.state.yOffset;
+    const sector = this.state.mapData?.sectors?.[cx]?.[cy];
+    const ownsSector = sector && sector.owner === this.state.nationId;
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    const army = this.state.selectedArmy >= 0 && this.state.selectedArmy < active.length
+      ? active[this.state.selectedArmy] : null;
+
+    // Redesignate: cursor must be on owned sector
+    states['redesignate'] = {
+      enabled: !!ownsSector,
+      hint: ownsSector ? 'Redesignate sector' : 'Must be on your own sector',
+    };
+
+    // Draft: owned town/city/capitol with population
+    const isDraftableSector = sector && ownsSector && sector.people > 100
+      && (sector.designation === 0 || sector.designation === 1 || sector.designation === 9);
+    states['draft'] = {
+      enabled: !!isDraftableSector,
+      hint: isDraftableSector ? 'Draft soldiers' : 'Need owned town/city/capitol with 100+ people',
+    };
+
+    // Build Fort: owned sector, town/city/capitol/fort, 500+ people, enough gold
+    const isFortDesig = sector && (sector.designation === 0 || sector.designation === 1
+      || sector.designation === 6 || sector.designation === 9);
+    const canFort = !!ownsSector && !!isFortDesig && (sector?.people ?? 0) > 500;
+    const fortLevel = sector?.fortress ?? 0;
+    let fortCost = 1000;
+    for (let i = 0; i < fortLevel; i++) fortCost *= 2;
+    states['build_fort'] = {
+      enabled: canFort && gold >= fortCost,
+      hint: canFort ? `Build Fort (${fortCost}g)` : 'Need owned town/city/fort with 500+ people',
+    };
+
+    // Build Road: owned sector, population >= 100
+    const canRoad = !!ownsSector && (sector?.people ?? 0) >= 100;
+    states['build_road'] = {
+      enabled: canRoad,
+      hint: canRoad ? 'Build Road' : 'Need owned sector with 100+ people',
+    };
+
+    // Split Army: selected army with >= 50 soldiers
+    states['split_army'] = {
+      enabled: !!army && army.soldiers >= 50,
+      hint: army ? (army.soldiers >= 50 ? 'Split army' : 'Need 50+ soldiers to split') : 'No army selected',
+    };
+
+    // Combine: need another army at same location
+    if (army) {
+      const others = active.filter(a => a.index !== army.index && a.x === army.x && a.y === army.y);
+      states['combine_army'] = {
+        enabled: others.length > 0,
+        hint: others.length > 0 ? 'Combine armies' : 'No other army at this location',
+      };
+    } else {
+      states['combine_army'] = { enabled: false, hint: 'No army selected' };
+    }
+
+    // Cast Spell: need spell points and magic powers
+    states['cast_spell'] = {
+      enabled: (nation?.spell_points ?? 0) > 0 && (nation?.powers ?? 0) !== 0,
+      hint: (nation?.spell_points ?? 0) > 0 ? 'Cast Spell' : 'No spell points',
+    };
+
+    // Bribe: need gold
+    states['bribe'] = {
+      enabled: gold > 0,
+      hint: gold > 0 ? 'Bribe a nation' : 'No gold for bribery',
+    };
+
+    this.cmdSidebar.updateCommandStates(states);
   }
 
   private addNotification(msg: string): void {

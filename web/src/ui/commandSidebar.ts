@@ -277,6 +277,32 @@ export class CommandSidebar {
     }
   }
 
+  /**
+   * VAL-T15: Update command availability based on game state.
+   * Disables/enables buttons and adds cost hints.
+   */
+  updateCommandStates(states: Record<string, { enabled: boolean; hint?: string }>): void {
+    const t = getUiTheme(this._themeId);
+    for (const [cmd, { enabled, hint }] of Object.entries(states)) {
+      const el = this.btnElements.get(cmd);
+      if (!el) continue;
+      const btn = el as HTMLButtonElement;
+      if (enabled) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.style.color = t.btnText;
+        if (hint) btn.title = hint;
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.35';
+        btn.style.cursor = 'not-allowed';
+        btn.style.color = t.sidebarDim;
+        btn.title = hint || 'Not available';
+      }
+    }
+  }
+
   destroy(): void {
     // Cleanup if needed
   }
