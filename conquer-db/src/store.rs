@@ -2926,7 +2926,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     || des == Designation::City as u8
                     || des == Designation::Fort as u8
                     || des == Designation::Capitol as u8;
-                if valid && state.sectors[sx][sy].owner == n as u8 && state.sectors[sx][sy].fortress < 12 {
+                // VAL-T5: Verify ConstructFort — need >500 people (C: "You need over 500 people")
+                if valid && state.sectors[sx][sy].owner == n as u8
+                    && state.sectors[sx][sy].fortress < 12
+                    && state.sectors[sx][sy].people > 500
+                {
                     let mut cost = FORTCOST;
                     for _ in 0..state.sectors[sx][sy].fortress {
                         cost *= 2;
