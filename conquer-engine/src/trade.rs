@@ -572,8 +572,13 @@ pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation, nation_idx: 
 
 /// process_trades_gs() — turn-level trade processing using GameState.
 /// Matches C uptrade() structure from trade.c line 942.
-/// In the original, trades are stored in a flat file and processed at turn-end.
-/// Here we process any pending nation-level trade deals.
+///
+/// In the C original, trades are stored in a flat file: nations post SELL offers,
+/// other nations BUY them, and uptrade() matches the highest bidder to each offer,
+/// executing commodity swaps (gold, food, metal, jewels, land, soldiers, ships).
+///
+/// In the web version, trades are player-action-based. This hook validates resource
+/// consistency at turn boundary and clears any negative balances.
 /// Called AFTER updcapture, BEFORE updmil.
 pub fn process_trades_gs(state: &mut GameState) -> Vec<String> {
     let mut news = Vec::new();

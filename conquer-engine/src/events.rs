@@ -542,23 +542,116 @@ fn is_sector_harbor(
 ) -> bool {
     let x = x as i32;
     let y = y as i32;
-    
+
     for dx in -1..=1 {
         for dy in -1..=1 {
             let nx = x + dx;
             let ny = y + dy;
-            
+
             if nx < 0 || ny < 0 || nx >= MAPX as i32 || ny >= MAPY as i32 {
                 continue;
             }
-            
+
             if sectors[nx as usize][ny as usize].altitude == Altitude::Water as u8 {
                 return true;
             }
         }
     }
-    
+
     false
+}
+
+/// Check if a sector is a harbor using GameState (dynamic map size).
+fn is_sector_harbor_gs(state: &GameState, x: i32, y: i32) -> bool {
+    let map_x = state.world.map_x as i32;
+    let map_y = state.world.map_y as i32;
+    for dx in -1..=1i32 {
+        for dy in -1..=1i32 {
+            let nx = x + dx;
+            let ny = y + dy;
+            if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y { continue; }
+            if state.sectors[nx as usize][ny as usize].altitude == Altitude::Water as u8 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Process random events for all nations using GameState.
+/// Matches C randomevent() structure.
+/// Called AFTER updmil, BEFORE updsectors.
+pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng) -> Vec<String> {
+    let mut news = Vec::new();
+
+    for nation_idx in 1..NTOTAL {
+        let active = state.nations[nation_idx].active;
+        if active == 0 { continue; }
+
+        // Tax revolt check
+        let gold = state.nations[nation_idx].treasury_gold;
+        let civ = state.nations[nation_idx].total_civ;
+        if check_tax_revolt(rng, &state.nations[nation_idx], gold, civ) {
+            let gold_lost = gold / 2;
+            let result = process_revolt(&mut state.nations[nation_idx], nation_idx, gold_lost);
+            news.push(result.message);
+        }
+
+        // Per-sector events
+        let map_x = state.world.map_x as usize;
+        let map_y = state.world.map_y as usize;
+        for x in 0..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize != nation_idx { continue; }
+
+                // Volcano
+                if state.sectors[x][y].vegetation == Vegetation::Volcano as u8 {
+                    if rng.rand() % 100 < VOLCANO_CHANCE {
+                        // Damage nearby sectors
+                        for dx in -1i32..=1 {
+                            for dy in -1i32..=1 {
+                                let nx = x as i32 + dx;
+                                let ny = y as i32 + dy;
+                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
+                                let p = state.sectors[nx as usize][ny as usize].people;
+                                state.sectors[nx as usize][ny as usize].people = p * 90 / 100;
+                            }
+                        }
+                        news.push(format!("Volcano erupts at ({},{})!", x, y));
+                    }
+                }
+
+                // Random discovery
+                if let Some((metal, gold_found)) = random_discovery(rng, &state.sectors[x][y]) {
+                    if metal > 0 {
+                        let m = state.sectors[x][y].metal;
+                        state.sectors[x][y].metal = m.saturating_add(metal as u8);
+                    }
+                    if gold_found > 0 {
+                        let j = state.sectors[x][y].jewels;
+                        state.sectors[x][y].jewels = j.saturating_add(gold_found as u8);
+                    }
+                }
+            }
+        }
+
+        // Navy storms
+        let n_navies = state.nations[nation_idx].navies.len();
+        for ni in 0..n_navies {
+            let has_ships = state.nations[nation_idx].navies[ni].has_ships();
+            if has_ships {
+                let nx = state.nations[nation_idx].navies[ni].x as i32;
+                let ny = state.nations[nation_idx].navies[ni].y as i32;
+                let in_harbor = is_sector_harbor_gs(state, nx, ny);
+                if !in_harbor && rng.rand() % 100 < STORM_CHANCE {
+                    let result = process_storm(&mut state.nations[nation_idx].navies[ni], false);
+                    news.push(result.message);
+                }
+            }
+        }
+    }
+
+    news
 }
 
 // ============================================================
