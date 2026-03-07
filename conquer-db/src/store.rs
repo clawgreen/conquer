@@ -2262,9 +2262,36 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
         Action::MoveNavy { nation, fleet, x, y } => {
+            // VAL-T3: Water validation + movement deduction
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
+                let nvy = &state.nations[n].navies[f];
+                // Fleet must have ships
+                if conquer_engine::navy::fleet_ships(nvy) == 0 { return; }
+
+                let new_x = *x;
+                let new_y = *y;
+                if !state.on_map(new_x, new_y) { return; }
+
+                // Must be adjacent (no teleporting)
+                let old_x = nvy.x as i32;
+                let old_y = nvy.y as i32;
+                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 { return; }
+
+                // Destination must be water
+                let alt = state.sectors[new_x as usize][new_y as usize].altitude;
+                if alt != Altitude::Water as u8 { return; }
+
+                // Must have movement points
+                let movement = nvy.movement;
+                if movement == 0 { return; }
+
+                // Navy movement cost is 1 per tile (C: water_reachp uses 1 per step)
+                let cost: u8 = 1;
+                if cost > movement { return; }
+
+                state.nations[n].navies[f].movement -= cost;
                 state.nations[n].navies[f].x = *x as u8;
                 state.nations[n].navies[f].y = *y as u8;
             }
