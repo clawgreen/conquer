@@ -764,6 +764,32 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
             }
         }
     }
+
+    // C cheat() also makes NPC nations friendlier to each other
+    // Same race → reduce diplomatic tension by 1
+    // Different race → 25% chance reduce by 1 (except JIHAD)
+    for x in 1..NTOTAL {
+        let x_strat = NationStrategy::from_value(state.nations[x].active);
+        if !x_strat.map_or(false, |s| s.is_npc()) { continue; }
+        for y in 1..NTOTAL {
+            if x == y { continue; }
+            let y_strat = NationStrategy::from_value(state.nations[y].active);
+            if !y_strat.map_or(false, |s| s.is_npc()) { continue; }
+            let ds = state.nations[x].diplomacy[y];
+            if ds == DiplomaticStatus::Treaty as u8 || ds == DiplomaticStatus::Unmet as u8 {
+                continue;
+            }
+            if state.nations[x].race == state.nations[y].race {
+                // Same race: always improve by 1
+                if ds > 0 { state.nations[x].diplomacy[y] = ds - 1; }
+            } else {
+                // Different race: 25% chance, but not below JIHAD
+                if ds != DiplomaticStatus::Jihad as u8 && rng.rand() % 4 == 0 {
+                    if ds > 0 { state.nations[x].diplomacy[y] = ds - 1; }
+                }
+            }
+        }
+    }
 }
 
 // ── T8: att_bonus — tradegood attribute bonuses ──
