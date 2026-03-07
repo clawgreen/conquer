@@ -32,8 +32,7 @@ pub fn update_monsters(
                 news.extend(n);
             }
             Some(NationStrategy::NpcLizard) => {
-                // do_lizard is handled in update.c (not npc.c)
-                // Placeholder for now
+                do_lizard(state, country, rng);
             }
             _ => {}
         }
@@ -288,6 +287,89 @@ fn do_pirate(
             let current = NavalSize::ships(nvy.warships, size);
             if current < N_MASK as i16 {
                 nvy.warships = NavalSize::set_ships(nvy.warships, size, (current + 1) as u16);
+            }
+        }
+    }
+}
+
+/// do_lizard() — update lizard nation armies.
+/// Matches C do_lizard() from update.c line 730.
+/// Lizards come in pairs: even armies garrison, odd armies patrol around them.
+fn do_lizard(
+    state: &mut GameState,
+    country: usize,
+    rng: &mut ConquerRng,
+) {
+    let map_x = state.world.map_x as i32;
+    let map_y = state.world.map_y as i32;
+
+    for armynum in 0..MAXARM {
+        if state.nations[country].armies[armynum].soldiers <= 0 {
+            continue;
+        }
+
+        // All lizard armies get 20 movement
+        state.nations[country].armies[armynum].movement = 20;
+
+        // Growth: 2%
+        let sold = state.nations[country].armies[armynum].soldiers;
+        state.nations[country].armies[armynum].soldiers = sold * 102 / 100;
+
+        if armynum % 2 == 0 {
+            // Even armies: garrison (unless sieged)
+            if state.nations[country].armies[armynum].status != ArmyStatus::Sieged.to_value() {
+                state.nations[country].armies[armynum].status = ArmyStatus::Garrison.to_value();
+            }
+        } else {
+            // Odd armies: patrol around their paired even army
+            // If the paired army (armynum-1) is dead, this one dies too
+            if state.nations[country].armies[armynum - 1].soldiers <= 0 {
+                state.nations[country].armies[armynum].soldiers = 0;
+                continue;
+            }
+
+            // Move to paired army's location
+            let pair_x = state.nations[country].armies[armynum - 1].x as i32;
+            let pair_y = state.nations[country].armies[armynum - 1].y as i32;
+            state.nations[country].armies[armynum].x = pair_x as u8;
+            state.nations[country].armies[armynum].y = pair_y as u8;
+
+            // Try to move to relieve sieges or attack nearby sectors
+            if state.nations[country].armies[armynum].status != ArmyStatus::Sieged.to_value()
+                && state.nations[country].armies[armynum - 1].status != ArmyStatus::Sieged.to_value()
+            {
+                for dx in -1..=1i32 {
+                    for dy in -1..=1i32 {
+                        let nx = pair_x + dx;
+                        let ny = pair_y + dy;
+                        if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y {
+                            continue;
+                        }
+                        let sct = &state.sectors[nx as usize][ny as usize];
+                        if sct.altitude == Altitude::Water as u8
+                            || sct.altitude == Altitude::Peak as u8
+                        {
+                            continue;
+                        }
+                        if sct.owner as usize != country && rng.rand() % 3 == 0 {
+                            state.nations[country].armies[armynum].x = nx as u8;
+                            state.nations[country].armies[armynum].y = ny as u8;
+                        }
+                    }
+                }
+            }
+
+            // If on a fort owned by this nation, garrison; otherwise attack
+            let ax = state.nations[country].armies[armynum].x as usize;
+            let ay = state.nations[country].armies[armynum].y as usize;
+            if state.sectors[ax][ay].designation == Designation::Fort as u8
+                && state.sectors[ax][ay].owner as usize == country
+            {
+                if state.nations[country].armies[armynum].status != ArmyStatus::Sieged.to_value() {
+                    state.nations[country].armies[armynum].status = ArmyStatus::Garrison.to_value();
+                }
+            } else {
+                state.nations[country].armies[armynum].status = ArmyStatus::Attack.to_value();
             }
         }
     }
