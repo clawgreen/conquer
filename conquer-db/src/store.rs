@@ -2339,10 +2339,114 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].defense_plus += 1;
             }
         }
-        Action::DestroyNation { target, by: _ } => {
+        Action::DestroyNation { target, by } => {
+            // T18: Full nation destruction per C destroy()
             let t = *target as usize;
-            if t < NTOTAL {
-                state.nations[t].active = 0;
+            let b = *by as usize;
+            if t < NTOTAL && state.nations[t].is_active() {
+                let cap_x = state.nations[t].cap_x as usize;
+                let cap_y = state.nations[t].cap_y as usize;
+                let cap_owner = if cap_x < state.sectors.len() && cap_y < state.sectors[0].len() {
+                    state.sectors[cap_x][cap_y].owner as usize
+                } else {
+                    t
+                };
+
+                // Conqueror gets +5% attack bonus
+                if cap_owner != t && cap_owner < NTOTAL {
+                    state.nations[cap_owner].attack_plus += 5;
+                }
+
+                // Transfer resources to conqueror
+                if cap_owner != t && cap_owner < NTOTAL {
+                    if state.nations[t].treasury_gold > 0 {
+                        state.nations[cap_owner].treasury_gold += state.nations[t].treasury_gold;
+                    }
+                    if state.nations[t].jewels > 0 {
+                        state.nations[cap_owner].jewels += state.nations[t].jewels;
+                    }
+                    if state.nations[t].metals > 0 {
+                        state.nations[cap_owner].metals += state.nations[t].metals;
+                    }
+                    if state.nations[t].total_food > 0 {
+                        state.nations[cap_owner].total_food += state.nations[t].total_food;
+                    }
+                    // Capitol becomes city
+                    if cap_x < state.sectors.len() && cap_y < state.sectors[0].len() {
+                        state.sectors[cap_x][cap_y].designation = Designation::City as u8;
+                    }
+                }
+
+                // Deactivate nation
+                state.nations[t].active = NationStrategy::Inactive as u8;
+                state.nations[t].score = 0;
+                state.nations[t].treasury_gold = 0;
+                state.nations[t].jewels = 0;
+                state.nations[t].metals = 0;
+                state.nations[t].total_food = 0;
+
+                // Remove all armies — soldiers return to population
+                for a in 0..state.nations[t].armies.len() {
+                    let soldiers = state.nations[t].armies[a].soldiers;
+                    if soldiers > 0 {
+                        let ax = state.nations[t].armies[a].x as usize;
+                        let ay = state.nations[t].armies[a].y as usize;
+                        if ax < state.sectors.len() && ay < state.sectors[0].len() {
+                            state.sectors[ax][ay].people += soldiers;
+                        }
+                        state.nations[t].armies[a].soldiers = 0;
+                    }
+                }
+
+                // Remove all navies
+                for f in 0..state.nations[t].navies.len() {
+                    state.nations[t].navies[f].warships = 0;
+                    state.nations[t].navies[f].merchant = 0;
+                    state.nations[t].navies[f].galleys = 0;
+                }
+
+                // Reset diplomacy
+                for i in 0..NTOTAL {
+                    state.nations[i].diplomacy[t] = DiplomaticStatus::Unmet as u8;
+                    state.nations[t].diplomacy[i] = DiplomaticStatus::Unmet as u8;
+                }
+
+                // Free all owned sectors (if self-destroyed / no conqueror)
+                if cap_owner == t {
+                    let map_x = state.sectors.len();
+                    let map_y = if map_x > 0 { state.sectors[0].len() } else { 0 };
+                    for x in 0..map_x {
+                        for y in 0..map_y {
+                            if state.sectors[x][y].owner == t as u8 {
+                                state.sectors[x][y].people = 0;
+                                state.sectors[x][y].owner = 0;
+                                state.sectors[x][y].designation = Designation::NoDesig as u8;
+                            }
+                        }
+                    }
+                } else if cap_owner < NTOTAL {
+                    // Different race: people flee, sectors become unowned
+                    // Same race: sectors go to conqueror
+                    let conq_race = state.nations[cap_owner].race;
+                    let target_race = state.nations[t].race;
+                    let map_x = state.sectors.len();
+                    let map_y = if map_x > 0 { state.sectors[0].len() } else { 0 };
+                    for x in 0..map_x {
+                        for y in 0..map_y {
+                            if state.sectors[x][y].owner == t as u8 {
+                                if conq_race == target_race {
+                                    // Same race: give to conqueror
+                                    state.sectors[x][y].owner = cap_owner as u8;
+                                } else {
+                                    // Different race: people flee, sector unowned
+                                    state.sectors[x][y].people = 0;
+                                    state.sectors[x][y].owner = 0;
+                                    state.sectors[x][y].designation = Designation::NoDesig as u8;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         Action::ChangeName { nation, name } => {
