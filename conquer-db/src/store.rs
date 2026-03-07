@@ -2747,10 +2747,26 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                         && target_status != DiplomaticStatus::Treaty as u8
                     {
                         state.nations[n].treasury_gold -= actual_cost;
-                        // Bribe success chance: 50% same NPC type, 30% neutral, 20% otherwise, +20% same race
-                        // Apply immediately: improve their status toward us by 1 step
-                        if target_status > DiplomaticStatus::Treaty as u8 {
-                            state.nations[t].diplomacy[n] = target_status - 1;
+                        // VAL-T9: Probability roll matching C cexecute.c XBRIBE
+                        // 50% same NPC type, 30% neutral, 15% isolationist, 20% otherwise, +20% same race
+                        let n_strat = NationStrategy::from_value(state.nations[n].active);
+                        let t_strat = NationStrategy::from_value(state.nations[t].active);
+                        let mut chance: i32 = match (n_strat, t_strat) {
+                            (Some(ns), Some(ts)) if ns.npc_type() == ts.npc_type() => 50,
+                            (_, Some(ts)) if ts.is_neutral() => 30,
+                            (_, Some(ts)) if ts.npc_type() == 4 => 15, // ISOLATIONIST type
+                            _ => 20,
+                        };
+                        if state.nations[n].race == state.nations[t].race { chance += 20; }
+                        // Deterministic RNG seeded from turn + nation for reproducibility
+                        let seed = (state.world.turn as u32 * 1000 + n as u32) ^ (t as u32 * 7919);
+                        let mut rng = conquer_engine::rng::ConquerRng::new(seed);
+                        let roll = (rng.rand() % 100) as i32;
+                        if roll < chance {
+                            // Success: improve their status toward us by 1 step
+                            if target_status > DiplomaticStatus::Treaty as u8 {
+                                state.nations[t].diplomacy[n] = target_status - 1;
+                            }
                         }
                     }
                 }
