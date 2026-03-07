@@ -2700,12 +2700,16 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].reputation = *reputation as u8;
             }
         }
-        Action::AdjustTax { nation, tax_rate, active, charity } => {
+        Action::AdjustTax { nation, tax_rate, active: _, charity } => {
+            // VAL-T7: Players can only change tax_rate (0-20) and charity (0-10).
+            // The 'active' field is ignored — players cannot change NPC/PC status.
+            // Engine changes active via direct state manipulation, not through actions.
             let n = *nation as usize;
             if n < NTOTAL {
-                state.nations[n].tax_rate = *tax_rate as u8;
-                state.nations[n].active = *active as u8;
-                state.nations[n].charity = *charity as u8;
+                // Clamp tax_rate to valid C range (0-20)
+                state.nations[n].tax_rate = (*tax_rate).clamp(0, 20) as u8;
+                // Clamp charity to valid C range (0-10)
+                state.nations[n].charity = (*charity).clamp(0, 10) as u8;
             }
         }
         Action::BribeNation { nation, cost, target } => {
