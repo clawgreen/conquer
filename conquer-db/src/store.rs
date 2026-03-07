@@ -2492,15 +2492,45 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
         Action::IncreaseAttack { nation } => {
+            // VAL-T6: Add metal cost matching C forms.c case '6'
+            // Cost = METALORE * men * level^2, where level = max(aplus - power_bonus, 10) / 10
+            // Vampires can't add combat bonus
             let n = *nation as usize;
             if n < NTOTAL {
-                state.nations[n].attack_plus += 1;
+                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) { return; }
+                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD) { 30 }
+                    else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) { 20 }
+                    else if Power::has_power(state.nations[n].powers, Power::WARRIOR) { 10 }
+                    else { 0 };
+                let men = std::cmp::max(state.nations[n].total_mil, 1500);
+                let level = std::cmp::max(state.nations[n].attack_plus - power_bonus, 10) / 10;
+                let cost = METALORE * men as i64 * level as i64 * level as i64;
+                let orc_mult = if state.nations[n].race == 'O' { 3 } else { 1 };
+                let final_cost = cost * orc_mult;
+                if state.nations[n].metals >= final_cost {
+                    state.nations[n].metals -= final_cost;
+                    state.nations[n].attack_plus += 1;
+                }
             }
         }
         Action::IncreaseDefense { nation } => {
+            // VAL-T6: Add metal cost matching C forms.c case '6'
             let n = *nation as usize;
             if n < NTOTAL {
-                state.nations[n].defense_plus += 1;
+                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) { return; }
+                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD) { 30 }
+                    else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) { 20 }
+                    else if Power::has_power(state.nations[n].powers, Power::WARRIOR) { 10 }
+                    else { 0 };
+                let men = std::cmp::max(state.nations[n].total_mil, 1500);
+                let level = std::cmp::max(state.nations[n].defense_plus - power_bonus, 10) / 10;
+                let cost = METALORE * men as i64 * level as i64 * level as i64;
+                let orc_mult = if state.nations[n].race == 'O' { 3 } else { 1 };
+                let final_cost = cost * orc_mult;
+                if state.nations[n].metals >= final_cost {
+                    state.nations[n].metals -= final_cost;
+                    state.nations[n].defense_plus += 1;
+                }
             }
         }
         Action::DestroyNation { target, by } => {
