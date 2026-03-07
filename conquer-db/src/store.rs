@@ -2410,8 +2410,35 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].charity = *charity as u8;
             }
         }
-        Action::BribeNation { nation: _, cost: _, target: _ } => {
-            // Bribery is complex — handled by engine during turn processing
+        Action::BribeNation { nation, cost, target } => {
+            // T16: Bribe a nation to improve diplomacy
+            let n = *nation as usize;
+            let t = *target as usize;
+            if n < NTOTAL && t < NTOTAL && n != t {
+                // Bribe cost is BRIBE * (target total_mil / 1000), min BRIBE
+                let bribe_cost = if state.nations[t].total_mil > 1000 {
+                    BRIBE * state.nations[t].total_mil / 1000
+                } else {
+                    BRIBE
+                };
+                let actual_cost = if *cost > 0 { *cost } else { bribe_cost };
+                if state.nations[n].treasury_gold >= actual_cost {
+                    let target_status = state.nations[t].diplomacy[n];
+                    // Can't bribe if ALLIED, JIHAD, UNMET, or TREATY
+                    if target_status != DiplomaticStatus::Allied as u8
+                        && target_status != DiplomaticStatus::Jihad as u8
+                        && target_status != DiplomaticStatus::Unmet as u8
+                        && target_status != DiplomaticStatus::Treaty as u8
+                    {
+                        state.nations[n].treasury_gold -= actual_cost;
+                        // Bribe success chance: 50% same NPC type, 30% neutral, 20% otherwise, +20% same race
+                        // Apply immediately: improve their status toward us by 1 step
+                        if target_status > DiplomaticStatus::Treaty as u8 {
+                            state.nations[t].diplomacy[n] = target_status - 1;
+                        }
+                    }
+                }
+            }
         }
         Action::HireMercenaries { nation, men } => {
             // T14: Hire mercenaries from world pool
