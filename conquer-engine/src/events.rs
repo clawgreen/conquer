@@ -8,6 +8,7 @@ use conquer_core::*;
 use conquer_core::tables::*;
 use conquer_core::enums::{Season, Altitude, Vegetation};
 use crate::rng::ConquerRng;
+use crate::utils::is_habitable;
 
 /// Event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -646,6 +647,123 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
                 if !in_harbor && rng.rand() % 100 < STORM_CHANCE {
                     let result = process_storm(&mut state.nations[nation_idx].navies[ni], false);
                     news.push(result.message);
+                }
+            }
+        }
+
+        // === Truly random events (C case 9-30) ===
+        // Probability: score-weighted like C
+        // (rand()%100)*WORLDSCORE < RANEVENT * WORLDNTN * score
+        let world_score = state.nations.iter().map(|n| n.score.max(0) as u64).sum::<u64>().max(1);
+        let world_ntn = state.nations.iter().filter(|n| n.active > 0).count() as u64;
+        let nation_score = state.nations[nation_idx].score.max(0) as u64;
+        let roll = (rng.rand() % 100) as u64 * world_score;
+        let threshold = 30u64 * world_ntn * nation_score; // RANEVENT=30 from C
+
+        if roll < threshold {
+            let event = rng.rand() % 22 + 9; // cases 9-30
+
+            match event {
+                9 => {
+                    // Dragon raid — lose 30% of food
+                    state.nations[nation_idx].total_food =
+                        state.nations[nation_idx].total_food * 7 / 10;
+                    news.push(format!(
+                        "Dragon raid on {}! 30% of food stores destroyed.",
+                        state.nations[nation_idx].name
+                    ));
+                }
+                10 => {
+                    // Famine — lose 3/4 food, 10% starve
+                    state.nations[nation_idx].total_food /= 4;
+                    for x in 0..map_x {
+                        for y in 0..map_y {
+                            if state.sectors[x][y].owner as usize == nation_idx {
+                                let p = state.sectors[x][y].people;
+                                state.sectors[x][y].people = p - p / 10;
+                            }
+                        }
+                    }
+                    news.push(format!(
+                        "Famine strikes {}! Food depleted, 10% starve.",
+                        state.nations[nation_idx].name
+                    ));
+                }
+                11 => {
+                    // Hurricane — damage 3x3 area
+                    let rx = rng.rand() % (map_x as i32).max(1);
+                    let ry = rng.rand() % (map_y as i32).max(1);
+                    if state.sectors[rx as usize][ry as usize].owner as usize == nation_idx {
+                        let pct = 10 + (rng.rand() % 20) as i64;
+                        for dx in -1i32..=1 {
+                            for dy in -1i32..=1 {
+                                let nx = rx + dx;
+                                let ny = ry + dy;
+                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
+                                let nu = nx as usize;
+                                let nv = ny as usize;
+                                let p = state.sectors[nu][nv].people;
+                                state.sectors[nu][nv].people = p * (100 - pct) / 100;
+                                if state.sectors[nu][nv].fortress > 0 {
+                                    state.sectors[nu][nv].fortress -= 1;
+                                }
+                            }
+                        }
+                        news.push(format!(
+                            "Hurricane devastates region ({},{}) in {}!",
+                            rx, ry, state.nations[nation_idx].name
+                        ));
+                    }
+                }
+                17 | 18 => {
+                    // Gold/jewel strike in a sector
+                    let mut candidates = Vec::new();
+                    for x in 0..map_x {
+                        for y in 0..map_y {
+                            if state.sectors[x][y].owner as usize == nation_idx
+                                && state.sectors[x][y].jewels == 0
+                                && is_habitable(&state.sectors[x][y])
+                            {
+                                candidates.push((x, y));
+                            }
+                        }
+                    }
+                    if !candidates.is_empty() {
+                        let idx = (rng.rand() as usize) % candidates.len();
+                        let (sx, sy) = candidates[idx];
+                        state.sectors[sx][sy].jewels = 1 + (rng.rand() % 5) as u8;
+                        news.push(format!(
+                            "Jewel deposit discovered at ({},{}) in {}!",
+                            sx, sy, state.nations[nation_idx].name
+                        ));
+                    }
+                }
+                25 => {
+                    // Plague — 15% population loss
+                    for x in 0..map_x {
+                        for y in 0..map_y {
+                            if state.sectors[x][y].owner as usize == nation_idx {
+                                let p = state.sectors[x][y].people;
+                                state.sectors[x][y].people = p * 85 / 100;
+                            }
+                        }
+                    }
+                    news.push(format!(
+                        "Plague ravages {}! 15% of population lost.",
+                        state.nations[nation_idx].name
+                    ));
+                }
+                26 => {
+                    // Good harvest — +30% food
+                    state.nations[nation_idx].total_food =
+                        state.nations[nation_idx].total_food * 130 / 100;
+                    news.push(format!(
+                        "Bountiful harvest in {}! Food stores increase 30%.",
+                        state.nations[nation_idx].name
+                    ));
+                }
+                _ => {
+                    // Other events not yet ported; no-op
                 }
             }
         }
