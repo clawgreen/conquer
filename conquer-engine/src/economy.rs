@@ -648,17 +648,24 @@ pub fn update_leaders(state: &mut GameState, rng: &mut ConquerRng) {
         let strat = NationStrategy::from_value(active);
         if !strat.map_or(false, |s| s.is_nation()) { continue; }
 
-        // Monster nations spawn new monsters in Spring
+        // Monster nations spawn new monsters in Spring (C: updleader SPRING block)
         let is_spring = (state.world.turn % 4) == 1;
         if is_spring && Power::has_power(state.nations[nation].powers, Power::MI_MONST) {
-            // Find free army slot
+            // Determine max monster strength from powers (C: born=100/200/BIG)
+            let mut max_str: i64 = 100;
+            if Power::has_power(state.nations[nation].powers, Power::AV_MONST) { max_str = 200; }
+            if Power::has_power(state.nations[nation].powers, Power::MA_MONST) { max_str = 9999; }
+
+            // Pick a random monster type in range [MIN_MONSTER, MAX_MONSTER]
+            let monster_range = (UnitType::MAX_MONSTER - UnitType::MIN_MONSTER + 1) as i32;
+            let mtype = UnitType::MIN_MONSTER + (rng.rand() % monster_range.max(1)) as u8;
+
             let cap_x = state.nations[nation].cap_x;
             let cap_y = state.nations[nation].cap_y;
             for armynum in 0..MAXARM {
                 if state.nations[nation].armies[armynum].soldiers != 0 { continue; }
-                // Spawn a basic monster (spirit = 150, minimal strength)
-                state.nations[nation].armies[armynum].unit_type = UnitType::MIN_MONSTER;
-                state.nations[nation].armies[armynum].soldiers = 1;
+                state.nations[nation].armies[armynum].unit_type = mtype;
+                state.nations[nation].armies[armynum].soldiers = max_str.min(150);
                 state.nations[nation].armies[armynum].x = cap_x;
                 state.nations[nation].armies[armynum].y = cap_y;
                 state.nations[nation].armies[armynum].status = ArmyStatus::Defend.to_value();
