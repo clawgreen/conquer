@@ -48,9 +48,15 @@ pub async fn submit_actions(
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
     let player = state.store.get_player(game_id, user_id).await?;
 
-    // TODO (T310): Validate actions before queuing
+    // Validate: reject engine-only actions from player API
     let mut results = Vec::new();
     for action in req.actions {
+        if !action.is_player_action() {
+            return Err(ApiError::BadRequest(format!(
+                "Action {:?} is engine-internal and cannot be submitted by players",
+                std::mem::discriminant(&action)
+            )));
+        }
         let submitted = state.store.submit_action(game_id, player.nation_id, action).await?;
         results.push(SubmittedActionResponse {
             id: submitted.id.to_string(),

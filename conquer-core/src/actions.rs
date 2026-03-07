@@ -188,6 +188,63 @@ pub enum Action {
 }
 
 impl Action {
+    /// Returns true if this action can be submitted by a player via the REST API.
+    /// Engine-only actions (used by NPC AI and turn processing) return false.
+    pub fn is_player_action(&self) -> bool {
+        match self {
+            // Player actions — can be submitted via REST API
+            Action::MoveArmy { .. } => true,
+            Action::MoveNavy { .. } => true,
+            Action::AdjustArmyStat { .. } => true,
+            Action::SplitArmy { .. } => true,
+            Action::CombineArmies { .. } => true,
+            Action::DivideArmy { .. } => true,
+            Action::DraftUnit { .. } => true,
+            Action::ConstructFort { .. } => true,
+            Action::BuildRoad { .. } => true,
+            Action::ConstructShip { .. } => true,
+            Action::LoadArmyOnFleet { .. } => true,
+            Action::UnloadArmyFromFleet { .. } => true,
+            Action::LoadPeopleOnFleet { .. } => true,
+            Action::UnloadPeople { .. } => true,
+            Action::CastSpell { .. } => true,
+            Action::BuyMagicPower { .. } => true,
+            Action::ProposeTrade { .. } => true,
+            Action::AcceptTrade { .. } => true,
+            Action::RejectTrade { .. } => true,
+            Action::AdjustDiplomacy { .. } => true,
+            Action::BribeNation { .. } => true,
+            Action::SendTribute { .. } => true,
+            Action::HireMercenaries { .. } => true,
+            Action::DisbandToMerc { .. } => true,
+            Action::DesignateSector { .. } => true,
+            Action::AdjustTax { .. } => true,
+            Action::AdjustPopulation { .. } => true,
+            Action::ChangeName { .. } => true,
+            Action::ChangePassword { .. } => true,
+            Action::IncreaseAttack { .. } => true,
+            Action::IncreaseDefense { .. } => true,
+
+            // Engine-only actions — blocked from player API
+            Action::AdjustArmyMen { .. } => false,
+            Action::AdjustArmyMove { .. } => false,
+            Action::AdjustNavyMove { .. } => false,
+            Action::AdjustNavyGold { .. } => false,
+            Action::AdjustNavyMerchant { .. } => false,
+            Action::AdjustNavyWarships { .. } => false,
+            Action::AdjustNavyGalleys { .. } => false,
+            Action::AdjustNavyHold { .. } => false,
+            Action::AdjustNavyCrew { .. } => false,
+            Action::AddSectorCiv { .. } => false,
+            Action::AdjustSectorCiv { .. } => false,
+            Action::TakeSectorOwnership { .. } => false,
+            Action::IncreaseFort { .. } => false,
+            Action::ChangeMagic { .. } => false,
+            Action::AdjustSpellPoints { .. } => false,
+            Action::DestroyNation { .. } => false,
+        }
+    }
+
     /// Get the execute-file code for this action
     pub fn code(&self) -> i32 {
         match self {
