@@ -2296,14 +2296,98 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].navies[f].y = *y as u8;
             }
         }
-        Action::DesignateSector { nation: _, x, y, designation } => {
+        Action::DesignateSector { nation, x, y, designation } => {
+            // VAL-T4: Ownership + cost + rules matching C redesignate()
+            let n = *nation as usize;
             let sx = *x as usize;
             let sy = *y as usize;
-            if sx < state.sectors.len() && sy < state.sectors[0].len() {
-                if let Some(d) = Designation::from_char(*designation) {
-                    state.sectors[sx][sy].designation = d as u8;
-                }
+            if n >= NTOTAL || sx >= state.sectors.len() || sy >= state.sectors[0].len() { return; }
+
+            // Must own the sector (C: "Hey! You don't own that sector!")
+            if state.sectors[sx][sy].owner != n as u8 && n != 0 { return; }
+
+            let new_des = match Designation::from_char(*designation) {
+                Some(d) => d,
+                None => return,
+            };
+            let new_des_u8 = new_des as u8;
+            let old_des = state.sectors[sx][sy].designation;
+
+            // Can't redesignate to same thing
+            if new_des_u8 == old_des { return; }
+
+            // Can't redesignate ROAD here — use BuildRoad action
+            if new_des == Designation::Road { return; }
+
+            // Population check for city/town/capitol
+            let people = state.sectors[sx][sy].people;
+            if (new_des == Designation::Capitol || new_des == Designation::City || new_des == Designation::Town)
+                && people < 500
+            {
+                return;
             }
+
+            // City/Capitol: must burn down first (redesignate to Ruin)
+            if new_des_u8 != Designation::Ruin as u8
+                && (old_des == Designation::City as u8 || old_des == Designation::Capitol as u8)
+                && new_des != Designation::Capitol  // can upgrade city -> capitol
+            {
+                return;
+            }
+
+            // Capitol requires city or town or ruin base
+            if new_des == Designation::Capitol
+                && old_des != Designation::City as u8
+                && old_des != Designation::Town as u8
+                && old_des != Designation::Ruin as u8
+            {
+                return;
+            }
+
+            // Ruin only from city/capitol
+            if new_des == Designation::Ruin
+                && old_des != Designation::City as u8
+                && old_des != Designation::Capitol as u8
+            {
+                return;
+            }
+
+            // Charge cost
+            let cost = if new_des == Designation::Town || new_des == Designation::Fort {
+                // Town/Fort: DESCOST metal + 10*DESCOST gold
+                if state.nations[n].metals < DESCOST { return; }
+                state.nations[n].metals -= DESCOST;
+                10 * DESCOST
+            } else if new_des == Designation::City || new_des == Designation::Capitol {
+                let metal_cost = if new_des == Designation::Capitol && old_des == Designation::City as u8 {
+                    0 // upgrading city -> capitol has no extra metal cost
+                } else { 5 * DESCOST };
+                if state.nations[n].metals < metal_cost { return; }
+                state.nations[n].metals -= metal_cost;
+                if old_des == Designation::Ruin as u8 { 10 * DESCOST } else { 20 * DESCOST }
+            } else if new_des == Designation::Ruin {
+                0 // burning down is free
+            } else {
+                DESCOST // normal redesignation
+            };
+
+            if cost > 0 && state.nations[n].treasury_gold < cost { return; }
+            if cost > 0 { state.nations[n].treasury_gold -= cost; }
+
+            // If setting to CAPITOL, update old capitol to city and set new cap
+            if new_des == Designation::Capitol {
+                let old_cx = state.nations[n].cap_x as usize;
+                let old_cy = state.nations[n].cap_y as usize;
+                if old_cx < state.sectors.len() && old_cy < state.sectors[0].len()
+                    && state.sectors[old_cx][old_cy].owner == n as u8
+                {
+                    state.sectors[old_cx][old_cy].designation = Designation::City as u8;
+                }
+                state.nations[n].cap_x = *x as u8;
+                state.nations[n].cap_y = *y as u8;
+            }
+
+            state.sectors[sx][sy].designation = new_des_u8;
         }
         Action::TakeSectorOwnership { nation, x, y } => {
             let sx = *x as usize;
