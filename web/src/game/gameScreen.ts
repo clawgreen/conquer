@@ -367,6 +367,8 @@ export class GameScreen {
           army.y = ny;
           this.centerOn(nx, ny);
           this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). Arrows=move, Space=done`);
+          // Refresh map to update fog of war around new army position
+          this.refreshMapFog();
         } else {
           this.setStatus('No army selected. Press Tab to select, or move cursor to army and press M.');
         }
@@ -553,6 +555,18 @@ export class GameScreen {
     const newAy = anchorScreenY ?? Math.floor(newSize.screenY / 2);
     this.state.xOffset = anchorMapX - newAx;
     this.state.yOffset = anchorMapY - newAy;
+  }
+
+  private async refreshMapFog(): Promise<void> {
+    if (!this.state.gameId) return;
+    try {
+      const mapData = await this.client.getMap(this.state.gameId);
+      this.state.mapData = mapData;
+      renderMap(this.term, this.state);
+      this.term.render();
+    } catch (e) {
+      // Non-critical — fog will update on next full refresh
+    }
   }
 
   private async submitAction(action: unknown): Promise<void> {

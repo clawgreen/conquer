@@ -2222,9 +2222,13 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                             state.nations[n].armies[a].y = *y as u8;
                         }
                     } else {
-                        // Non-adjacent: direct set (for engine-validated moves)
-                        state.nations[n].armies[a].x = *x as u8;
-                        state.nations[n].armies[a].y = *y as u8;
+                        // Non-adjacent: validate destination (no teleporting into water/peaks)
+                        let alt = state.sectors[new_x as usize][new_y as usize].altitude;
+                        let is_flight = state.nations[n].armies[a].status == ArmyStatus::Flight.to_value();
+                        if alt != Altitude::Water as u8 && alt != Altitude::Peak as u8 || is_flight {
+                            state.nations[n].armies[a].x = *x as u8;
+                            state.nations[n].armies[a].y = *y as u8;
+                        }
                     }
                 }
             }
