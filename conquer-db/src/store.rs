@@ -2233,10 +2233,45 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
         Action::AdjustDiplomacy { nation_a, nation_b, status } => {
+            // T13: Diplomacy with validation rules from C diploscrn()
             let a = *nation_a as usize;
             let b = *nation_b as usize;
-            if a < NTOTAL && b < NTOTAL {
-                state.nations[a].diplomacy[b] = *status as u8;
+            if a < NTOTAL && b < NTOTAL && a != b {
+                let new_status = *status as u8;
+                // Can't set to UNMET (0) — only god can do that
+                if new_status == DiplomaticStatus::Unmet as u8 {
+                    return;
+                }
+                // Can't change if both sides are UNMET
+                let old_a_to_b = state.nations[a].diplomacy[b];
+                let old_b_to_a = state.nations[b].diplomacy[a];
+                if old_a_to_b == DiplomaticStatus::Unmet as u8 
+                    && old_b_to_a == DiplomaticStatus::Unmet as u8 {
+                    return;
+                }
+                // Breaking JIHAD or TREATY costs BREAKJIHAD gold
+                if old_a_to_b == DiplomaticStatus::Jihad as u8 && new_status != DiplomaticStatus::Jihad as u8 {
+                    if state.nations[a].treasury_gold < BREAKJIHAD {
+                        return;
+                    }
+                    state.nations[a].treasury_gold -= BREAKJIHAD;
+                } else if old_a_to_b == DiplomaticStatus::Treaty as u8 && new_status != DiplomaticStatus::Treaty as u8 {
+                    // Only costs if the other side also has treaty
+                    if old_b_to_a == DiplomaticStatus::Treaty as u8 {
+                        if state.nations[a].treasury_gold < BREAKJIHAD {
+                            return;
+                        }
+                        state.nations[a].treasury_gold -= BREAKJIHAD;
+                    }
+                }
+                state.nations[a].diplomacy[b] = new_status;
+                // If declaring war, auto-set target to WAR if they're below WAR
+                if new_status > DiplomaticStatus::Hostile as u8 
+                    && old_b_to_a < DiplomaticStatus::War as u8
+                    && state.nations[b].is_active()
+                {
+                    state.nations[b].diplomacy[a] = DiplomaticStatus::War as u8;
+                }
             }
         }
         Action::AdjustNavyGold { nation, gold } => {
