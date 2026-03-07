@@ -3087,24 +3087,38 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
         }
 
         Action::LoadArmyOnFleet { nation, army, fleet } => {
-            // T9: Load army onto fleet
+            // VAL-T10: Load army onto fleet with capacity check
+            // C navy.c loadfleet(): checks ghold (galley hold) for army capacity
             let n = *nation as usize;
             let a = *army as usize;
             let f = *fleet as usize;
             if n < NTOTAL && a < MAXARM && f < MAXNAVY {
-                let ax = state.nations[n].armies[a].x;
-                let ay = state.nations[n].armies[a].y;
-                let fx = state.nations[n].navies[f].x;
-                let fy = state.nations[n].navies[f].y;
-                if ax == fx && ay == fy
-                    && state.nations[n].armies[a].soldiers > 0
-                    && conquer_engine::navy::can_load_army(state.nations[n].armies[a].status)
-                    && state.nations[n].navies[f].army_num >= MAXARM as u8
-                {
-                    state.nations[n].armies[a].status = ArmyStatus::OnBoard.to_value();
-                    state.nations[n].armies[a].movement = 0;
-                    state.nations[n].navies[f].army_num = a as u8;
-                }
+                // Army must have soldiers and be loadable
+                if state.nations[n].armies[a].soldiers <= 0 { return; }
+                if !conquer_engine::navy::can_load_army(state.nations[n].armies[a].status) { return; }
+
+                // Fleet must not already have an army loaded (army_num == MAXARM means empty)
+                if (state.nations[n].navies[f].army_num as usize) < MAXARM { return; }
+
+                // Fleet must have ships
+                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f]) == 0 { return; }
+
+                // Fleet must have hold capacity (galley hold for armies)
+                let ghold = conquer_engine::navy::fleet_galley_hold(&state.nations[n].navies[f]);
+                let whold = conquer_engine::navy::fleet_warship_hold(&state.nations[n].navies[f]);
+                if ghold == 0 && whold == 0 { return; }
+
+                // Army must be adjacent to fleet (coastal loading) or at same loc
+                let ax = state.nations[n].armies[a].x as i32;
+                let ay = state.nations[n].armies[a].y as i32;
+                let fx = state.nations[n].navies[f].x as i32;
+                let fy = state.nations[n].navies[f].y as i32;
+                let adjacent = (ax - fx).abs() <= 1 && (ay - fy).abs() <= 1;
+                if !adjacent { return; }
+
+                state.nations[n].armies[a].status = ArmyStatus::OnBoard.to_value();
+                state.nations[n].armies[a].movement = 0;
+                state.nations[n].navies[f].army_num = a as u8;
             }
         }
 
