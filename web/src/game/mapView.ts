@@ -169,6 +169,10 @@ function shouldHighlight(
         a.soldiers > 0 && a.movement > 0 && a.x === absX && a.y === absY
       );
 
+    case HighlightMode.MoveRange:
+      // VAL-T16: Highlight reachable tiles based on actual movement costs
+      return state.reachableSet.has(`${absX},${absY}`);
+
     case HighlightMode.Good:
       return sector.trade_good < 61 && sector.altitude !== 0;
 

@@ -27,7 +27,7 @@ import { showConfirm, showAlert, showInput, showSelect, showForm } from '../ui/m
 import { registerTileset, getTileset as getTilesetById, preloadTilesetImages, getScaledCellSize } from '../renderer/tilesets';
 import { renderCompositedMap, layersForMode, DEFAULT_LAYERS, LayerConfig } from '../renderer/compositor';
 import { MapTooltip } from '../ui/mapTooltip';
-import { canArmyMove, effectiveMoveCost, computeReachable, ALT_WATER, STATUS_GARRISON, STATUS_RULE, STATUS_MILITIA, STATUS_ONBOARD, STATUS_TRADED } from './movementCost';
+import { canArmyMove, effectiveMoveCost, computeReachable, ALT_WATER, STATUS_GARRISON, STATUS_RULE, STATUS_MILITIA, STATUS_ONBOARD, STATUS_TRADED, STATUS_FLIGHT } from './movementCost';
 
 export class GameScreen {
   private layout: GameLayout;
@@ -283,6 +283,7 @@ export class GameScreen {
         if (armyAtCursor >= 0) {
           this.state.selectedArmy = armyAtCursor;
           this.state.movementMode = true;
+          this.updateReachableSet();
           const army = this.state.armies[armyAtCursor];
           this.setStatus(`🚩 MOVEMENT MODE — Army ${army.index}: ${army.soldiers} soldiers, ${army.movement} moves left. Arrows=move, Space=done`);
         } else {
@@ -344,6 +345,7 @@ export class GameScreen {
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
           this.state.movementMode = true;
+          this.updateReachableSet();
           if (army.movement <= 0 || !canArmyMove(army.status)) {
             const reason = !canArmyMove(army.status) ? 'Army is garrisoned/stationary' : 'No moves left';
             this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers — ${reason}`);
@@ -376,6 +378,7 @@ export class GameScreen {
           const army = active[this.state.selectedArmy];
           this.centerOn(army.x, army.y);
           this.state.movementMode = true;
+          this.updateReachableSet();
           if (army.movement <= 0 || !canArmyMove(army.status)) {
             const reason = !canArmyMove(army.status) ? 'Army is garrisoned/stationary' : 'No moves left';
             this.setStatus(`🚩 Army ${army.index}: ${army.soldiers} soldiers — ${reason}`);
@@ -461,6 +464,8 @@ export class GameScreen {
           }
           // Refresh map to update fog of war around new army position
           this.refreshMapFog();
+          // VAL-T16: Recompute reachable tiles after move
+          this.updateReachableSet();
         } else {
           this.setStatus('No army selected. Press Tab to select, or move cursor to army and press M.');
         }
@@ -1711,6 +1716,32 @@ export class GameScreen {
     };
 
     this.cmdSidebar.updateCommandStates(states);
+  }
+
+  /** VAL-T16: Recompute reachable tiles for the selected army */
+  private updateReachableSet(): void {
+    const active = this.state.armies.filter(a => a.soldiers > 0);
+    const army = this.state.selectedArmy >= 0 && this.state.selectedArmy < active.length
+      ? active[this.state.selectedArmy] : null;
+
+    if (!army || army.movement <= 0 || !canArmyMove(army.status) || !this.state.mapData) {
+      this.state.reachableSet = new Set();
+      return;
+    }
+
+    const race = this.state.nation?.race || 'H';
+    const mapX = this.state.mapData.map_x;
+    const mapY = this.state.mapData.map_y;
+    const reachable = computeReachable(
+      army.x, army.y, army.movement, army.status,
+      race, this.state.mapData.sectors, mapX, mapY,
+    );
+    this.state.reachableSet = new Set(reachable.keys());
+
+    // Auto-activate MoveRange highlight when moving
+    if (this.state.movementMode && this.state.reachableSet.size > 0) {
+      this.state.highlightMode = HighlightMode.MoveRange;
+    }
   }
 
   private addNotification(msg: string): void {

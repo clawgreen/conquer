@@ -46,6 +46,7 @@ export enum HighlightMode {
   YourArmy = 3,
   Move = 4,
   Good = 5,
+  MoveRange = 6,
 }
 
 export const RACE_NAMES: Record<string, string> = {

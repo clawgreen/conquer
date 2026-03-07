@@ -54,6 +54,9 @@ export interface GameState {
   chatUnread: Record<string, number>; // channel -> unread count
   onlineNations: Set<number>;    // nation IDs currently connected
 
+  // VAL-T16: Reachable tiles for selected army (computed by movementCost.ts)
+  reachableSet: Set<string>;
+
   // Connection
   connected: boolean;
 
@@ -100,6 +103,7 @@ export function createInitialState(): GameState {
     chatOpen: false,
     chatUnread: {},
     onlineNations: new Set(),
+    reachableSet: new Set<string>(),
     connected: false,
     renderMode: 'classic',
     tilesetId: localStorage.getItem('conquer_tileset') ?? 'ascii',
