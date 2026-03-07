@@ -9,7 +9,8 @@
 - `web/` — TypeScript web frontend
 
 ## Current Task
-Read and follow `SPRINT-TURN-PIPELINE.md` — it has 12 tasks to wire the remaining turn pipeline.
+Read and follow `SPRINT-COMMANDS-PARITY.md` — it has 21 tasks for full C→Rust command parity.
+(SPRINT-TURN-PIPELINE.md is DONE — do not redo it.)
 
 ## Key Files
 - `conquer-db/src/store.rs` — `run_turn()` method is where turn pipeline lives (~line 737)
