@@ -441,6 +441,168 @@ pub fn npc_army_move(
     0
 }
 
+// ── Sector occupancy and capture ──
+
+/// Compute which nation (if any) exclusively occupies each sector.
+/// Returns a 2D vec: 0 = unoccupied or contested, N = nation N owns it exclusively.
+/// Matches C prep() occupancy array logic.
+fn compute_occupancy(state: &GameState) -> Vec<Vec<usize>> {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let mut occ: Vec<Vec<usize>> = vec![vec![0usize; map_y]; map_x];
+    const CONTESTED: usize = usize::MAX;
+
+    for country in 1..NTOTAL {
+        if state.nations[country].active == NationStrategy::Inactive as u8 {
+            continue;
+        }
+        for army in &state.nations[country].armies {
+            if army.soldiers <= 0 {
+                continue;
+            }
+            if army.status == ArmyStatus::OnBoard.to_value() {
+                continue;
+            }
+            let x = army.x as usize;
+            let y = army.y as usize;
+            if x >= map_x || y >= map_y {
+                continue;
+            }
+            if occ[x][y] == 0 {
+                occ[x][y] = country;
+            } else if occ[x][y] != country {
+                occ[x][y] = CONTESTED;
+            }
+        }
+    }
+
+    for row in occ.iter_mut() {
+        for cell in row.iter_mut() {
+            if *cell == CONTESTED {
+                *cell = 0;
+            }
+        }
+    }
+    occ
+}
+
+/// updcapture() — assign sector ownership to armies that sole-occupy them.
+/// Matches C updcapture() structure.
+/// Called AFTER combat, BEFORE trade.
+pub fn update_capture(state: &mut GameState) -> Vec<String> {
+    let mut news = Vec::new();
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+
+    let occ = compute_occupancy(state);
+
+    for country in 1..NTOTAL {
+        if state.nations[country].active == NationStrategy::Inactive as u8 {
+            continue;
+        }
+
+        for armynum in 0..MAXARM {
+            let army = &state.nations[country].armies[armynum];
+            if army.soldiers <= 0 {
+                continue;
+            }
+
+            let atype = army.unit_type;
+            let ax = army.x as usize;
+            let ay = army.y as usize;
+            let astat = army.status;
+            let soldiers = army.soldiers;
+
+            if ax >= map_x || ay >= map_y {
+                continue;
+            }
+
+            // Leaders and monsters don't directly capture sectors
+            if UnitType(atype).is_leader() {
+                continue;
+            }
+
+            // PC: needs TAKESECTOR; NPC: needs > 75 (C "cheat in favor of npcs")
+            let strat = NationStrategy::from_value(state.nations[country].active);
+            let is_pc = strat.map_or(false, |s| s.is_pc());
+            let ts = takesector(state.nations[country].total_civ);
+
+            let enough = if is_pc { soldiers >= ts } else { soldiers > 75 };
+            if !enough {
+                continue;
+            }
+
+            // Can't capture while on a fleet
+            if astat == ArmyStatus::OnBoard.to_value() {
+                continue;
+            }
+
+            // Can't capture water sectors
+            if state.sectors[ax][ay].altitude == Altitude::Water as u8 {
+                continue;
+            }
+
+            // Must be the sole occupier of this sector
+            if occ[ax][ay] != country {
+                continue;
+            }
+
+            let sct_owner = state.sectors[ax][ay].owner as usize;
+
+            if sct_owner == 0 {
+                // Unowned — capture it
+                state.sectors[ax][ay].owner = country as u8;
+                let pop = state.nations[country].popularity;
+                if pop < MAXTGVAL as u8 {
+                    state.nations[country].popularity = pop.saturating_add(1);
+                }
+            } else if sct_owner != country {
+                // Enemy — capture if at war
+                let dstatus = state.nations[country].diplomacy[sct_owner];
+                if dstatus >= DiplomaticStatus::War as u8 {
+                    let prev_name = state.nations[sct_owner].name.clone();
+                    // Flee civilians from captured sector (halve population)
+                    let people = state.sectors[ax][ay].people;
+                    state.sectors[ax][ay].people = people / 2;
+                    state.sectors[ax][ay].owner = country as u8;
+                    let pop = state.nations[country].popularity;
+                    state.nations[country].popularity = pop.saturating_add(1);
+                    news.push(format!(
+                        "area {},{} captured by {} from {}",
+                        ax, ay, state.nations[country].name, prev_name
+                    ));
+                }
+            }
+        }
+    }
+
+    // Check for capitols being sacked (C: sackem)
+    for country in 1..NTOTAL {
+        let strat = NationStrategy::from_value(state.nations[country].active);
+        if !strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        let cap_x = state.nations[country].cap_x as usize;
+        let cap_y = state.nations[country].cap_y as usize;
+        if cap_x < map_x && cap_y < map_y {
+            if state.sectors[cap_x][cap_y].owner as usize != country {
+                news.push(format!(
+                    "Capitol of {} has been sacked!",
+                    state.nations[country].name
+                ));
+                // Deplete armies by PDEPLETE%
+                for army in &mut state.nations[country].armies {
+                    if army.soldiers > 0 {
+                        army.soldiers = army.soldiers * (100 - PDEPLETE as i64) / 100;
+                    }
+                }
+            }
+        }
+    }
+
+    news
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
