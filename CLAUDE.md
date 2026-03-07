@@ -9,8 +9,8 @@
 - `web/` — TypeScript web frontend
 
 ## Current Task
-Read and follow `SPRINT-UI-COMMANDS.md` — it has 23 tasks to wire all game commands into the web UI.
-(SPRINT-TURN-PIPELINE.md and SPRINT-COMMANDS-PARITY.md are DONE — do not redo them.)
+Read and follow `SPRINT-VALIDATION-FIX.md` — it has 13 tasks to fix action validation gaps.
+(Previous sprints DONE: SPRINT-TURN-PIPELINE.md, SPRINT-COMMANDS-PARITY.md, SPRINT-UI-COMMANDS.md)
 
 ## Key Files
 - `conquer-db/src/store.rs` — `run_turn()` method is where turn pipeline lives (~line 737)
