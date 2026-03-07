@@ -238,48 +238,10 @@ fn recount_nation_totals(state: &mut GameState) {
     }
 }
 
-// ── Helper: convert GameState to fixed-size arrays for update_turn ──
+// ── Helper: run one turn using GameState directly ──
 
 fn run_one_turn(state: &mut GameState, rng: &mut ConquerRng) {
-    let mx = state.world.map_x as usize;
-    let my = state.world.map_y as usize;
-
-    assert!(
-        mx <= MAPX && my <= MAPY,
-        "Map {}x{} exceeds MAPX={} MAPY={} — use a smaller map",
-        mx, my, MAPX, MAPY
-    );
-
-    // update_turn expects fixed-size arrays; convert
-    let mut nations: [Nation; MAXNTOTAL] = std::array::from_fn(|i| {
-        if i < state.nations.len() {
-            state.nations[i].clone()
-        } else {
-            Nation::default()
-        }
-    });
-
-    let mut sectors: [[Sector; MAPY]; MAPX] = std::array::from_fn(|x| {
-        std::array::from_fn(|y| {
-            if x < state.sectors.len() && y < state.sectors[x].len() {
-                state.sectors[x][y].clone()
-            } else {
-                Sector::default()
-            }
-        })
-    });
-
-    let _result = update_turn(&mut state.world, &mut nations, &mut sectors, rng);
-
-    // Copy back
-    for i in 0..MAXNTOTAL.min(state.nations.len()) {
-        state.nations[i] = nations[i].clone();
-    }
-    for x in 0..state.sectors.len().min(MAPX) {
-        for y in 0..state.sectors[x].len().min(MAPY) {
-            state.sectors[x][y] = sectors[x][y].clone();
-        }
-    }
+    let _result = update_turn(state, rng);
 }
 
 // ── Helper: collect stats from GameState ────────────────────
