@@ -581,6 +581,8 @@ pub async fn load_all_games(pool: &PgPool) -> Result<Vec<ManagedGame>, DbError> 
             invites,
             spectators: Vec::new(),
             turn_snapshots: Vec::new(), // Snapshots live in game_worlds table
+            pending_trades: Vec::new(),
+            next_trade_id: 1,
         };
 
         games.push(managed);

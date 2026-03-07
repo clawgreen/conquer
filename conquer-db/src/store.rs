@@ -28,6 +28,18 @@ use sqlx::PgPool;
 // Per-game state container
 // ============================================================
 
+/// T12: Pending trade proposal
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTrade {
+    pub id: u32,
+    pub from_nation: i16,
+    pub to_nation: i16,
+    pub offer_type: u8,
+    pub offer_amount: i64,
+    pub request_type: u8,
+    pub request_amount: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ManagedGame {
     pub info: GameInfo,
@@ -42,6 +54,9 @@ pub struct ManagedGame {
     pub spectators: Vec<Spectator>,
     /// Turn snapshots for rollback (T426)
     pub turn_snapshots: Vec<TurnSnapshot>,
+    /// T12: Pending trades
+    pub pending_trades: Vec<PendingTrade>,
+    pub next_trade_id: u32,
 }
 
 // ============================================================
@@ -304,6 +319,8 @@ impl GameStore {
             invites: Vec::new(),
             spectators: Vec::new(),
             turn_snapshots: Vec::new(),
+            pending_trades: Vec::new(),
+            next_trade_id: 1,
         };
 
         self.games.write().await.insert(id, managed);
