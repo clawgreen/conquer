@@ -130,6 +130,61 @@ pub enum Action {
 
     /// AADJDISB / MSETB — disband to mercenary pool
     DisbandToMerc { nation: i32, men: i64, attack: i32, defense: i32 },
+
+    // ============================================================
+    // Sprint: Commands Parity — new action variants
+    // ============================================================
+
+    /// T1: Split soldiers from an army into a new army at same location
+    SplitArmy { nation: i16, army: i32, soldiers: i64 },
+
+    /// T2: Combine army2 into army1 (same location, compatible types)
+    CombineArmies { nation: i16, army1: i32, army2: i32 },
+
+    /// T4: Divide army equally in half
+    DivideArmy { nation: i16, army: i32 },
+
+    /// T5: Draft/enlist soldiers in a sector
+    DraftUnit { nation: i16, x: i32, y: i32, unit_type: u8, count: i64 },
+
+    /// T6: Construct fortification in a sector
+    ConstructFort { nation: i16, x: i32, y: i32 },
+
+    /// T7: Build a road in a sector
+    BuildRoad { nation: i16, x: i32, y: i32 },
+
+    /// T8: Construct ships at a coastal sector
+    ConstructShip { nation: i16, x: i32, y: i32, ship_type: u8, ship_size: u8, count: i32 },
+
+    /// T9: Load army onto fleet
+    LoadArmyOnFleet { nation: i16, army: i32, fleet: i32 },
+
+    /// T9: Unload army from fleet
+    UnloadArmyFromFleet { nation: i16, fleet: i32 },
+
+    /// T9: Load civilians onto fleet
+    LoadPeopleOnFleet { nation: i16, fleet: i32, x: i32, y: i32, amount: i64 },
+
+    /// T9: Unload civilians from fleet
+    UnloadPeople { nation: i16, fleet: i32, x: i32, y: i32, amount: i64 },
+
+    /// T10: Cast a spell
+    CastSpell { nation: i16, spell_type: u8, target_x: i32, target_y: i32, target_nation: i16 },
+
+    /// T11: Buy a magic power
+    BuyMagicPower { nation: i16, power_type: u8 },
+
+    /// T12: Propose a trade
+    ProposeTrade { nation: i16, target_nation: i16, offer_type: u8, offer_amount: i64, request_type: u8, request_amount: i64 },
+
+    /// T12: Accept a trade
+    AcceptTrade { nation: i16, trade_id: u32 },
+
+    /// T12: Reject a trade
+    RejectTrade { nation: i16, trade_id: u32 },
+
+    /// T17: Send tribute (gold, food, metal, jewels)
+    SendTribute { nation: i16, target: i16, gold: i64, food: i64, metal: i64, jewels: i64 },
 }
 
 impl Action {
@@ -166,6 +221,24 @@ impl Action {
             Action::DestroyNation { .. } => codes::DESTRY,
             Action::HireMercenaries { .. } => codes::MSETA,
             Action::DisbandToMerc { .. } => codes::MSETB,
+            // Sprint commands — use synthetic codes above 100
+            Action::SplitArmy { .. } => 101,
+            Action::CombineArmies { .. } => 102,
+            Action::DivideArmy { .. } => 103,
+            Action::DraftUnit { .. } => 104,
+            Action::ConstructFort { .. } => 105,
+            Action::BuildRoad { .. } => 106,
+            Action::ConstructShip { .. } => 107,
+            Action::LoadArmyOnFleet { .. } => 108,
+            Action::UnloadArmyFromFleet { .. } => 109,
+            Action::LoadPeopleOnFleet { .. } => 110,
+            Action::UnloadPeople { .. } => 111,
+            Action::CastSpell { .. } => 112,
+            Action::BuyMagicPower { .. } => 113,
+            Action::ProposeTrade { .. } => 114,
+            Action::AcceptTrade { .. } => 115,
+            Action::RejectTrade { .. } => 116,
+            Action::SendTribute { .. } => 117,
         }
     }
 }

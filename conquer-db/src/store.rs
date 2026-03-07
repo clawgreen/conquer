@@ -2140,8 +2140,39 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
         Action::AdjustArmyStat { nation, army, status } => {
             let n = *nation as usize;
             let a = *army as usize;
-            if n < NTOTAL && a < MAXARM {
-                state.nations[n].armies[a].status = *status;
+            if n < NTOTAL && a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
+                let old_stat = state.nations[n].armies[a].status;
+                // T3: Validate status changes per C change_status() rules
+                // Can't change from SCOUT, TRADED, ONBOARD, SORTIE
+                let blocked = old_stat == ArmyStatus::Scout.to_value()
+                    || old_stat == ArmyStatus::Traded.to_value()
+                    || old_stat == ArmyStatus::OnBoard.to_value()
+                    || old_stat == ArmyStatus::Sortie.to_value();
+                // Can't manually set to TRADED, FLIGHT, MAGATT, MAGDEF, ONBOARD
+                let invalid_target = *status == ArmyStatus::Traded.to_value()
+                    || *status == ArmyStatus::Flight.to_value()
+                    || *status == ArmyStatus::MagAtt.to_value()
+                    || *status == ArmyStatus::MagDef.to_value()
+                    || *status == ArmyStatus::OnBoard.to_value();
+                if !blocked && !invalid_target {
+                    // Militia can only be militia
+                    let utype = state.nations[n].armies[a].unit_type;
+                    if utype == UnitType::MILITIA.0 && *status != ArmyStatus::Militia.to_value() {
+                        return;
+                    }
+                    // Zombies can't march
+                    if utype == UnitType::ZOMBIE.0 && *status == ArmyStatus::March.to_value() {
+                        return;
+                    }
+                    // Sieged can only switch to sortie or rule
+                    if old_stat == ArmyStatus::Sieged.to_value()
+                        && *status != ArmyStatus::Sortie.to_value()
+                        && *status != ArmyStatus::Rule.to_value()
+                    {
+                        return;
+                    }
+                    state.nations[n].armies[a].status = *status;
+                }
             }
         }
         Action::AdjustArmyMen { nation, army, soldiers, unit_type } => {
@@ -2333,8 +2364,481 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
         Action::HireMercenaries { nation: _, men: _ } => {
             // Handled by engine during turn processing
         }
-        Action::DisbandToMerc { nation: _, men: _, attack: _, defense: _ } => {
-            // Handled by engine during turn processing
+        Action::DisbandToMerc { nation, men, attack, defense } => {
+            // T15: Disband army soldiers to mercenary pool
+            let n = *nation as usize;
+            if n < NTOTAL {
+                state.world.merc_mil += men;
+                // Weighted average for merc stats
+                let total = state.world.merc_mil;
+                if total > 0 {
+                    state.world.merc_aplus = ((state.world.merc_aplus as i64 * (total - men) + *attack as i64 * men) / total) as i16;
+                    state.world.merc_dplus = ((state.world.merc_dplus as i64 * (total - men) + *defense as i64 * men) / total) as i16;
+                }
+            }
+        }
+
+        // ============================================================
+        // Sprint: Commands Parity — new action handling
+        // ============================================================
+
+        Action::SplitArmy { nation, army, soldiers } => {
+            // T1: Split soldiers from army into new army at same location
+            let n = *nation as usize;
+            let a = *army as usize;
+            if n < NTOTAL && a < MAXARM {
+                let src = &state.nations[n].armies[a];
+                if src.soldiers >= *soldiers + 25 && *soldiers >= 25
+                    && !UnitType(src.unit_type).is_monster()
+                    && !UnitType(src.unit_type).is_leader()
+                    && src.status != ArmyStatus::OnBoard.to_value()
+                    && src.status != ArmyStatus::Traded.to_value()
+                {
+                    // Find empty army slot
+                    let mut new_slot = None;
+                    for i in 0..state.nations[n].armies.len() {
+                        if state.nations[n].armies[i].soldiers <= 0 {
+                            new_slot = Some(i);
+                            break;
+                        }
+                    }
+                    if let Some(slot) = new_slot {
+                        let src_x = state.nations[n].armies[a].x;
+                        let src_y = state.nations[n].armies[a].y;
+                        let src_move = state.nations[n].armies[a].movement;
+                        let src_type = state.nations[n].armies[a].unit_type;
+                        let src_stat = state.nations[n].armies[a].status;
+                        state.nations[n].armies[a].soldiers -= soldiers;
+                        state.nations[n].armies[slot].soldiers = *soldiers;
+                        state.nations[n].armies[slot].x = src_x;
+                        state.nations[n].armies[slot].y = src_y;
+                        state.nations[n].armies[slot].movement = src_move;
+                        state.nations[n].armies[slot].unit_type = src_type;
+                        state.nations[n].armies[slot].status = src_stat;
+                    }
+                }
+            }
+        }
+
+        Action::CombineArmies { nation, army1, army2 } => {
+            // T2: Merge army2 into army1
+            let n = *nation as usize;
+            let a1 = *army1 as usize;
+            let a2 = *army2 as usize;
+            if n < NTOTAL && a1 < MAXARM && a2 < MAXARM && a1 != a2 {
+                let s1 = state.nations[n].armies[a1].soldiers;
+                let s2 = state.nations[n].armies[a2].soldiers;
+                if s1 > 0 && s2 > 0 {
+                    let x1 = state.nations[n].armies[a1].x;
+                    let y1 = state.nations[n].armies[a1].y;
+                    let x2 = state.nations[n].armies[a2].x;
+                    let y2 = state.nations[n].armies[a2].y;
+                    let t1 = state.nations[n].armies[a1].unit_type;
+                    let t2 = state.nations[n].armies[a2].unit_type;
+                    let st1 = state.nations[n].armies[a1].status;
+                    let st2 = state.nations[n].armies[a2].status;
+                    // Must be same location
+                    if x1 == x2 && y1 == y2 {
+                        // Validate combinability
+                        let nocomb = |s: u8| -> bool {
+                            matches!(ArmyStatus::from_value(s),
+                                ArmyStatus::Traded | ArmyStatus::Flight |
+                                ArmyStatus::MagAtt | ArmyStatus::MagDef |
+                                ArmyStatus::Scout | ArmyStatus::OnBoard)
+                        };
+                        let types_ok = t1 == t2 && !UnitType(t1).is_leader();
+                        let stats_ok = !nocomb(st1) && !nocomb(st2)
+                            && st2 != ArmyStatus::March.to_value()
+                            && st2 != ArmyStatus::Siege.to_value()
+                            && st2 != ArmyStatus::Sortie.to_value();
+                        if types_ok && stats_ok {
+                            state.nations[n].armies[a1].soldiers += s2;
+                            state.nations[n].armies[a1].movement = std::cmp::min(
+                                state.nations[n].armies[a1].movement,
+                                state.nations[n].armies[a2].movement,
+                            );
+                            state.nations[n].armies[a2].soldiers = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        Action::DivideArmy { nation, army } => {
+            // T4: Divide army in half
+            let n = *nation as usize;
+            let a = *army as usize;
+            if n < NTOTAL && a < MAXARM {
+                let src = &state.nations[n].armies[a];
+                let half = src.soldiers / 2;
+                if half >= 25
+                    && !UnitType(src.unit_type).is_monster()
+                    && !UnitType(src.unit_type).is_leader()
+                    && src.status != ArmyStatus::OnBoard.to_value()
+                    && src.status != ArmyStatus::Traded.to_value()
+                {
+                    let mut new_slot = None;
+                    for i in 0..state.nations[n].armies.len() {
+                        if state.nations[n].armies[i].soldiers <= 0 {
+                            new_slot = Some(i);
+                            break;
+                        }
+                    }
+                    if let Some(slot) = new_slot {
+                        let src_x = state.nations[n].armies[a].x;
+                        let src_y = state.nations[n].armies[a].y;
+                        let src_move = state.nations[n].armies[a].movement;
+                        let src_type = state.nations[n].armies[a].unit_type;
+                        let src_stat = state.nations[n].armies[a].status;
+                        state.nations[n].armies[a].soldiers -= half;
+                        state.nations[n].armies[slot].soldiers = half;
+                        state.nations[n].armies[slot].x = src_x;
+                        state.nations[n].armies[slot].y = src_y;
+                        state.nations[n].armies[slot].movement = src_move;
+                        state.nations[n].armies[slot].unit_type = src_type;
+                        state.nations[n].armies[slot].status = src_stat;
+                    }
+                }
+            }
+        }
+
+        Action::DraftUnit { nation, x, y, unit_type, count } => {
+            // T5: Draft soldiers
+            let n = *nation as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && sx < state.sectors.len() && sy < state.sectors[0].len() {
+                let des = state.sectors[sx][sy].designation;
+                let is_valid_location = des == Designation::Town as u8
+                    || des == Designation::City as u8
+                    || des == Designation::Capitol as u8;
+                if is_valid_location && state.sectors[sx][sy].owner == n as u8 {
+                    let cost = conquer_engine::commands::enlist_cost(*unit_type) * count;
+                    if state.nations[n].treasury_gold >= cost && *count > 0 {
+                        // Find empty army slot
+                        let mut slot = None;
+                        for i in 0..state.nations[n].armies.len() {
+                            if state.nations[n].armies[i].soldiers <= 0 {
+                                slot = Some(i);
+                                break;
+                            }
+                        }
+                        if let Some(idx) = slot {
+                            state.nations[n].armies[idx].soldiers = *count;
+                            state.nations[n].armies[idx].unit_type = *unit_type;
+                            state.nations[n].armies[idx].x = *x as u8;
+                            state.nations[n].armies[idx].y = *y as u8;
+                            state.nations[n].armies[idx].status = ArmyStatus::Defend.to_value();
+                            state.nations[n].armies[idx].movement = 0;
+                            state.nations[n].treasury_gold -= cost;
+                            // Take civilians from sector
+                            state.sectors[sx][sy].people = state.sectors[sx][sy].people.saturating_sub(*count);
+                        }
+                    }
+                }
+            }
+        }
+
+        Action::ConstructFort { nation, x, y } => {
+            // T6: Construct fortification
+            let n = *nation as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && sx < state.sectors.len() && sy < state.sectors[0].len() {
+                let des = state.sectors[sx][sy].designation;
+                let valid = des == Designation::Town as u8
+                    || des == Designation::City as u8
+                    || des == Designation::Fort as u8
+                    || des == Designation::Capitol as u8;
+                if valid && state.sectors[sx][sy].owner == n as u8 && state.sectors[sx][sy].fortress < 12 {
+                    let mut cost = FORTCOST;
+                    for _ in 0..state.sectors[sx][sy].fortress {
+                        cost *= 2;
+                    }
+                    let max_debt = state.nations[n].jewels * 10;
+                    if state.nations[n].treasury_gold - cost >= -max_debt {
+                        state.nations[n].treasury_gold -= cost;
+                        state.sectors[sx][sy].fortress = state.sectors[sx][sy].fortress.saturating_add(1);
+                    }
+                }
+            }
+        }
+
+        Action::BuildRoad { nation, x, y } => {
+            // T7: Build road
+            let n = *nation as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && sx < state.sectors.len() && sy < state.sectors[0].len() {
+                if state.sectors[sx][sy].owner == n as u8 && state.sectors[sx][sy].people >= 100 {
+                    let cost = DESCOST;
+                    if state.nations[n].treasury_gold >= cost {
+                        state.nations[n].treasury_gold -= cost;
+                        state.sectors[sx][sy].designation = Designation::Road as u8;
+                    }
+                }
+            }
+        }
+
+        Action::ConstructShip { nation, x, y, ship_type, ship_size, count } => {
+            // T8: Build ships at coastal sector
+            let n = *nation as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && sx < state.sectors.len() && sy < state.sectors[0].len() && *count > 0 {
+                let des = state.sectors[sx][sy].designation;
+                let valid = (des == Designation::City as u8 || des == Designation::Capitol as u8)
+                    && state.sectors[sx][sy].owner == n as u8;
+                if valid {
+                    let base_cost = match *ship_type {
+                        0 => WARSHPCOST,  // warship
+                        1 => MERSHPCOST,  // merchant
+                        _ => GALSHPCOST,  // galley
+                    };
+                    let size_mult = (*ship_size as i64 + 1);
+                    let mut cost = *count as i64 * size_mult * base_cost;
+                    if Power::has_power(state.nations[n].powers, Power::SAILOR) {
+                        cost /= 2;
+                    }
+                    let crew_needed = *count as i64 * size_mult * SHIPCREW as i64;
+                    if state.nations[n].treasury_gold >= cost && state.sectors[sx][sy].people >= crew_needed {
+                        state.nations[n].treasury_gold -= cost;
+                        state.sectors[sx][sy].people -= crew_needed;
+                        // Find or create fleet at this location
+                        let mut fleet_idx = None;
+                        for f in 0..state.nations[n].navies.len() {
+                            let nvy = &state.nations[n].navies[f];
+                            if nvy.x == *x as u8 && nvy.y == *y as u8 && conquer_engine::navy::fleet_ships(nvy) > 0 {
+                                fleet_idx = Some(f);
+                                break;
+                            }
+                        }
+                        if fleet_idx.is_none() {
+                            for f in 0..state.nations[n].navies.len() {
+                                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f]) == 0 {
+                                    state.nations[n].navies[f].x = *x as u8;
+                                    state.nations[n].navies[f].y = *y as u8;
+                                    fleet_idx = Some(f);
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(fi) = fleet_idx {
+                            let size = match *ship_size {
+                                0 => NavalSize::Light,
+                                1 => NavalSize::Medium,
+                                _ => NavalSize::Heavy,
+                            };
+                            for _ in 0..*count {
+                                match *ship_type {
+                                    0 => { conquer_engine::navy::add_warships(&mut state.nations[n].navies[fi], size, 1); }
+                                    1 => { conquer_engine::navy::add_merchants(&mut state.nations[n].navies[fi], size, 1); }
+                                    _ => { conquer_engine::navy::add_galleys(&mut state.nations[n].navies[fi], size, 1); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Action::LoadArmyOnFleet { nation, army, fleet } => {
+            // T9: Load army onto fleet
+            let n = *nation as usize;
+            let a = *army as usize;
+            let f = *fleet as usize;
+            if n < NTOTAL && a < MAXARM && f < MAXNAVY {
+                let ax = state.nations[n].armies[a].x;
+                let ay = state.nations[n].armies[a].y;
+                let fx = state.nations[n].navies[f].x;
+                let fy = state.nations[n].navies[f].y;
+                if ax == fx && ay == fy
+                    && state.nations[n].armies[a].soldiers > 0
+                    && conquer_engine::navy::can_load_army(state.nations[n].armies[a].status)
+                    && state.nations[n].navies[f].army_num >= MAXARM as u8
+                {
+                    state.nations[n].armies[a].status = ArmyStatus::OnBoard.to_value();
+                    state.nations[n].armies[a].movement = 0;
+                    state.nations[n].navies[f].army_num = a as u8;
+                }
+            }
+        }
+
+        Action::UnloadArmyFromFleet { nation, fleet } => {
+            // T9: Unload army from fleet
+            let n = *nation as usize;
+            let f = *fleet as usize;
+            if n < NTOTAL && f < MAXNAVY {
+                let army_idx = state.nations[n].navies[f].army_num as usize;
+                if army_idx < MAXARM {
+                    state.nations[n].armies[army_idx].status = ArmyStatus::Defend.to_value();
+                    state.nations[n].armies[army_idx].x = state.nations[n].navies[f].x;
+                    state.nations[n].armies[army_idx].y = state.nations[n].navies[f].y;
+                    state.nations[n].navies[f].army_num = MAXARM as u8;
+                }
+            }
+        }
+
+        Action::LoadPeopleOnFleet { nation, fleet, x, y, amount } => {
+            // T9: Load civilians onto fleet
+            let n = *nation as usize;
+            let f = *fleet as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len() {
+                if state.sectors[sx][sy].owner == n as u8 && state.sectors[sx][sy].people >= *amount && *amount > 0 {
+                    let mhold = conquer_engine::navy::fleet_merchant_hold(&state.nations[n].navies[f]);
+                    if mhold > 0 {
+                        state.sectors[sx][sy].people -= amount;
+                        state.nations[n].navies[f].people += (*amount / mhold as i64) as u8;
+                    }
+                }
+            }
+        }
+
+        Action::UnloadPeople { nation, fleet, x, y, amount } => {
+            // T9: Unload civilians from fleet
+            let n = *nation as usize;
+            let f = *fleet as usize;
+            let sx = *x as usize;
+            let sy = *y as usize;
+            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len() {
+                let mhold = conquer_engine::navy::fleet_merchant_hold(&state.nations[n].navies[f]);
+                let on_board = state.nations[n].navies[f].people as i64 * mhold as i64;
+                if *amount > 0 && *amount <= on_board && mhold > 0 {
+                    state.sectors[sx][sy].people += amount;
+                    state.nations[n].navies[f].people = ((on_board - amount) / mhold as i64) as u8;
+                }
+            }
+        }
+
+        Action::CastSpell { nation, spell_type, target_x, target_y, target_nation } => {
+            // T10: Cast spell — deduct spell points, apply effect
+            let n = *nation as usize;
+            if n < NTOTAL {
+                // Spell cost based on type (simplified from C getmgkcost logic)
+                let cost = match *spell_type {
+                    1 => 3,  // summon creature
+                    2 => 2,  // flight
+                    3 => 4,  // attack enhancement
+                    4 => 4,  // defense enhancement
+                    5 => 5,  // destroy
+                    6 => 3,  // wizardry
+                    7 => 4,  // god powers
+                    _ => 1,
+                };
+                if state.nations[n].spell_points >= cost {
+                    state.nations[n].spell_points -= cost;
+                    match *spell_type {
+                        1 => {
+                            // Summon creature — find empty army slot
+                            let mut slot = None;
+                            for i in 0..state.nations[n].armies.len() {
+                                if state.nations[n].armies[i].soldiers <= 0 {
+                                    slot = Some(i);
+                                    break;
+                                }
+                            }
+                            if let Some(idx) = slot {
+                                state.nations[n].armies[idx].soldiers = 100;
+                                state.nations[n].armies[idx].unit_type = UnitType::SPIRIT.0;
+                                state.nations[n].armies[idx].x = *target_x as u8;
+                                state.nations[n].armies[idx].y = *target_y as u8;
+                                state.nations[n].armies[idx].status = ArmyStatus::Attack.to_value();
+                                state.nations[n].armies[idx].movement = 0;
+                            }
+                        }
+                        2 => {
+                            // Flight — give army FLIGHT status (temporary speed boost)
+                            // target_nation used as army index here
+                            let a = *target_nation as usize;
+                            if a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
+                                state.nations[n].armies[a].status = ArmyStatus::Flight.to_value();
+                            }
+                        }
+                        3 => {
+                            // Attack enhancement
+                            let a = *target_nation as usize;
+                            if a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
+                                state.nations[n].armies[a].status = ArmyStatus::MagAtt.to_value();
+                            }
+                        }
+                        4 => {
+                            // Defense enhancement
+                            let a = *target_nation as usize;
+                            if a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
+                                state.nations[n].armies[a].status = ArmyStatus::MagDef.to_value();
+                            }
+                        }
+                        5 => {
+                            // Destroy — damage sector
+                            let tx = *target_x as usize;
+                            let ty = *target_y as usize;
+                            if tx < state.sectors.len() && ty < state.sectors[0].len() {
+                                state.sectors[tx][ty].people = state.sectors[tx][ty].people * 3 / 4;
+                                if state.sectors[tx][ty].fortress > 0 {
+                                    state.sectors[tx][ty].fortress -= 1;
+                                }
+                            }
+                        }
+                        _ => {} // other spell types
+                    }
+                }
+            }
+        }
+
+        Action::BuyMagicPower { nation, power_type } => {
+            // T11: Buy magic power
+            let n = *nation as usize;
+            if n < NTOTAL {
+                let cost = conquer_engine::utils::getmgkcost(*power_type, &state.nations[n]);
+                if cost > 0 && state.nations[n].jewels >= cost {
+                    let mut rng = conquer_engine::rng::ConquerRng::new(
+                        ((state.world.turn as u64 * 1000 + n as u64) ^ state.nations[n].jewels as u64) as u32
+                    );
+                    if let Some(power) = conquer_engine::magic::get_magic(*power_type, &state.nations[n], n, &mut rng) {
+                        state.nations[n].jewels -= cost;
+                        state.nations[n].powers |= power.bits();
+                        conquer_engine::magic::execute_new_magic(state, n, power);
+                    }
+                }
+            }
+        }
+
+        Action::ProposeTrade { nation: _, target_nation: _, offer_type: _, offer_amount: _, request_type: _, request_amount: _ } => {
+            // T12: Trade proposals are stored out-of-band (in game store pending_trades)
+            // The actual resource transfer happens on AcceptTrade
+        }
+
+        Action::AcceptTrade { nation: _, trade_id: _ } => {
+            // T12: Trade acceptance — would look up trade and execute transfer
+            // Handled by game store trade management
+        }
+
+        Action::RejectTrade { nation: _, trade_id: _ } => {
+            // T12: Trade rejection — remove pending trade
+        }
+
+        Action::SendTribute { nation, target, gold, food, metal, jewels } => {
+            // T17: Send tribute
+            let n = *nation as usize;
+            let t = *target as usize;
+            if n < NTOTAL && t < NTOTAL && n != t {
+                if state.nations[n].treasury_gold >= *gold
+                    && state.nations[n].total_food >= *food
+                    && state.nations[n].metals >= *metal
+                    && state.nations[n].jewels >= *jewels
+                {
+                    state.nations[n].treasury_gold -= gold;
+                    state.nations[n].total_food -= food;
+                    state.nations[n].metals -= metal;
+                    state.nations[n].jewels -= jewels;
+                    state.nations[t].treasury_gold += gold;
+                    state.nations[t].total_food += food;
+                    state.nations[t].metals += metal;
+                    state.nations[t].jewels += jewels;
+                }
+            }
         }
     }
 }
