@@ -9,8 +9,8 @@
 - `web/` — TypeScript web frontend
 
 ## Current Task
-Read and follow `SPRINT-VALIDATION-FIX.md` — it has 13 tasks to fix action validation gaps.
-(Previous sprints DONE: SPRINT-TURN-PIPELINE.md, SPRINT-COMMANDS-PARITY.md, SPRINT-UI-COMMANDS.md)
+Read and follow `SPRINT-PARITY.md` — 29 tasks to implement NPC army movement + economy parity.
+(Previous sprints DONE: SPRINT-TURN-PIPELINE.md, SPRINT-COMMANDS-PARITY.md, SPRINT-UI-COMMANDS.md, SPRINT-VALIDATION-FIX.md)
 
 ## Key Files
 - `conquer-db/src/store.rs` — `run_turn()` method is where turn pipeline lives (~line 737)
