@@ -229,20 +229,11 @@ export class GameScreen {
   }
 
   private centerOn(x: number, y: number): void {
-    // Ensure canvas dimensions are current before computing tile count
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      this.canvas.width = rect.width;
-      this.canvas.height = rect.height;
-    }
     const { screenX, screenY } = this.getVisibleTileCount();
-    const mapW = this.state.mapData?.map_x ?? 9999;
-    const mapH = this.state.mapData?.map_y ?? 9999;
-    // Clamp offset so we don't scroll past the map edge
-    const maxXOffset = Math.max(0, mapW - screenX);
-    const maxYOffset = Math.max(0, mapH - screenY);
-    this.state.xOffset = Math.max(0, Math.min(x - Math.floor(screenX / 2), maxXOffset));
-    this.state.yOffset = Math.max(0, Math.min(y - Math.floor(screenY / 2), maxYOffset));
+    // No clamping — allow negative offsets so the target tile is always
+    // at the center of the viewport, even near map edges (shows black padding)
+    this.state.xOffset = x - Math.floor(screenX / 2);
+    this.state.yOffset = y - Math.floor(screenY / 2);
     this.state.cursorX = x - this.state.xOffset;
     this.state.cursorY = y - this.state.yOffset;
   }
