@@ -131,8 +131,8 @@ export class GameClient {
     return this.request<unknown[]>('GET', `/games/${gameId}/actions`);
   }
 
-  async endTurn(gameId: string): Promise<unknown> {
-    return this.request<unknown>('POST', `/games/${gameId}/end-turn`);
+  async endTurn(gameId: string): Promise<{ status: string; new_turn?: number }> {
+    return this.request<{ status: string; new_turn?: number }>('POST', `/games/${gameId}/end-turn`);
   }
 
   async runTurn(gameId: string): Promise<unknown> {

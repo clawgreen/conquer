@@ -818,9 +818,19 @@ export class GameScreen {
     });
     if (!yes) return;
     try {
-      await this.client.endTurn(this.state.gameId);
-      this.state.isDone = true;
-      this.setStatus('Turn ended — waiting for other players...');
+      const result = await this.client.endTurn(this.state.gameId);
+      if (result.status === 'turn_advanced') {
+        // All players done (or solo game) — turn already advanced server-side
+        this.state.isDone = false;
+        this.setStatus(`⏩ Turn advanced to ${result.new_turn}! Processing NPC moves...`);
+        this.addNotification(`Turn advanced to ${result.new_turn}`);
+        // Reload all game data for the new turn
+        await this.loadGameData();
+      } else {
+        // Multiplayer: waiting for other human players
+        this.state.isDone = true;
+        this.setStatus('Turn ended — waiting for other players...');
+      }
     } catch (e) {
       this.setStatus(`End turn failed: ${(e as Error).message}`);
     }
