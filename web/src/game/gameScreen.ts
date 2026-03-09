@@ -188,9 +188,9 @@ export class GameScreen {
 
       buildOccupied(this.state);
 
-      // Center on capitol
+      // Center on capitol (snap, no animation on initial load)
       if (nation.cap_x > 0 || nation.cap_y > 0) {
-        this.centerOn(nation.cap_x, nation.cap_y);
+        this.centerOn(nation.cap_x, nation.cap_y, false);
       }
 
       this.setStatus(`Welcome, ${nation.name}! Turn ${gameInfo.current_turn} — Press T for chat`);
@@ -228,14 +228,76 @@ export class GameScreen {
     }
   }
 
-  private centerOn(x: number, y: number): void {
+  // Smooth pan animation state
+  private panAnim: {
+    fromX: number; fromY: number;
+    toX: number; toY: number;
+    targetCursorX: number; targetCursorY: number;
+    startTime: number; duration: number;
+  } | null = null;
+
+  private centerOn(x: number, y: number, animate = true): void {
     const { screenX, screenY } = this.getVisibleTileCount();
     // No clamping — allow negative offsets so the target tile is always
     // at the center of the viewport, even near map edges (shows black padding)
-    this.state.xOffset = x - Math.floor(screenX / 2);
-    this.state.yOffset = y - Math.floor(screenY / 2);
-    this.state.cursorX = x - this.state.xOffset;
-    this.state.cursorY = y - this.state.yOffset;
+    const targetXOff = x - Math.floor(screenX / 2);
+    const targetYOff = y - Math.floor(screenY / 2);
+    const targetCursorX = x - targetXOff;
+    const targetCursorY = y - targetYOff;
+
+    if (!animate || (this.state.xOffset === targetXOff && this.state.yOffset === targetYOff)) {
+      // Snap immediately (no animation needed or first load)
+      this.state.xOffset = targetXOff;
+      this.state.yOffset = targetYOff;
+      this.state.cursorX = targetCursorX;
+      this.state.cursorY = targetCursorY;
+      this.panAnim = null;
+      return;
+    }
+
+    // Calculate distance to decide duration
+    const dx = Math.abs(targetXOff - this.state.xOffset);
+    const dy = Math.abs(targetYOff - this.state.yOffset);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Short pan: 150-400ms depending on distance, capped
+    const duration = Math.min(400, Math.max(150, dist * 8));
+
+    this.panAnim = {
+      fromX: this.state.xOffset,
+      fromY: this.state.yOffset,
+      toX: targetXOff,
+      toY: targetYOff,
+      targetCursorX,
+      targetCursorY,
+      startTime: performance.now(),
+      duration,
+    };
+
+    // Set cursor to target immediately so status bar updates
+    this.state.cursorX = targetCursorX;
+    this.state.cursorY = targetCursorY;
+  }
+
+  /** Called each frame to advance pan animation */
+  private updatePanAnimation(): void {
+    if (!this.panAnim) return;
+
+    const elapsed = performance.now() - this.panAnim.startTime;
+    const t = Math.min(1, elapsed / this.panAnim.duration);
+    // Ease-out cubic for smooth deceleration
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    this.state.xOffset = Math.round(this.panAnim.fromX + (this.panAnim.toX - this.panAnim.fromX) * ease);
+    this.state.yOffset = Math.round(this.panAnim.fromY + (this.panAnim.toY - this.panAnim.fromY) * ease);
+
+    if (t >= 1) {
+      // Animation complete — snap to exact target
+      this.state.xOffset = this.panAnim.toX;
+      this.state.yOffset = this.panAnim.toY;
+      this.state.cursorX = this.panAnim.targetCursorX;
+      this.state.cursorY = this.panAnim.targetCursorY;
+      this.panAnim = null;
+    }
   }
 
   /** Get the actual number of tiles visible on screen, accounting for tileset type */
@@ -485,11 +547,11 @@ export class GameScreen {
               army.x = oldX;
               army.y = oldY;
               army.movement = oldMove;
-              this.centerOn(oldX, oldY);
+              this.centerOn(oldX, oldY, false);
               this.updateReachableSet();
             },
           );
-          this.centerOn(nx, ny);
+          this.centerOn(nx, ny, false);
           if (army.movement > 0) {
             this.setStatus(`🚩 Army ${army.index} → (${nx},${ny}). ${army.movement} moves left. Arrows=move, Space=done`);
           } else {
@@ -1833,6 +1895,9 @@ export class GameScreen {
   }
 
   private renderFrame(): void {
+    // Advance smooth pan animation if active
+    this.updatePanAnimation();
+
     const tsId = this.state.tilesetId ?? 'ascii';
     const isDirectCanvas = tsId !== 'ascii' && tsId !== 'unicode';
 
