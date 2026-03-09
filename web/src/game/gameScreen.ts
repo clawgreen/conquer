@@ -102,7 +102,7 @@ export class GameScreen {
       getTilesetId: () => this.state.tilesetId ?? 'ascii',
       onTapCell: (mapX, mapY) => {
         // Move cursor to tapped map cell
-        const { screenX, screenY } = screenSize(this.term);
+        const { screenX, screenY } = this.getVisibleTileCount();
         const localX = mapX - this.state.xOffset;
         const localY = mapY - this.state.yOffset;
         if (localX >= 0 && localX < screenX && localY >= 0 && localY < screenY) {
@@ -229,15 +229,32 @@ export class GameScreen {
   }
 
   private centerOn(x: number, y: number): void {
-    const { screenX, screenY } = screenSize(this.term);
+    const { screenX, screenY } = this.getVisibleTileCount();
     this.state.xOffset = Math.max(0, x - Math.floor(screenX / 2));
     this.state.yOffset = Math.max(0, y - Math.floor(screenY / 2));
     this.state.cursorX = x - this.state.xOffset;
     this.state.cursorY = y - this.state.yOffset;
   }
 
+  /** Get the actual number of tiles visible on screen, accounting for tileset type */
+  private getVisibleTileCount(): { screenX: number; screenY: number } {
+    const tsId = this.state.tilesetId ?? 'ascii';
+    const ts = getTilesetById(tsId);
+    if (ts.tileType !== 'char') {
+      // Image/emoji tilesets: compute from canvas size and cell pixel size
+      const cellPx = this.getCurrentCellPixelSize();
+      const canvasW = this.canvas.width;
+      const canvasH = this.canvas.height;
+      const tilesX = Math.max(1, Math.floor(canvasW / cellPx.w));
+      const tilesY = Math.max(1, Math.floor(canvasH / cellPx.h));
+      return { screenX: tilesX, screenY: tilesY };
+    }
+    // Classic char mode
+    return screenSize(this.term);
+  }
+
   private handleAction(action: GameAction): void {
-    const { screenX, screenY } = screenSize(this.term);
+    const { screenX, screenY } = this.getVisibleTileCount();
 
     switch (action.type) {
       case 'move_cursor': {
