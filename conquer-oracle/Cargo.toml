@@ -10,3 +10,4 @@ serde_json = "1"
 
 [dev-dependencies]
 conquer-core = { path = "../conquer-core" }
+conquer-engine = { path = "../conquer-engine" }

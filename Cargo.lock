@@ -279,6 +279,7 @@ name = "conquer-oracle"
 version = "0.1.0"
 dependencies = [
  "conquer-core",
+ "conquer-engine",
  "serde",
  "serde_json",
 ]
