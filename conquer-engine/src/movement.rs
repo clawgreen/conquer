@@ -346,99 +346,282 @@ pub fn flee(
 /// armymove() for NPC armies — used by the NPC AI to move armies toward
 /// attractive sectors. Returns number of free armies (for NPC status calc).
 /// Matches C npc.c armymove() pattern.
+/// NPC army movement — matches C armymove() from update.c.
+/// Returns number of sectors taken (used to update NPC active status).
+/// C: original/update.c:247
 pub fn npc_army_move(
     state: &mut GameState,
     nation_idx: usize,
     army_idx: usize,
-    attr: &Vec<Vec<i32>>,
+    attr: &mut Vec<Vec<i32>>,
     rng: &mut ConquerRng,
 ) -> i32 {
-    let army = &state.nations[nation_idx].armies[army_idx];
-    if army.soldiers <= 0 {
+    let astat = state.nations[nation_idx].armies[army_idx].status;
+    let max_move = state.nations[nation_idx].armies[army_idx].movement;
+
+    // C: if(P_ASTAT>=NUMSTATUS || P_AMOVE==0) return(takesctr);
+    if astat >= NUMSTATUS || max_move == 0 {
         return 0;
     }
 
-    let astat = army.status;
-    // Skip stationary units
-    if astat == ArmyStatus::Militia.to_value()
-        || astat == ArmyStatus::Garrison.to_value()
-        || astat == ArmyStatus::OnBoard.to_value()
-        || astat == ArmyStatus::Traded.to_value()
-        || astat == ArmyStatus::Rule.to_value()
-    {
-        return 0;
+    let ax = state.nations[nation_idx].armies[army_idx].x as i32;
+    let ay = state.nations[nation_idx].armies[army_idx].y as i32;
+    let unit_type = state.nations[nation_idx].armies[army_idx].unit_type;
+    let soldiers = state.nations[nation_idx].armies[army_idx].soldiers;
+    let mut take_sector = 0i32;
+
+    // Leader without a group: type >= MINLEADER AND < MINMONSTER AND not GENERAL
+    let is_leader = unit_type >= UnitType::MIN_LEADER
+        && unit_type < UnitType::MIN_MONSTER;
+    let lead_flag = is_leader && astat != ArmyStatus::General.to_value();
+
+    if lead_flag {
+        // Leader looking for infantry to lead.
+        // Sum all unattached infantry soldiers as weights.
+        let mut sum: i64 = 0;
+        for i in 0..MAXARM {
+            let a = &state.nations[nation_idx].armies[i];
+            if a.unit_type < UnitType::MIN_LEADER
+                && a.status != ArmyStatus::Militia.to_value()
+                && a.status != ArmyStatus::OnBoard.to_value()
+                && a.status != ArmyStatus::Garrison.to_value()
+                && a.status != ArmyStatus::Traded.to_value()
+                && a.status < NUMSTATUS
+            {
+                sum += a.soldiers as i64;
+            }
+        }
+
+        if sum == 0 {
+            // No troops to lead — return to capitol and defend
+            let cx = state.nations[nation_idx].cap_x;
+            let cy = state.nations[nation_idx].cap_y;
+            state.nations[nation_idx].armies[army_idx].x = cx;
+            state.nations[nation_idx].armies[army_idx].y = cy;
+            state.nations[nation_idx].armies[army_idx].status =
+                ArmyStatus::Defend.to_value();
+            return 0;
+        }
+
+        // Weighted random selection: pick an infantry army to join
+        let mut where_ = rng.rand() as i64 % sum;
+        let mut found_x = None;
+        let mut found_y = None;
+        for i in 0..MAXARM {
+            let a = &state.nations[nation_idx].armies[i];
+            if a.unit_type < UnitType::MIN_LEADER
+                && a.status != ArmyStatus::Militia.to_value()
+                && a.status != ArmyStatus::OnBoard.to_value()
+                && a.status != ArmyStatus::Garrison.to_value()
+                && a.status != ArmyStatus::Traded.to_value()
+                && a.status < NUMSTATUS
+            {
+                where_ -= a.soldiers as i64;
+                if where_ <= 0 {
+                    found_x = Some(a.x);
+                    found_y = Some(a.y);
+                    break;
+                }
+            }
+        }
+
+        if let (Some(fx), Some(fy)) = (found_x, found_y) {
+            state.nations[nation_idx].armies[army_idx].x = fx;
+            state.nations[nation_idx].armies[army_idx].y = fy;
+            // Form a group: find a compatible infantry at that location
+            for i in 0..MAXARM {
+                let a = &state.nations[nation_idx].armies[i];
+                if a.unit_type < UnitType::MIN_LEADER
+                    && a.status < NUMSTATUS
+                    && a.soldiers >= 0
+                    && a.status != ArmyStatus::Militia.to_value()
+                    && a.status != ArmyStatus::Garrison.to_value()
+                    && a.status != ArmyStatus::Sieged.to_value()
+                    && a.status != ArmyStatus::Scout.to_value()
+                    && a.status != ArmyStatus::OnBoard.to_value()
+                    && a.status != ArmyStatus::Traded.to_value()
+                    && a.x == fx
+                    && a.y == fy
+                {
+                    state.nations[nation_idx].armies[i].status =
+                        NUMSTATUS + army_idx as u8;
+                    state.nations[nation_idx].armies[army_idx].status =
+                        ArmyStatus::General.to_value();
+                    break;
+                }
+            }
+        }
+        return take_sector;
     }
 
-    let ax = army.x as i32;
-    let ay = army.y as i32;
-    let max_move = army.movement;
+    // Normal unit (or GENERAL leader) movement.
+    // menok: army can take sectors (large enough or is leader/monster)
+    let menok_count = if is_leader && astat == ArmyStatus::General.to_value() {
+        // GENERAL: count grouped infantry
+        let mut count: i64 = 0;
+        for i in 0..MAXARM {
+            let a = &state.nations[nation_idx].armies[i];
+            if a.status == NUMSTATUS + army_idx as u8
+                && a.unit_type < UnitType::MIN_LEADER
+            {
+                count += a.soldiers as i64;
+            }
+        }
+        count
+    } else {
+        soldiers as i64
+    };
+    let ts = takesector(state.nations[nation_idx].total_civ);
+    let menok = menok_count > ts || unit_type >= UnitType::MIN_LEADER;
 
-    if max_move == 0 {
-        return 0;
-    }
+    // C: range of 4 if menok=FALSE, 2 if menok=TRUE
+    let range: i32 = if menok { 2 } else { 4 };
 
-    // Find most attractive adjacent sector
-    let mut best_x = ax;
-    let mut best_y = ay;
-    let mut best_attr = 0;
-
-    for dx in -1i32..=1 {
-        for dy in -1i32..=1 {
-            let nx = ax + dx;
-            let ny = ay + dy;
-            if !state.on_map(nx, ny) {
+    // Sum attractiveness across range (city-only filter when small army)
+    let mut sum: i64 = 0;
+    for x in (ax - range)..=(ax + range) {
+        for y in (ay - range)..=(ay + range) {
+            if !state.on_map(x, y) {
                 continue;
             }
-            let cost = state.move_cost[nx as usize][ny as usize];
-            if cost < 0 || cost > max_move as i16 {
-                continue;
-            }
-            let a = attr[nx as usize][ny as usize];
-            if a > best_attr {
-                best_attr = a;
-                best_x = nx;
-                best_y = ny;
+            let des = state.sectors[x as usize][y as usize].designation;
+            if menok || is_city(des) {
+                let a = attr[x as usize][y as usize];
+                if a > 0 {
+                    sum += a as i64;
+                }
             }
         }
     }
 
-    // Don't move if current sector is more attractive or tied
-    if best_attr <= attr[ax as usize][ay as usize] {
-        return 0;
+    if sum == 0 {
+        // Nowhere to go — return to capitol and defend
+        let cx = state.nations[nation_idx].cap_x;
+        let cy = state.nations[nation_idx].cap_y;
+        state.nations[nation_idx].armies[army_idx].x = cx;
+        state.nations[nation_idx].armies[army_idx].y = cy;
+        state.nations[nation_idx].armies[army_idx].status =
+            ArmyStatus::Defend.to_value();
+        return take_sector;
     }
 
-    // Move there
-    if best_x != ax || best_y != ay {
-        let cost = state.move_cost[best_x as usize][best_y as usize];
-        state.nations[nation_idx].armies[army_idx].x = best_x as u8;
-        state.nations[nation_idx].armies[army_idx].y = best_y as u8;
-        let amove = state.nations[nation_idx].armies[army_idx].movement;
-        state.nations[nation_idx].armies[army_idx].movement =
-            amove.saturating_sub(cost as u8);
-
-        // Take undefended sectors
-        let sct = &state.sectors[best_x as usize][best_y as usize];
-        let s_owner = sct.owner as usize;
-        let army = &state.nations[nation_idx].armies[army_idx];
-        let ts = takesector(state.nations[nation_idx].total_civ);
-
-        if army.soldiers >= ts
-            && s_owner != nation_idx
-            && (s_owner == 0
-                || solds_in_sector(&state.nations[s_owner], best_x as u8, best_y as u8) == 0)
-            && (army.status >= ArmyStatus::Defend.to_value()
-                || army.status >= NUMSTATUS)
-        {
-            if s_owner != 0 {
-                flee(state, best_x, best_y, 0, false, rng);
+    // Weighted random sector selection from range
+    let mut where_ = rng.rand() as i64 % sum;
+    let mut moved = false;
+    'outer: for x in (ax - range)..=(ax + range) {
+        for y in (ay - range)..=(ay + range) {
+            if !state.on_map(x, y) {
+                continue;
             }
-            state.sectors[best_x as usize][best_y as usize].owner = nation_idx as u8;
-            state.nations[nation_idx].armies[army_idx].movement = 0;
-            return 1;
+            let des = state.sectors[x as usize][y as usize].designation;
+            if menok || is_city(des) {
+                let a = attr[x as usize][y as usize];
+                if a > 0 {
+                    where_ -= a as i64;
+                }
+            }
+            if where_ < 0 {
+                let cost = state.move_cost[x as usize][y as usize];
+                // Must be passable land and reachable
+                if cost >= 1
+                    && cost <= max_move as i16
+                    && land_reachp(state, ax, ay, x, y, max_move, nation_idx)
+                {
+                    // Reduce attractiveness for own non-city sectors (spread armies)
+                    if state.sectors[x as usize][y as usize].owner == nation_idx as u8
+                        && !is_city(des)
+                    {
+                        attr[x as usize][y as usize] /= 8;
+                    }
+
+                    // Take unowned sector
+                    if state.sectors[x as usize][y as usize].owner == 0 {
+                        state.sectors[x as usize][y as usize].owner = nation_idx as u8;
+                        attr[x as usize][y as usize] /= 8;
+                        if state.nations[nation_idx].popularity < 127 {
+                            state.nations[nation_idx].popularity += 1;
+                        }
+                        take_sector += 1;
+                    }
+
+                    // Move group with GENERAL leader
+                    if is_leader && astat == ArmyStatus::General.to_value() {
+                        for i in 0..MAXARM {
+                            if state.nations[nation_idx].armies[i].soldiers > 0
+                                && state.nations[nation_idx].armies[i].status
+                                    == NUMSTATUS + army_idx as u8
+                            {
+                                state.nations[nation_idx].armies[i].x = x as u8;
+                                state.nations[nation_idx].armies[i].y = y as u8;
+                            }
+                        }
+                    }
+
+                    state.nations[nation_idx].armies[army_idx].x = x as u8;
+                    state.nations[nation_idx].armies[army_idx].y = y as u8;
+                    moved = true;
+                    break 'outer;
+                }
+            }
         }
-        return 1;
     }
-    0
+
+    // Fallback retry with ±2 range if first pass found no move
+    if !moved {
+        let fallback_range = 2i32;
+        let mut sum2: i64 = 0;
+        for x in (ax - fallback_range)..=(ax + fallback_range) {
+            for y in (ay - fallback_range)..=(ay + fallback_range) {
+                if state.on_map(x, y) {
+                    sum2 += attr[x as usize][y as usize].max(0) as i64;
+                }
+            }
+        }
+        if sum2 > 0 {
+            let mut where2 = rng.rand() as i64 % sum2;
+            'outer2: for x in (ax - fallback_range)..=(ax + fallback_range) {
+                for y in (ay - fallback_range)..=(ay + fallback_range) {
+                    if !state.on_map(x, y) {
+                        continue;
+                    }
+                    where2 -= attr[x as usize][y as usize].max(0) as i64;
+                    if where2 < 0 {
+                        let cost = state.move_cost[x as usize][y as usize];
+                        if cost >= 1
+                            && cost <= max_move as i16
+                            && land_reachp(state, ax, ay, x, y, max_move, nation_idx)
+                        {
+                            if state.sectors[x as usize][y as usize].owner == 0 {
+                                state.sectors[x as usize][y as usize].owner =
+                                    nation_idx as u8;
+                                attr[x as usize][y as usize] = 1;
+                                if state.nations[nation_idx].popularity < 127 {
+                                    state.nations[nation_idx].popularity += 1;
+                                }
+                                take_sector += 1;
+                            }
+                            if is_leader && astat == ArmyStatus::General.to_value() {
+                                for i in 0..MAXARM {
+                                    if state.nations[nation_idx].armies[i].soldiers > 0
+                                        && state.nations[nation_idx].armies[i].status
+                                            == NUMSTATUS + army_idx as u8
+                                    {
+                                        state.nations[nation_idx].armies[i].x = x as u8;
+                                        state.nations[nation_idx].armies[i].y = y as u8;
+                                    }
+                                }
+                            }
+                            state.nations[nation_idx].armies[army_idx].x = x as u8;
+                            state.nations[nation_idx].armies[army_idx].y = y as u8;
+                            break 'outer2;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    take_sector
 }
 
 // ── Sector occupancy and capture ──

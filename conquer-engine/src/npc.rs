@@ -4,6 +4,8 @@
 // T211-T230: nationrun, getdstatus, newdip, redomil, n_redes,
 // sector redesignation, attractiveness calculation, army drafting,
 // diplomacy updates, tax/charity management.
+//
+// SPRINT-PARITY T1-T18: Attractiveness system + NPC army movement.
 
 use conquer_core::*;
 
@@ -840,7 +842,7 @@ pub fn nation_run(
             && state.nations[nation_idx].armies[armynum].unit_type < UnitType::MIN_LEADER
         {
             loop_count +=
-                movement::npc_army_move(state, nation_idx, armynum, &attr, rng);
+                movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
         }
     }
 
@@ -851,7 +853,7 @@ pub fn nation_run(
             && state.nations[nation_idx].armies[armynum].unit_type >= UnitType::MIN_LEADER
         {
             loop_count +=
-                movement::npc_army_move(state, nation_idx, armynum, &attr, rng);
+                movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
         }
     }
 
