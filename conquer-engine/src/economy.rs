@@ -251,6 +251,46 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
                     sct.designation = Designation::NoDesig as u8;
                 }
             }
+
+            // P2: MEETNTN auto-diplomacy — check adjacent sectors within MEETNTN range
+            // C: original/update.c:978-988
+            let sct_owner = state.sectors[x][y].owner as usize;
+            if sct_owner != 0 {
+                for i in (x as i32 - MEETNTN)..=(x as i32 + MEETNTN) {
+                    for j in (y as i32 - MEETNTN)..=(y as i32 + MEETNTN) {
+                        if !state.on_map(i, j) { continue; }
+                        let adj_owner = state.sectors[i as usize][j as usize].owner as usize;
+                        if adj_owner == 0 || adj_owner == sct_owner { continue; }
+                        if state.nations[sct_owner].diplomacy[adj_owner] == DiplomaticStatus::Unmet as u8 {
+                            crate::npc::new_diplomacy(state, sct_owner, adj_owner, rng);
+                        }
+                        if state.nations[adj_owner].diplomacy[sct_owner] == DiplomaticStatus::Unmet as u8 {
+                            crate::npc::new_diplomacy(state, adj_owner, sct_owner, rng);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // P1: deplete() — capitol loss depletion
+    // C: original/update.c:1004 calls deplete() from misc.c:783
+    for country in 1..NTOTAL {
+        let ntn = &state.nations[country];
+        if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        let cap_x = ntn.cap_x as usize;
+        let cap_y = ntn.cap_y as usize;
+        // Check if capitol is intact
+        let has_capitol = state.sectors[cap_x][cap_y].designation == Designation::Capitol as u8
+            && (state.sectors[cap_x][cap_y].owner as usize == country
+                || state.sectors[cap_x][cap_y].owner == 0
+                || !NationStrategy::from_value(
+                    state.nations[state.sectors[cap_x][cap_y].owner as usize].active
+                ).map_or(false, |s| s.is_nation()));
+        if !has_capitol {
+            deplete(state, country, rng);
         }
     }
 
@@ -550,6 +590,60 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                 ntn.armies[armynum].status = ArmyStatus::Flight.to_value();
             }
 
+            // P3: ROADS movement penalty — army in enemy territory with ROADS power
+            // C: original/update.c:1240-1243
+            {
+                let ax = ntn.armies[armynum].x as usize;
+                let ay = ntn.armies[armynum].y as usize;
+                if Power::has_power(ntn.powers, Power::ROADS)
+                    && ax < state.sectors.len() && ay < state.sectors[0].len()
+                    && state.sectors[ax][ay].owner as usize != country
+                {
+                    let smove = ntn.armies[armynum].movement;
+                    if smove > 7 {
+                        ntn.armies[armynum].movement = smove - 4;
+                    } else if smove > 4 {
+                        ntn.armies[armynum].movement = 4;
+                    }
+                }
+            }
+
+            // P8: PC armies not near a leader get halved movement
+            // C: original/update.c:1250
+            if NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_pc())
+                && at < UnitType::MIN_LEADER
+            {
+                let ax = ntn.armies[armynum].x as usize;
+                let ay = ntn.armies[armynum].y as usize;
+                let map_x = state.world.map_x as i32;
+                let map_y = state.world.map_y as i32;
+                // C uses occ[AX][AY] == 0 (prep() sets occ>0 if leader near)
+                // We check directly: is there a leader within 1 sector?
+                let mut leader_near = false;
+                'leader_check: for dx in -1i32..=1 {
+                    for dy in -1i32..=1 {
+                        let lx = ax as i32 + dx;
+                        let ly = ay as i32 + dy;
+                        if lx < 0 || ly < 0 || lx >= map_x || ly >= map_y { continue; }
+                        for a2 in 0..MAXARM {
+                            let arm2 = &ntn.armies[a2];
+                            if arm2.soldiers > 0
+                                && arm2.unit_type >= UnitType::MIN_LEADER
+                                && arm2.unit_type < UnitType::MIN_MONSTER
+                                && arm2.x == lx as u8
+                                && arm2.y == ly as u8
+                            {
+                                leader_near = true;
+                                break 'leader_check;
+                            }
+                        }
+                    }
+                }
+                if !leader_near {
+                    ntn.armies[armynum].movement /= 2;
+                }
+            }
+
             // Military maintenance
             let maint_idx = (at % UTYPE) as usize;
             let maint = UNIT_MAINTENANCE.get(maint_idx).copied().unwrap_or(50) as i64;
@@ -572,12 +666,77 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
             }
         }
 
+        // P5: Group movement — GENERAL moves at rate of slowest +2
+        // C: original/update.c:1260-1275
+        for armynum in 0..MAXARM {
+            if ntn.armies[armynum].soldiers <= 0 { continue; }
+            if ntn.armies[armynum].status != ArmyStatus::General.to_value() { continue; }
+
+            let mut has_follower = false;
+            let group_id = armynum as u8 + NUMSTATUS;
+            for follower in 0..MAXARM {
+                if ntn.armies[follower].soldiers > 0
+                    && ntn.armies[follower].status == group_id
+                {
+                    has_follower = true;
+                    if ntn.armies[armynum].movement > ntn.armies[follower].movement {
+                        ntn.armies[armynum].movement = ntn.armies[follower].movement;
+                    }
+                }
+            }
+            if !has_follower {
+                ntn.armies[armynum].status = ArmyStatus::Defend.to_value();
+            } else {
+                ntn.armies[armynum].movement = ntn.armies[armynum].movement.saturating_add(2);
+            }
+        }
+
         // Navy maintenance
         for nvynum in 0..MAXNAVY {
             let has_ships = ntn.navies[nvynum].warships != 0
                 || ntn.navies[nvynum].merchant != 0
                 || ntn.navies[nvynum].galleys != 0;
             if has_ships {
+                // P7: Navy storms — PSTORM% chance to sink fleet at sea
+                // C: original/update.c:1278-1310
+                let nx = ntn.navies[nvynum].x as usize;
+                let ny = ntn.navies[nvynum].y as usize;
+                if nx < state.sectors.len() && ny < state.sectors[0].len()
+                    && state.sectors[nx][ny].altitude == Altitude::Water as u8
+                {
+                    let strat = NationStrategy::from_value(ntn.active);
+                    let is_pirate = strat == Some(NationStrategy::NpcPirate);
+                    let has_sailor = Power::has_power(ntn.powers, Power::SAILOR);
+
+                    if !is_pirate && !has_sailor && rng.rand() % 100 < PSTORM {
+                        // Storm sinks fleet
+                        ntn.navies[nvynum].warships = 0;
+                        ntn.navies[nvynum].merchant = 0;
+                        ntn.navies[nvynum].galleys = 0;
+                        let army_idx = ntn.navies[nvynum].army_num as usize;
+                        if army_idx < MAXARM {
+                            ntn.armies[army_idx].soldiers = 0;
+                        }
+                        ntn.navies[nvynum].army_num = MAXARM as u8;
+                        ntn.navies[nvynum].people = 0;
+                        ntn.navies[nvynum].crew = 0;
+                        continue; // Skip rest for this fleet
+                    }
+
+                    // Destroy crewless ships
+                    if ntn.navies[nvynum].crew == 0 {
+                        ntn.navies[nvynum].warships = 0;
+                        ntn.navies[nvynum].merchant = 0;
+                        ntn.navies[nvynum].galleys = 0;
+                        let army_idx = ntn.navies[nvynum].army_num as usize;
+                        if army_idx < MAXARM {
+                            ntn.armies[army_idx].soldiers = 0;
+                        }
+                        ntn.navies[nvynum].army_num = 0;
+                        continue;
+                    }
+                }
+
                 // Fleet speed and crew
                 if !disarray {
                     let speed = fleet_speed(&ntn.navies[nvynum]);
@@ -595,6 +754,107 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                 ntn.total_ships += total_ships as i16;
                 let hold = fleet_hold(&ntn.navies[nvynum]);
                 ntn.treasury_gold -= hold as i64 * SHIPMAINT;
+            }
+        }
+    }
+
+    // P6: Siege validation — separate pass after all nations processed
+    // C: original/update.c:1155-1200 + 1296-1340
+    siege_validation(state);
+}
+
+/// P6: Siege validation pass — count attackers vs defenders, set SIEGED status.
+/// Must run after all nations' armies are processed.
+fn siege_validation(state: &mut GameState) {
+    let mut sieges: Vec<(u8, u8, bool)> = Vec::new(); // (x, y, is_valid)
+
+    // Find all siege locations and validate them
+    for country in 0..NTOTAL {
+        for armynum in 0..MAXARM {
+            let army = &state.nations[country].armies[armynum];
+            if army.soldiers <= 0 { continue; }
+            if army.status != ArmyStatus::Siege.to_value() { continue; }
+            let ax = army.x;
+            let ay = army.y;
+
+            // Must be in enemy fortified sector
+            if state.sectors[ax as usize][ay as usize].owner as usize == country { continue; }
+            let powers = state.nations[country].powers;
+            if fort_val(&state.sectors[ax as usize][ay as usize], powers) <= 0 { continue; }
+
+            // Already tracked?
+            if sieges.iter().any(|&(sx, sy, _)| sx == ax && sy == ay) { continue; }
+
+            // Count attackers (siege units count 3x)
+            let mut asmen: i64 = 0;
+            for n in 0..NTOTAL {
+                for a2 in 0..MAXARM {
+                    let arm2 = &state.nations[n].armies[a2];
+                    if arm2.soldiers > 0
+                        && arm2.x == ax && arm2.y == ay
+                        && arm2.status == ArmyStatus::Siege.to_value()
+                    {
+                        if arm2.unit_type == UnitType::SIEGE_UNIT.0 {
+                            asmen += 3 * arm2.soldiers;
+                        } else {
+                            asmen += arm2.soldiers;
+                        }
+                    }
+                }
+            }
+
+            // Count defenders (militia count half)
+            let def_nation = state.sectors[ax as usize][ay as usize].owner as usize;
+            let mut dsmen: i64 = 0;
+            for a2 in 0..MAXARM {
+                let arm2 = &state.nations[def_nation].armies[a2];
+                if arm2.soldiers > 0 && arm2.x == ax && arm2.y == ay {
+                    if arm2.unit_type == UnitType::MILITIA.0 {
+                        dsmen += arm2.soldiers / 2;
+                    } else {
+                        dsmen += arm2.soldiers;
+                    }
+                }
+            }
+
+            sieges.push((ax, ay, asmen > 2 * dsmen));
+        }
+    }
+
+    // Apply siege effects: SIEGED on defenders, remove movement
+    for &(sx, sy, valid) in &sieges {
+        if !valid { continue; }
+        let def_nation = state.sectors[sx as usize][sy as usize].owner as usize;
+        for armynum in 0..MAXARM {
+            let army = &state.nations[def_nation].armies[armynum];
+            if army.soldiers <= 0 || army.x != sx || army.y != sy { continue; }
+            if army.status == ArmyStatus::Flight.to_value() { continue; }
+            state.nations[def_nation].armies[armynum].movement = 0;
+            let cur_stat = state.nations[def_nation].armies[armynum].status;
+            if cur_stat != ArmyStatus::OnBoard.to_value()
+                && cur_stat != ArmyStatus::Rule.to_value()
+                && cur_stat != ArmyStatus::Traded.to_value()
+            {
+                state.nations[def_nation].armies[armynum].status =
+                    ArmyStatus::Sieged.to_value();
+            }
+        }
+    }
+
+    // Invalid sieges: reset to DEFEND
+    for country in 0..NTOTAL {
+        for armynum in 0..MAXARM {
+            let army = &state.nations[country].armies[armynum];
+            if army.soldiers <= 0 || army.status != ArmyStatus::Siege.to_value() { continue; }
+            let ax = army.x;
+            let ay = army.y;
+            let valid = sieges.iter().any(|&(sx, sy, v)| sx == ax && sy == ay && v);
+            if !valid {
+                let move_idx = (army.unit_type % UTYPE) as usize;
+                let unit_move = UNIT_MOVE.get(move_idx).copied().unwrap_or(10) as u8;
+                let max_move = state.nations[country].max_move;
+                state.nations[country].armies[armynum].status = ArmyStatus::Defend.to_value();
+                state.nations[country].armies[armynum].movement = (max_move * unit_move) / 10;
             }
         }
     }
@@ -921,75 +1181,292 @@ pub fn att_bonus_gs(state: &mut GameState) {
 ///   DELTA = (A1*P2 - P1*A2) / (5*(A1+A2))
 /// Only between sectors owned by the same nation. Skips water.
 /// Called globally (C calls per-nation inside updexecs; we call once for all).
+/// P4/P9: move_people() — proper attractiveness-based civilian migration.
+/// C: original/update.c:1557-1622, using attract() from update.c:135.
+/// Uses a 5-row sliding window buffer for memory efficiency (matches C).
+/// Called per-nation from the run_turn pipeline.
 pub fn move_people_gs(state: &mut GameState) {
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
 
-    // For each owned sector, move 1/5 of the difference toward equilibrium
-    // with each neighbor. Only between sectors owned by the same nation.
-    for x in 0..map_x {
-        for y in 0..map_y {
-            let owner = state.sectors[x][y].owner as usize;
-            if owner == 0 { continue; }
+    // Must run per nation (C: called once per country in update())
+    for country in 1..NTOTAL {
+        let ntn = &state.nations[country];
+        if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        let race = ntn.race;
 
-            let p1 = state.sectors[x][y].people;
-            if p1 == 0 { continue; }
+        // Pre-compute attractiveness grid for this nation
+        let mut attr_grid = vec![vec![0i32; map_y]; map_x];
+        for x in 0..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize == country {
+                    attr_grid[x][y] = attract(state, x, y, race);
+                }
+            }
+        }
 
-            // Check each adjacent sector
-            for (dx, dy) in &[(0i32,1i32),(1,0),(0,-1),(-1,0)] {
-                let nx = x as i32 + dx;
-                let ny = y as i32 + dy;
-                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
-                let nx = nx as usize;
-                let ny = ny as usize;
+        // 5-row sliding window buffer (C: newpop[x%5][y])
+        let mut newpop = vec![vec![0i64; map_y]; 5];
 
-                // Only migrate between sectors of the same nation
-                if state.sectors[nx][ny].owner as usize != owner { continue; }
+        // Initialize first 3 rows
+        for x in 0..3usize.min(map_x) {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize == country {
+                    newpop[x % 5][y] = state.sectors[x][y].people;
+                }
+            }
+        }
 
-                // Skip water
-                if state.sectors[x][y].altitude == Altitude::Water as u8 { continue; }
-                if state.sectors[nx][ny].altitude == Altitude::Water as u8 { continue; }
+        for x in 0..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize != country { continue; }
+                if state.sectors[x][y].people == 0 { continue; }
 
-                let p2 = state.sectors[nx][ny].people;
+                // Sum attractiveness in 5x5 neighborhood
+                let mut t_attr: i64 = 0;
+                for i in (x as i32 - 2)..(x as i32 + 3) {
+                    for j in (y as i32 - 2)..(y as i32 + 3) {
+                        if state.on_map(i, j) {
+                            t_attr += attr_grid[i as usize][j as usize] as i64;
+                        }
+                    }
+                }
 
-                // Attractiveness of each sector based on designation
-                let a1 = sector_attractiveness(state.sectors[x][y].designation);
-                let a2 = sector_attractiveness(state.sectors[nx][ny].designation);
+                if t_attr > 0 {
+                    t_attr *= 5;
+                    let people = state.sectors[x][y].people;
 
-                if a1 + a2 == 0 { continue; }
+                    for i in (x as i32 - 2)..(x as i32 + 3) {
+                        for j in (y as i32 - 2)..(y as i32 + 3) {
+                            if !state.on_map(i, j) { continue; }
+                            let a = attr_grid[i as usize][j as usize] as i64;
+                            let moved = people * a;
+                            if moved > 0 {
+                                let moved = moved / t_attr;
+                                newpop[x % 5][y] -= moved;
+                                newpop[i as usize % 5][j as usize] += moved;
+                            }
+                        }
+                    }
+                }
+            }
 
-                // DELTA(1) = (A1*P2 - P1*A2) / 5*(A1+A2)
-                let delta = (a1 as i64 * p2 - p1 * a2 as i64) / (5 * (a1 + a2) as i64);
+            // Sliding window: write back old row, load new row
+            if x >= 2 {
+                let wx = x - 2;
+                for y in 0..map_y {
+                    if state.sectors[wx][y].owner as usize == country {
+                        state.sectors[wx][y].people = newpop[wx % 5][y];
+                    }
+                }
+            }
+            if x + 3 < map_x {
+                let lx = x + 3;
+                for y in 0..map_y {
+                    if state.sectors[lx][y].owner as usize == country {
+                        newpop[lx % 5][y] = state.sectors[lx][y].people;
+                    } else {
+                        newpop[lx % 5][y] = 0;
+                    }
+                }
+            }
+        }
 
-                if delta > 0 {
-                    let moved = delta.min(p2 / 5);
-                    state.sectors[x][y].people += moved;
-                    state.sectors[nx][ny].people -= moved;
-                } else if delta < 0 {
-                    let moved = (-delta).min(p1 / 5);
-                    state.sectors[x][y].people -= moved;
-                    state.sectors[nx][ny].people += moved;
+        // Write back final rows
+        for x in map_x.saturating_sub(2)..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize == country {
+                    state.sectors[x][y].people = newpop[x % 5][y];
                 }
             }
         }
     }
 }
 
-/// Sector attractiveness for migration (simplified from C attract()).
-fn sector_attractiveness(designation: u8) -> i64 {
-    if designation == Designation::City as u8 || designation == Designation::Capitol as u8 {
-        10
-    } else if designation == Designation::Town as u8 {
-        7
-    } else if designation == Designation::Farm as u8 {
-        5
-    } else if designation == Designation::Mine as u8 {
-        4
-    } else if designation == Designation::GoldMine as u8 {
-        6
-    } else {
-        2
+// ━━━ P1: deplete() — capitol loss depletion ━━━
+// C: original/misc.c:783
+// When a nation has no capitol, armies disband, sectors riot, monsters leave.
+
+/// deplete() — punish nation for having no capitol.
+/// Matches C deplete() from misc.c.
+pub fn deplete(state: &mut GameState, nation: usize, rng: &mut ConquerRng) {
+    // Disband PDEPLETE% of armies, all monsters
+    for armynum in 0..MAXARM {
+        let army = &state.nations[nation].armies[armynum];
+        if army.soldiers <= 0 { continue; }
+
+        let at = army.unit_type;
+        if at < UnitType::MIN_LEADER {
+            // PDEPLETE% chance to disband (mercenaries always disband)
+            if rng.rand() % 100 < PDEPLETE || at == UnitType::MERCENARY.0 {
+                let soldiers = state.nations[nation].armies[armynum].soldiers;
+                let ax = state.nations[nation].armies[armynum].x as usize;
+                let ay = state.nations[nation].armies[armynum].y as usize;
+                // Return soldiers to population if same race owns the sector
+                let s_owner = state.sectors[ax][ay].owner as usize;
+                if s_owner != 0
+                    && state.nations[s_owner].race == state.nations[nation].race
+                {
+                    state.sectors[ax][ay].people += soldiers;
+                }
+                state.nations[nation].armies[armynum].soldiers = 0;
+            }
+        } else if at >= UnitType::MIN_MONSTER {
+            // All monsters leave
+            state.nations[nation].armies[armynum].soldiers = 0;
+        }
     }
+
+    // Sectors may riot (C: PDEPLETE% chance per sector, if riots then PDEPLETE% devastate)
+    let cap_x = state.nations[nation].cap_x as usize;
+    let cap_y = state.nations[nation].cap_y as usize;
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+
+    for i in 0..map_x {
+        for j in 0..map_y {
+            if state.sectors[i][j].owner as usize != nation { continue; }
+            if i == cap_x && j == cap_y { continue; }
+
+            if state.sectors[i][j].people > 0 && rng.rand() % 100 < PDEPLETE {
+                if rng.rand() % 100 < PDEPLETE {
+                    // Sector riots — flee and devastate
+                    crate::movement::flee(state, i as i32, j as i32, 0, false, rng);
+                    state.sectors[i][j].designation = Designation::Devastated as u8;
+                    state.sectors[i][j].owner = 0;
+                }
+                // else: sector joins another nation (C: #ifdef NOTDONE — not implemented)
+            }
+        }
+    }
+
+    // NPC: reset capitol if they still own the sector
+    let strat = NationStrategy::from_value(state.nations[nation].active);
+    if strat.map_or(false, |s| s.is_npc()) {
+        if state.sectors[cap_x][cap_y].owner as usize == nation {
+            state.sectors[cap_x][cap_y].designation = Designation::Capitol as u8;
+            if state.sectors[cap_x][cap_y].fortress < 1 {
+                state.sectors[cap_x][cap_y].fortress = 1;
+            }
+        }
+    }
+}
+
+// ━━━ P9: attract() — sector attractiveness for civilian migration ━━━
+// C: original/update.c:135-244
+
+/// attract(x,y,race) — calculate sector attractiveness for civilian migration.
+/// Matches C attract() from update.c exactly, including race-specific bonuses.
+pub fn attract(state: &GameState, x: usize, y: usize, race: char) -> i32 {
+    let sct = &state.sectors[x][y];
+    let des = sct.designation;
+    let mut attr: i32 = 0;
+
+    // Trade good bonus when designation matches
+    if sct.trade_good != TradeGood::None as u8 {
+        let tg_idx = sct.trade_good as usize;
+        let tg_bytes = TG_SECTOR_TYPE.as_bytes();
+        if tg_idx < tg_bytes.len() {
+            let expected_des_char = tg_bytes[tg_idx];
+            let des_bytes = DES_CHARS.as_bytes();
+            let des_char = des_bytes.get(des as usize).copied().unwrap_or(0);
+            if des_char == expected_des_char
+                && des != Designation::Mine as u8
+                && des != Designation::GoldMine as u8
+            {
+                let tg_val = TG_VALUE_STR.as_bytes().get(tg_idx).copied().unwrap_or(b'0');
+                attr += ((tg_val - b'0') as i32) * TGATTR;
+            }
+        }
+    }
+
+    // Designation-based attractiveness
+    if des == Designation::GoldMine as u8 {
+        if sct.jewels >= 6 { attr += GOLDATTR * sct.jewels as i32 * 2; }
+        else { attr += GOLDATTR * sct.jewels as i32; }
+    } else if des == Designation::Farm as u8 {
+        let owner = sct.owner as usize;
+        if owner > 0 {
+            let ntn = &state.nations[owner];
+            if ntn.total_food * 250 <= ntn.eat_rate as i64 * (ntn.total_civ * 11) {
+                attr += 50 * FARMATTR;
+            } else {
+                attr += tofood(sct, Some(ntn)) * FARMATTR;
+            }
+        }
+    } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
+        attr += CITYATTR;
+    } else if des == Designation::Town as u8 {
+        attr += TOWNATTR;
+    } else if des == Designation::Mine as u8 {
+        if sct.metal > 6 { attr += MINEATTR * sct.metal as i32 * 2; }
+        else { attr += MINEATTR * sct.metal as i32; }
+    } else if des != Designation::Road as u8
+        && des != Designation::NoDesig as u8
+        && des != Designation::Devastated as u8
+        && is_habitable(sct)
+    {
+        attr += OTHRATTR;
+    }
+
+    // Race-specific modifiers
+    match race {
+        'D' => {
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += DGOLDATTR; }
+            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += DMINEATTR; }
+            else if des == Designation::Town as u8 { attr += DTOWNATTR; }
+            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += DCITYATTR; }
+            if sct.vegetation == Vegetation::Wood as u8 { attr += DWOODATTR; }
+            else if sct.vegetation == Vegetation::Forest as u8 { attr += DFOREATTR; }
+            if sct.altitude == Altitude::Mountain as u8 { attr += DMNTNATTR; }
+            else if sct.altitude == Altitude::Hill as u8 { attr += DHILLATTR; }
+            else if sct.altitude == Altitude::Clear as u8 { attr += DCLERATTR; }
+            else { attr = 0; }
+        }
+        'E' => {
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += EGOLDATTR; }
+            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += EMINEATTR; }
+            else if des == Designation::Town as u8 || des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += ECITYATTR; }
+            if sct.vegetation == Vegetation::Wood as u8 { attr += EWOODATTR; }
+            else if sct.vegetation == Vegetation::Forest as u8 { attr += EFOREATTR; }
+            if sct.altitude == Altitude::Mountain as u8 { attr += EMNTNATTR; }
+            else if sct.altitude == Altitude::Hill as u8 { attr += EHILLATTR; }
+            else if sct.altitude == Altitude::Clear as u8 { attr += ECLERATTR; }
+            else { attr = 0; }
+        }
+        'H' => {
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += HGOLDATTR; }
+            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += HMINEATTR; }
+            else if des == Designation::Town as u8 { attr += HTOWNATTR; }
+            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += HCITYATTR; }
+            if sct.vegetation == Vegetation::Wood as u8 { attr += HWOODATTR; }
+            else if sct.vegetation == Vegetation::Forest as u8 { attr += HFOREATTR; }
+            if sct.altitude == Altitude::Mountain as u8 { attr += HMNTNATTR; }
+            else if sct.altitude == Altitude::Hill as u8 { attr += HHILLATTR; }
+            else if sct.altitude == Altitude::Clear as u8 { attr += HCLERATTR; }
+            else { attr = 0; }
+        }
+        'O' => {
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += OGOLDATTR; }
+            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += OMINEATTR; }
+            else if des == Designation::Town as u8 { attr += OTOWNATTR; }
+            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += OCITYATTR; }
+            if sct.vegetation == Vegetation::Wood as u8 { attr += OWOODATTR; }
+            else if sct.vegetation == Vegetation::Forest as u8 { attr += OFOREATTR; }
+            if sct.altitude == Altitude::Mountain as u8 { attr += OMNTNATTR; }
+            else if sct.altitude == Altitude::Hill as u8 { attr += OHILLATTR; }
+            else if sct.altitude == Altitude::Clear as u8 { attr += OCLERATTR; }
+            else { attr = 0; }
+        }
+        _ => {}
+    }
+
+    if des == Designation::Devastated as u8 || attr < 0 || state.move_cost[x][y] < 0 {
+        attr = 0;
+    }
+    attr
 }
 
 #[cfg(test)]
