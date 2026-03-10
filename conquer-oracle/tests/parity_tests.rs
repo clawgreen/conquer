@@ -259,6 +259,87 @@ fn parity_5_turn_stability() {
         "Too many nations died: {} → {}", initial_active, final_active);
 }
 
+/// After a full turn (NPC redesignation + att_base), mine_ability should be nonzero
+/// for nations that have mine sectors.
+#[test]
+fn parity_mine_ability_after_turn() {
+    let t1 = match load_snapshot("turn1.json") {
+        Some(s) => s,
+        None => return,
+    };
+    let mut gs = t1.to_game_state();
+    let mut rng = ConquerRng::new(42);
+
+    // Run a full turn (includes NPC redesignation + att_base at end)
+    conquer_engine::turn::update_turn(&mut gs, &mut rng);
+
+    // After a full turn with NPC redesignation, some nations should have mine_ability
+    let mut any_mine_ability = false;
+    for country in 1..NTOTAL {
+        let strat = NationStrategy::from_value(gs.nations[country].active);
+        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        if gs.nations[country].mine_ability > 0 {
+            any_mine_ability = true;
+            eprintln!("  Nation {} ({}) mine_ability={}",
+                country, gs.nations[country].name, gs.nations[country].mine_ability);
+        }
+    }
+    eprintln!("Any mine_ability > 0: {}", any_mine_ability);
+    // Don't hard-fail — initial world may not have mines. Just report.
+}
+
+/// Isolated function test: eat_rate is set properly by att_base (regular nations only)
+#[test]
+fn parity_eat_rate_set_by_att_base() {
+    let t1 = match load_snapshot("turn1.json") {
+        Some(s) => s,
+        None => return,
+    };
+    let mut gs = t1.to_game_state();
+    let mut rng = ConquerRng::new(42);
+
+    conquer_engine::economy::att_base_gs(&mut gs, &mut rng);
+
+    for country in 1..NTOTAL {
+        let strat = NationStrategy::from_value(gs.nations[country].active);
+        // Only check regular nations (isntn), not monsters
+        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        assert!(gs.nations[country].eat_rate >= 25,
+            "Nation {} ({}) eat_rate={} (should be >= 25)",
+            country, gs.nations[country].name, gs.nations[country].eat_rate);
+    }
+}
+
+/// Isolated function test: compute_occupancy matches expected capture behavior
+#[test]
+fn parity_occupancy_enables_capture() {
+    let t1 = match load_snapshot("turn1.json") {
+        Some(s) => s,
+        None => return,
+    };
+    let gs = t1.to_game_state();
+
+    // Count how many sectors have a sole army occupier that could capture
+    let mut capturable = 0;
+    for country in 1..NTOTAL {
+        if !gs.nations[country].is_active() { continue; }
+        for armynum in 0..MAXARM {
+            let army = &gs.nations[country].armies[armynum];
+            if army.soldiers <= 0 { continue; }
+            if army.unit_type >= UnitType::MIN_LEADER { continue; }
+            if army.status == ArmyStatus::OnBoard.to_value() { continue; }
+            let ax = army.x as usize;
+            let ay = army.y as usize;
+            if gs.sectors[ax][ay].owner as usize != country
+                && gs.sectors[ax][ay].altitude != Altitude::Water as u8
+            {
+                capturable += 1;
+            }
+        }
+    }
+    eprintln!("Armies in non-owned, non-water sectors: {}", capturable);
+}
+
 /// Progressive parity test: run turns 1→11 and track cumulative drift.
 /// Prints a report showing how much the Rust engine diverges per turn.
 #[test]

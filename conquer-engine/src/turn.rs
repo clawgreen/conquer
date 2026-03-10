@@ -5,6 +5,7 @@
 // Main update function and supporting functions.
 // T10: Refactored to use &mut GameState instead of fixed-size arrays.
 use conquer_core::*;
+use conquer_core::tables::*;
 use crate::rng::ConquerRng;
 use crate::economy::*;
 use crate::combat::*;
@@ -49,18 +50,90 @@ pub fn update_turn(
 
     let current_turn = state.world.turn;
 
-    // 1. updexecs: Run each NPC nation in random order
-    let mut nation_order: Vec<usize> = (1..NTOTAL).collect();
-    shuffle_array_usize(rng, &mut nation_order);
+    // 1. updexecs: Run each nation in random order (C algorithm)
+    // C uses: pick rand()%(remaining)+1, count through unexecuted nations
+    let mut execed = vec![false; NTOTAL];
+    // Mark inactive nations as already executed
+    for country in 0..NTOTAL {
+        let strat = NationStrategy::from_value(state.nations[country].active);
+        if !strat.map_or(false, |s| s.is_nation()) {
+            execed[country] = true;
+        }
+    }
 
-    for &nation_idx in &nation_order {
-        let active = state.nations[nation_idx].active;
+    let active_count = execed.iter().filter(|&&e| !e).count();
+    for loop_idx in 0..active_count {
+        let remaining = active_count - loop_idx;
+        let mut number = (rng.rand() % remaining as i32) + 1;
+
+        // Find the nth unexecuted nation
+        let mut country = 0;
+        for c in 0..NTOTAL {
+            if !execed[c] {
+                number -= 1;
+                if number == 0 {
+                    country = c;
+                    execed[c] = true;
+                    break;
+                }
+            }
+        }
+
+        let active = state.nations[country].active;
         if active == 0 { continue; }
+
+        // Run NPC nations
         let strat = NationStrategy::from_value(active);
         if strat.map_or(false, |s| s.is_npc()) {
-            let _news = crate::npc::nation_run(state, nation_idx, rng);
+            let _news = crate::npc::nation_run(state, country, rng);
         }
-        events.push(format!("Nation {} updated", state.nations[nation_idx].name));
+
+        // Disarray/leader check (C: updexecs per-nation)
+        let leader_type = get_leader_type(state.nations[country].class);
+        let mut has_leader = false;
+        for armynum in 0..MAXARM {
+            if state.nations[country].armies[armynum].unit_type == leader_type
+                && state.nations[country].armies[armynum].soldiers > 0
+            {
+                has_leader = true;
+                break;
+            }
+        }
+        if !has_leader {
+            // 30% chance of new leader
+            if rng.rand() % 100 < 30 {
+                let next_type = leader_type + 1;
+                for armynum in 0..MAXARM {
+                    if state.nations[country].armies[armynum].unit_type == next_type
+                        && state.nations[country].armies[armynum].soldiers > 0
+                    {
+                        state.nations[country].armies[armynum].unit_type = leader_type;
+                        let min_str_idx = (leader_type % UTYPE) as usize;
+                        state.nations[country].armies[armynum].soldiers =
+                            UNIT_MIN_STRENGTH.get(min_str_idx).copied().unwrap_or(100) as i64;
+                        has_leader = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Per-nation move_people (C: called inside updexecs per-nation)
+        crate::economy::move_people_single_nation(state, country);
+
+        events.push(format!("Nation {} updated", state.nations[country].name));
+    }
+
+    // Zero tmil/tships after updexecs (C does this at end of updexecs)
+    for country in 1..NTOTAL {
+        let strat = NationStrategy::from_value(state.nations[country].active);
+        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        state.nations[country].total_ships = 0;
+        state.nations[country].total_mil = 0;
+        // Spell point decay (C: rand()%4==0 → halve)
+        if rng.rand() % 4 == 0 {
+            state.nations[country].spell_points /= 2;
+        }
     }
 
     // 2. monster() - monster nation updates
@@ -92,8 +165,8 @@ pub fn update_turn(
     events.push("Updating sectors...".to_string());
     updsectors(state, rng);
 
-    // 9. move_people() - civilian migration between sectors
-    move_people_gs(state);
+    // 9. move_people() — now handled per-nation inside updexecs above
+    // (C does move_people inside updexecs loop, not as a separate pass)
 
     // 10. updcomodities() - food consumption, spoilage, jewel balancing
     events.push("Updating commodities...".to_string());
@@ -141,6 +214,27 @@ pub fn update_turn(
         events,
         new_turn: state.world.turn as i32,
     }
+}
+
+/// getleader(class) — returns the UnitType of the leader for this nation class.
+/// C: original/misc.c:1456. Returns the unit type value (e.g. L_BARON).
+/// C actually returns the UnitType, and the caller does getleader()-1 to get the king type.
+fn get_leader_type(class: i16) -> u8 {
+    let leader = match NationClass::from_value(class) {
+        Some(NationClass::Npc) | Some(NationClass::King)
+        | Some(NationClass::Trader) => UnitType::L_BARON,
+        Some(NationClass::Emperor) => UnitType::L_PRINCE,
+        Some(NationClass::Wizard) => UnitType::L_MAGI,
+        Some(NationClass::Priest) => UnitType::L_BISHOP,
+        Some(NationClass::Pirate) => UnitType::L_CAPTAIN,
+        Some(NationClass::Warlord) => UnitType::L_LORD,
+        Some(NationClass::Demon) => UnitType::L_DEVIL,
+        Some(NationClass::Dragon) => UnitType::L_WYRM,
+        Some(NationClass::Shadow) => UnitType::L_NAZGUL,
+        None => UnitType::L_BARON,
+    };
+    // C: getleader() - 1 gives the actual leader type (king, not baron)
+    leader.0 - 1
 }
 
 fn is_nation_active_gs(nation: &Nation) -> bool {

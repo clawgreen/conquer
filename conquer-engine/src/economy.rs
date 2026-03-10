@@ -1445,6 +1445,16 @@ pub fn att_bonus_gs(state: &mut GameState) {
 ///   DELTA = (A1*P2 - P1*A2) / (5*(A1+A2))
 /// Only between sectors owned by the same nation. Skips water.
 /// Called globally (C calls per-nation inside updexecs; we call once for all).
+/// move_people for a single nation — called per-nation during updexecs.
+/// C: original/update.c:1557-1622 + attract() calculation in updexecs.
+pub fn move_people_single_nation(state: &mut GameState, country: usize) {
+    let ntn = &state.nations[country];
+    if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
+        return;
+    }
+    move_people_for_nation(state, country);
+}
+
 /// P4/P9: move_people() — proper attractiveness-based civilian migration.
 /// C: original/update.c:1557-1622, using attract() from update.c:135.
 /// Uses a 5-row sliding window buffer for memory efficiency (matches C).
@@ -1459,7 +1469,15 @@ pub fn move_people_gs(state: &mut GameState) {
         if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
             continue;
         }
-        let race = ntn.race;
+
+        move_people_for_nation(state, country);
+    }
+}
+
+fn move_people_for_nation(state: &mut GameState, country: usize) {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let race = state.nations[country].race;
 
         // Pre-compute attractiveness grid for this nation
         let mut attr_grid = vec![vec![0i32; map_y]; map_x];
@@ -1546,7 +1564,6 @@ pub fn move_people_gs(state: &mut GameState) {
                 }
             }
         }
-    }
 }
 
 // ━━━ P1: deplete() — capitol loss depletion ━━━
