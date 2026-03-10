@@ -72,7 +72,7 @@ pub fn update_turn(
 
     // 4. updcapture()
     events.push("Capturing unoccupied sectors...".to_string());
-    let capture_news = crate::movement::update_capture(state);
+    let capture_news = crate::movement::update_capture(state, rng);
     events.extend(capture_news);
 
     // 5. uptrade()
@@ -121,7 +121,8 @@ pub fn update_turn(
 
     // 14. cheat() — NPC bonus (skipped here; enabled via game settings in store.rs)
 
-    // 15. att_bonus()
+    // 15. att_base() + att_bonus()
+    att_base_gs(state, rng);
     att_bonus_gs(state);
 
     // Mercenary increase (5% chance)

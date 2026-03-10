@@ -629,40 +629,43 @@ pub fn npc_army_move(
 /// Compute which nation (if any) exclusively occupies each sector.
 /// Returns a 2D vec: 0 = unoccupied or contested, N = nation N owns it exclusively.
 /// Matches C prep() occupancy array logic.
+/// compute_occupancy() — matches C prep(0, FALSE/-1).
+/// Builds occ[][] grid: sector -> nation that solely occupies it.
+/// - Excludes SCOUT armies (C: P_ASTAT!=SCOUT)
+/// - Includes navies (C: fleet presence counts as occupation)
+/// - Contested sectors (multiple nations) -> NTOTAL
 fn compute_occupancy(state: &GameState) -> Vec<Vec<usize>> {
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
     let mut occ: Vec<Vec<usize>> = vec![vec![0usize; map_y]; map_x];
-    const CONTESTED: usize = usize::MAX;
 
-    for country in 1..NTOTAL {
+    for country in 0..NTOTAL {
         if state.nations[country].active == NationStrategy::Inactive as u8 {
             continue;
         }
+        // Armies (C: skip scouts only)
         for army in &state.nations[country].armies {
-            if army.soldiers <= 0 {
-                continue;
-            }
-            if army.status == ArmyStatus::OnBoard.to_value() {
-                continue;
-            }
+            if army.soldiers <= 0 { continue; }
+            if army.status == ArmyStatus::Scout.to_value() { continue; }
             let x = army.x as usize;
             let y = army.y as usize;
-            if x >= map_x || y >= map_y {
-                continue;
-            }
-            if occ[x][y] == 0 {
+            if x >= map_x || y >= map_y { continue; }
+            if occ[x][y] == 0 || occ[x][y] == country {
                 occ[x][y] = country;
-            } else if occ[x][y] != country {
-                occ[x][y] = CONTESTED;
+            } else {
+                occ[x][y] = NTOTAL; // Contested
             }
         }
-    }
-
-    for row in occ.iter_mut() {
-        for cell in row.iter_mut() {
-            if *cell == CONTESTED {
-                *cell = 0;
+        // Navies (C: fleets count as occupation)
+        for nvy in &state.nations[country].navies {
+            if nvy.warships == 0 && nvy.galleys == 0 && nvy.merchant == 0 { continue; }
+            let x = nvy.x as usize;
+            let y = nvy.y as usize;
+            if x >= map_x || y >= map_y { continue; }
+            if occ[x][y] == 0 || occ[x][y] == country {
+                occ[x][y] = country;
+            } else {
+                occ[x][y] = NTOTAL;
             }
         }
     }
@@ -672,7 +675,7 @@ fn compute_occupancy(state: &GameState) -> Vec<Vec<usize>> {
 /// updcapture() — assign sector ownership to armies that sole-occupy them.
 /// Matches C updcapture() structure.
 /// Called AFTER combat, BEFORE trade.
-pub fn update_capture(state: &mut GameState) -> Vec<String> {
+pub fn update_capture(state: &mut GameState, rng: &mut ConquerRng) -> Vec<String> {
     let mut news = Vec::new();
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
@@ -700,8 +703,36 @@ pub fn update_capture(state: &mut GameState) -> Vec<String> {
                 continue;
             }
 
-            // Leaders and monsters don't directly capture sectors
-            if UnitType(atype).is_leader() {
+            // C: only base units (P_ATYPE<MINLEADER) capture sectors
+            if atype >= UnitType::MIN_LEADER {
+                // But C also has a scout capture branch — handle below
+                // C: else if(P_ASTAT==A_SCOUT && P_ATYPE!=A_SPY && P_ASOLD>0)
+                if astat == ArmyStatus::Scout.to_value()
+                    && atype != UnitType::SPY.0
+                    && soldiers > 0
+                {
+                    // Scout can be captured by enemy in same sector
+                    let occval = occ[ax][ay];
+                    if occval != 0 && occval != country && occval < NTOTAL {
+                        let enemy_dip = state.nations[occval].diplomacy[country];
+                        let sct_owner = state.sectors[ax][ay].owner as usize;
+                        let mut captured = false;
+                        if enemy_dip >= DiplomaticStatus::Hostile as u8
+                            && (rng.rand() % 100) < PFINDSCOUT
+                        {
+                            captured = true;
+                        } else if sct_owner == occval
+                            && state.nations[occval].diplomacy[country] != DiplomaticStatus::Treaty as u8
+                            && state.nations[occval].diplomacy[country] != DiplomaticStatus::Allied as u8
+                            && (rng.rand() % 100) < PFINDSCOUT / 5
+                        {
+                            captured = true;
+                        }
+                        if captured {
+                            state.nations[country].armies[armynum].soldiers = 0;
+                        }
+                    }
+                }
                 continue;
             }
 
@@ -743,16 +774,16 @@ pub fn update_capture(state: &mut GameState) -> Vec<String> {
                 // Enemy — capture if at war
                 let dstatus = state.nations[country].diplomacy[sct_owner];
                 if dstatus >= DiplomaticStatus::War as u8 {
-                    let prev_name = state.nations[sct_owner].name.clone();
-                    // Flee civilians from captured sector (halve population)
-                    let people = state.sectors[ax][ay].people;
-                    state.sectors[ax][ay].people = people / 2;
+                    // C: flee civilians (SLAVER variant)
+                    let has_slaver = Power::has_power(state.nations[country].powers, Power::SLAVER);
+                    crate::movement::flee(state, ax as i32, ay as i32, 1, has_slaver, rng);
+
                     state.sectors[ax][ay].owner = country as u8;
                     let pop = state.nations[country].popularity;
                     state.nations[country].popularity = pop.saturating_add(1);
                     news.push(format!(
                         "area {},{} captured by {} from {}",
-                        ax, ay, state.nations[country].name, prev_name
+                        ax, ay, state.nations[country].name, state.nations[sct_owner].name.clone()
                     ));
                 }
             }

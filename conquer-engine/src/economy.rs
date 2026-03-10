@@ -1094,6 +1094,270 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
     }
 }
 
+// ── att_base — calculate base nation attributes ──
+// C: admin.c att_base() — called every turn after score, before att_bonus.
+// Sets mine_ability, wealth, eat_rate, spoil_rate, terror, popularity,
+// prestige, power, knowledge, communications, reputation, farm_ability.
+
+/// att_base() — calculate base nation attributes from sectors and powers.
+/// Matches C admin.c att_base() exactly.
+pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let turn = state.world.turn;
+
+    // Calculate world totals (C: WORLD* variables)
+    let mut w_jewels: i64 = 1;
+    let mut w_gold: i64 = 1;
+    let mut w_metal: i64 = 1;
+    let mut w_food: i64 = 1;
+    let mut w_score: i64 = 1;
+    let mut w_civ: i64 = 1;
+    let mut w_mil: i64 = 1;
+
+    for country in 1..NTOTAL {
+        let ntn = &state.nations[country];
+        if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) { continue; }
+        w_jewels += ntn.jewels;
+        if ntn.treasury_gold > 0 { w_gold += ntn.treasury_gold; }
+        w_metal += ntn.metals;
+        w_food += ntn.total_food;
+        w_score += ntn.score;
+        w_civ += ntn.total_civ;
+        w_mil += ntn.total_mil;
+    }
+    if w_gold == 0 { w_gold = 1; }
+
+    // Store world totals
+    state.world.world_jewels = w_jewels;
+    state.world.world_gold = w_gold;
+    state.world.world_metal = w_metal;
+    state.world.world_food = w_food;
+    state.world.score = w_score;
+
+    for country in 1..NTOTAL {
+        if !NationStrategy::from_value(state.nations[country].active)
+            .map_or(false, |s| s.is_nation()) { continue; }
+
+        // Count sector types
+        let mut cityfolk: i64 = 0;
+        let mut townfolk: i64 = 0;
+        let mut scholars: i64 = 0;
+        let mut foodpts: i64 = 0;
+        let mut minepts: i64 = 0;
+        let mut roads: i64 = 0;
+        let mut clerics: i64 = 0;
+        let mut ngrain: i64 = 0;
+        let mut ncities: i64 = 0;
+        let mut blksmths: i64 = 0;
+
+        for x in 0..map_x {
+            for y in 0..map_y {
+                if state.sectors[x][y].owner as usize != country { continue; }
+                let des = state.sectors[x][y].designation;
+                let people = state.sectors[x][y].people;
+
+                if des == Designation::Town as u8 {
+                    townfolk += people;
+                } else if des == Designation::City as u8 {
+                    cityfolk += people;
+                    ncities += 1;
+                } else if des == Designation::Mine as u8 {
+                    if tg_ok(&state.nations[country], &state.sectors[x][y]) {
+                        minepts += state.sectors[x][y].metal as i64;
+                    }
+                } else if des == Designation::Farm as u8 {
+                    foodpts += people * tofood(&state.sectors[x][y], Some(&state.nations[country])) as i64;
+                } else if des == Designation::Capitol as u8 {
+                    ncities += 3;
+                    cityfolk += people;
+                } else if des == Designation::University as u8 {
+                    scholars += people;
+                } else if des == Designation::Road as u8 {
+                    roads += 1;
+                } else if des == Designation::Church as u8 {
+                    clerics += people;
+                } else if des == Designation::Granary as u8 {
+                    ngrain += 1;
+                } else if des == Designation::Blacksmith as u8 {
+                    blksmths += people;
+                }
+            }
+        }
+
+        cityfolk /= 167;
+        townfolk /= 167;
+        scholars /= 167;
+        clerics /= 167;
+        blksmths /= 167;
+
+        let ntn = &mut state.nations[country];
+
+        // Eat rate calculation (C: weighted average)
+        if ntn.eat_rate < 25 { ntn.eat_rate = 25; }
+        if turn != 1 {
+            let season = (turn % 4) as u8;
+            let temp = match season {
+                0 => 180 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // WINTER
+                1 => 204 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // SPRING
+                2 => 250 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // SUMMER
+                3 => 312 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // FALL
+                _ => 250 * ntn.total_food / (ntn.eat_rate as i64 + 25),
+            };
+            let x = if ntn.total_civ > 0 {
+                ntn.eat_rate as i64 / 2 + temp / ntn.total_civ
+            } else { 25 };
+            ntn.eat_rate = x.min(MAXTGVAL as i64) as u8;
+            if ntn.eat_rate < 25 { ntn.eat_rate = 25; }
+        } else {
+            // Turn 1: approximate steady state
+            // C sets cityfolk = 10 here (overrides the calculation)
+            // but we've already used cityfolk, so just leave it
+        }
+
+        // Spoil rate
+        if 30 <= 1 + ngrain + ncities {
+            ntn.spoil_rate = 1;
+        } else {
+            ntn.spoil_rate = (30 - ngrain - ncities) as u8;
+        }
+        if ntn.total_food > ntn.total_civ * 10 {
+            ntn.spoil_rate = 30;
+        }
+
+        // Terror
+        let mut mercs: i64 = 0;
+        for armynum in 0..MAXARM {
+            if ntn.armies[armynum].unit_type == UnitType::MERCENARY.0 {
+                mercs += ntn.armies[armynum].soldiers;
+            }
+        }
+        let temp_terror = if ntn.total_mil > 0 && ntn.total_civ > 0 {
+            (1000 * ntn.total_mil) / ntn.total_civ + (1000 * mercs) / ntn.total_mil
+        } else { 0 };
+        ntn.terror = (temp_terror / 5).min(MAXTGVAL as i64) as u8;
+
+        // Communications
+        let temp_comm = 5 * townfolk / 2 + 5 * cityfolk + roads * 5;
+        ntn.communications = temp_comm.min(2 * MAXTGVAL as i64) as u8;
+
+        // Power
+        let temp_power = if w_score > 0 && w_mil > 0 {
+            1000 * ntn.score / w_score + 1000 * ntn.total_mil / w_mil
+        } else { 0 };
+        ntn.power = (temp_power / 5).min(MAXTGVAL as i64) as u8;
+
+        // Wealth
+        let tgold = if ntn.treasury_gold > 0 { ntn.treasury_gold } else { 0 };
+        let temp_wealth = (1000 * tgold / w_gold + 1000 * ntn.jewels / w_jewels
+            + 1000 * ntn.metals / w_metal) + cityfolk * 5 / 3 + townfolk * 5 / 6;
+        if temp_wealth >= ntn.wealth as i64 {
+            ntn.wealth = (temp_wealth / 10).max(0).min(MAXTGVAL as i64) as u8;
+        } else {
+            let decrease = ((ntn.wealth as i64 - temp_wealth) / 4).max(0) as u8;
+            ntn.wealth = ntn.wealth.saturating_sub(decrease);
+        }
+
+        // Reputation (random walk)
+        if turn != 1 {
+            let rep_delta = (rng.rand() % 8) - 3;
+            ntn.reputation = ((ntn.reputation as i32 + rep_delta).max(0)).min(MAXTGVAL) as u8;
+
+            // Prestige
+            let temp_prest = (ntn.prestige as i64 + ntn.power as i64 + ntn.wealth as i64) / 3;
+            ntn.prestige = temp_prest.min(MAXTGVAL as i64) as u8;
+
+            // Farm ability
+            let temp_farm = if ntn.total_civ > 0 { foodpts * 10 / ntn.total_civ } else { 0 };
+            ntn.farm_ability = temp_farm.min(MAXTGVAL as i64) as u8;
+        }
+
+        // Mine ability
+        let temp_mine = minepts / 3 + cityfolk / 2 + townfolk / 2 + blksmths;
+        let mut mine_bonus = temp_mine;
+        if Power::has_power(ntn.powers, Power::MINER) { mine_bonus += 15; }
+        if Power::has_power(ntn.powers, Power::STEEL) { mine_bonus += 15; }
+        if mine_bonus >= ntn.mine_ability as i64 {
+            ntn.mine_ability = mine_bonus.max(0).min(MAXTGVAL as i64) as u8;
+        } else {
+            let decrease = ((ntn.mine_ability as i64 - mine_bonus) / 4).max(0) as u8;
+            ntn.mine_ability = ntn.mine_ability.saturating_sub(decrease);
+        }
+
+        // Knowledge
+        let temp_know = cityfolk / 2 + townfolk / 6 + scholars / 2;
+        ntn.knowledge = temp_know.min(MAXTGVAL as i64) as u8;
+
+        // Popularity
+        let eat_rate_scaled = ntn.eat_rate as i64; // C: 10*P_EATRATE uses scaled value
+        let temp_pop = (ntn.wealth as i64 + 10 * eat_rate_scaled / 25 + clerics + ntn.popularity as i64) / 2;
+        ntn.popularity = temp_pop.min(MAXTGVAL as i64) as u8;
+
+        // Power bonuses
+        if Power::has_power(ntn.powers, Power::SLAVER) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::RELIGION) { ntn.popularity = (ntn.popularity as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::URBAN) {
+            ntn.popularity = ntn.popularity.saturating_sub(PWR_NA as u8);
+        }
+        if Power::has_power(ntn.powers, Power::DEMOCRACY) {
+            ntn.eat_rate = (ntn.eat_rate as i32 + 25).min(MAXTGVAL) as u8;
+            ntn.terror = ntn.terror.saturating_sub(PWR_NA as u8);
+            if ntn.charity < 15 { ntn.charity += 2; }
+        }
+        if Power::has_power(ntn.powers, Power::KNOWALL) { ntn.knowledge = (ntn.knowledge as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::ARCHITECT) {
+            ntn.spoil_rate = if ntn.spoil_rate >= PWR_NA as u8 { ntn.spoil_rate - PWR_NA as u8 } else { 1 };
+        }
+        if Power::has_power(ntn.powers, Power::ROADS) { ntn.communications = (ntn.communications as i32 + 50).min(2 * MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::DESTROYER) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::ROADS) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::VAMPIRE) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+
+        // Class bonuses
+        match NationClass::from_value(ntn.class) {
+            Some(NationClass::Npc) => {
+                ntn.popularity = (ntn.popularity as i32 + CLA_NA).min(MAXTGVAL) as u8;
+                ntn.terror = (ntn.terror as i32 + CLA_NA).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::King) => {
+                ntn.popularity = (ntn.popularity as i32 + CLA_NA).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::Trader) | Some(NationClass::Emperor) => {
+                ntn.wealth = (ntn.wealth as i32 + CLA_NA).min(MAXTGVAL) as u8;
+                ntn.popularity = (ntn.popularity as i32 + CLA_NA).min(MAXTGVAL) as u8;
+                ntn.prestige = (ntn.prestige as i32 + CLA_NA / 3).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::Wizard) => {
+                ntn.knowledge = (ntn.knowledge as i32 + CLA_NA).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::Priest) => {
+                ntn.popularity = (ntn.popularity as i32 + CLA_NA).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::Pirate) | Some(NationClass::Demon)
+            | Some(NationClass::Dragon) | Some(NationClass::Shadow) => {
+                ntn.terror = (ntn.terror as i32 + CLA_NA).min(MAXTGVAL) as u8;
+            }
+            Some(NationClass::Warlord) => {
+                ntn.prestige = (ntn.prestige as i32 + CLA_NA * 2 / 3).min(MAXTGVAL) as u8;
+            }
+            None => {}
+        }
+
+        // Clamp all values
+        ntn.prestige = ntn.prestige.min(MAXTGVAL as u8);
+        ntn.popularity = ntn.popularity.min(MAXTGVAL as u8);
+        ntn.power = ntn.power.min(MAXTGVAL as u8);
+        ntn.communications = ntn.communications.min((2 * MAXTGVAL) as u8);
+        ntn.wealth = ntn.wealth.min(MAXTGVAL as u8);
+        ntn.eat_rate = ntn.eat_rate.min(MAXTGVAL as u8);
+        ntn.knowledge = ntn.knowledge.min(MAXTGVAL as u8);
+        ntn.farm_ability = ntn.farm_ability.min(MAXTGVAL as u8);
+        ntn.mine_ability = ntn.mine_ability.min(MAXTGVAL as u8);
+        ntn.terror = ntn.terror.min(MAXTGVAL as u8);
+        ntn.reputation = ntn.reputation.min(MAXTGVAL as u8);
+    }
+}
+
 // ── T8: att_bonus — tradegood attribute bonuses ──
 // Verified against C admin.c att_bonus() line 605.
 // Sector type compatibility: tg_stype 'x' = any, 'f' = farm, 't' = town/city/capitol,

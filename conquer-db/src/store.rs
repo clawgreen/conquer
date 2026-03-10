@@ -850,7 +850,7 @@ impl GameStore {
 
         // ── T3: updcapture() — capture unoccupied/enemy sectors
         {
-            let capture_news = conquer_engine::movement::update_capture(&mut game.state);
+            let capture_news = conquer_engine::movement::update_capture(&mut game.state, &mut rng);
             for msg in capture_news {
                 game.news.push(NewsEntry {
                     turn: current_turn,
