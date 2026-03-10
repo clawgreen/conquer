@@ -11,6 +11,7 @@ use conquer_core::rng::ConquerRng;
 use conquer_core::tables::*;
 use crate::utils::*;
 use crate::magic;
+use crate::movement;
 
 /// NPC operating range
 #[derive(Debug, Clone, Copy)]
@@ -723,6 +724,9 @@ pub fn nation_run(
     let dip_news = get_diplomatic_status(state, nation_idx, rng);
     news.extend(dip_news);
 
+    // T2: find_avg_sector() — compute global averages for attractiveness
+    let avg = find_avg_sector(state, nation_idx);
+
     // Determine peace/war status
     let mut peace = 0i32;
     for i in 1..NTOTAL {
@@ -740,10 +744,149 @@ pub fn nation_run(
     }
 
     let peace_val = if peace < DiplomaticStatus::War as u8 as i32 {
-        8
+        8i32
     } else {
-        12
+        12i32
     };
+
+    // T20: Update move costs for this nation's race before movement
+    let race = state.nations[nation_idx].race as char;
+    movement::update_move_costs(state, race, nation_idx);
+
+    // T1: Create attractiveness grid
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let mut attr = create_attr_grid(map_x, map_y);
+
+    let strat = NationStrategy::from_value(state.nations[nation_idx].active);
+
+    // T15: Attacker/defender decision + attractiveness calculation
+    if strat.map_or(false, |s| s.is_not_pc()) {
+        if peace_val < 12 {
+            // At peace: just expand
+            pceattr(state, nation_idx, &range, &avg, &mut attr);
+        } else {
+            // At war: decide attack vs defend per enemy nation
+            if state.nations[nation_idx].total_mil == 0 {
+                defattr(state, nation_idx, &range, &avg, &mut attr);
+            } else {
+                for enemy in 1..NTOTAL {
+                    let e_strat = NationStrategy::from_value(state.nations[enemy].active);
+                    if !e_strat.map_or(false, |s| s.is_nation()) {
+                        continue;
+                    }
+                    let their_status = state.nations[nation_idx].diplomacy[enemy];
+                    if (their_status as i32) <= DiplomaticStatus::Hostile as u8 as i32 {
+                        continue;
+                    }
+                    // Compare attack/defense strengths (C: tmil*(aplus+100))
+                    let our_tmil = state.nations[nation_idx].total_mil as i64;
+                    let our_aplus = state.nations[nation_idx].attack_plus as i64 + 100;
+                    let their_tmil = state.nations[enemy].total_mil as i64;
+                    let their_dplus = state.nations[enemy].defense_plus as i64 + 100;
+                    let our_str = our_tmil * our_aplus;
+                    let their_str = their_tmil * their_dplus;
+                    let total = our_str + their_str;
+                    let pct = if total > 0 { 100 * our_str / total } else { 50 };
+
+                    if pct > rng.rand() as i64 % 100 {
+                        // Attacker: set eligible armies to ATTACK
+                        for armynum in 1..MAXARM {
+                            let a = &state.nations[nation_idx].armies[armynum];
+                            if a.soldiers > 0
+                                && a.unit_type != UnitType::MILITIA.0
+                                && a.status != ArmyStatus::OnBoard.to_value()
+                                && a.status != ArmyStatus::Traded.to_value()
+                                && a.status < NUMSTATUS
+                                && a.status != ArmyStatus::General.to_value()
+                            {
+                                state.nations[nation_idx].armies[armynum].status =
+                                    ArmyStatus::Attack.to_value();
+                            }
+                        }
+                        atkattr(state, nation_idx, &range, &avg, &mut attr);
+                    } else {
+                        // Defender: small armies defend, big ones attack
+                        for armynum in 1..MAXARM {
+                            let a = &state.nations[nation_idx].armies[armynum];
+                            if a.soldiers > 0
+                                && a.unit_type != UnitType::MILITIA.0
+                                && a.status != ArmyStatus::OnBoard.to_value()
+                                && a.status != ArmyStatus::Traded.to_value()
+                                && a.status < NUMSTATUS
+                                && a.status != ArmyStatus::General.to_value()
+                            {
+                                let new_status = if a.soldiers < 350 {
+                                    ArmyStatus::Defend.to_value()
+                                } else {
+                                    ArmyStatus::Attack.to_value()
+                                };
+                                state.nations[nation_idx].armies[armynum].status = new_status;
+                            }
+                        }
+                        defattr(state, nation_idx, &range, &avg, &mut attr);
+                    }
+                }
+            }
+        }
+    }
+
+    // T16: Move infantry, then leaders/monsters
+    let mut loop_count = 0i32;
+    n_people(state, nation_idx, &range, true, &mut attr);
+
+    for armynum in 1..MAXARM {
+        if state.nations[nation_idx].armies[armynum].soldiers > 0
+            && state.nations[nation_idx].armies[armynum].unit_type < UnitType::MIN_LEADER
+        {
+            loop_count +=
+                movement::npc_army_move(state, nation_idx, armynum, &attr, rng);
+        }
+    }
+
+    n_people(state, nation_idx, &range, false, &mut attr);
+
+    for armynum in 1..MAXARM {
+        if state.nations[nation_idx].armies[armynum].soldiers > 0
+            && state.nations[nation_idx].armies[armynum].unit_type >= UnitType::MIN_LEADER
+        {
+            loop_count +=
+                movement::npc_army_move(state, nation_idx, armynum, &attr, rng);
+        }
+    }
+
+    // T17: Update NPC active status based on movement count
+    let active_strat = NationStrategy::from_value(state.nations[nation_idx].active);
+    if active_strat.map_or(false, |s| s.is_npc())
+        && active_strat != Some(NationStrategy::Isolationist)
+    {
+        let new_active = if active_strat.map_or(false, |s| s.is_good()) {
+            if loop_count <= 1 { NationStrategy::Good0Free as u8 }
+            else if loop_count >= 6 { NationStrategy::Good6Free as u8 }
+            else if loop_count >= 4 { NationStrategy::Good4Free as u8 }
+            else { NationStrategy::Good2Free as u8 }
+        } else if active_strat.map_or(false, |s| s.is_neutral()) {
+            if loop_count <= 1 { NationStrategy::Neutral0Free as u8 }
+            else if loop_count >= 6 { NationStrategy::Neutral6Free as u8 }
+            else if loop_count >= 4 { NationStrategy::Neutral4Free as u8 }
+            else { NationStrategy::Neutral2Free as u8 }
+        } else if active_strat.map_or(false, |s| s.is_evil()) {
+            if loop_count <= 1 { NationStrategy::Evil0Free as u8 }
+            else if loop_count >= 6 { NationStrategy::Evil6Free as u8 }
+            else if loop_count >= 4 { NationStrategy::Evil4Free as u8 }
+            else { NationStrategy::Evil2Free as u8 }
+        } else {
+            state.nations[nation_idx].active // unchanged for monsters/etc
+        };
+        state.nations[nation_idx].active = new_active;
+    }
+
+    // Charity
+    if state.nations[nation_idx].treasury_gold > state.nations[nation_idx].total_civ {
+        state.nations[nation_idx].charity = 10;
+    } else {
+        state.nations[nation_idx].charity = 0;
+    }
 
     // Tax rate
     let strat = NationStrategy::from_value(state.nations[nation_idx].active);
@@ -769,13 +912,6 @@ pub fn nation_run(
             }
             state.nations[nation_idx].tax_rate = rate as u8;
         }
-
-        // Charity
-        if state.nations[nation_idx].treasury_gold > state.nations[nation_idx].total_civ {
-            state.nations[nation_idx].charity = 10;
-        } else {
-            state.nations[nation_idx].charity = 0;
-        }
     }
 
     // Military management
@@ -794,6 +930,7 @@ pub fn nation_run(
     magic::npc_buy_weapons(state, nation_idx, rng);
 
     // Fort building
+    let strat = NationStrategy::from_value(state.nations[nation_idx].active);
     if strat.map_or(false, |s| s.is_not_pc()) {
         for x in range.stx..range.endx {
             for y in range.sty..range.endy {
@@ -820,7 +957,649 @@ pub fn nation_run(
         }
     }
 
+    // T18: Don't allow ATTACK status from own fortified city
+    for armynum in 0..MAXARM {
+        if state.nations[nation_idx].armies[armynum].soldiers <= 0 {
+            continue;
+        }
+        if state.nations[nation_idx].armies[armynum].status != ArmyStatus::Attack.to_value() {
+            continue;
+        }
+        let ax = state.nations[nation_idx].armies[armynum].x as usize;
+        let ay = state.nations[nation_idx].armies[armynum].y as usize;
+        let sct_owner = state.sectors[ax][ay].owner as usize;
+        let nation_powers = state.nations[nation_idx].powers;
+        let fv = fort_val(&state.sectors[ax][ay], nation_powers);
+        if sct_owner == nation_idx && fv > 0 {
+            state.nations[nation_idx].armies[armynum].status = if rng.rand() % 2 == 0 {
+                ArmyStatus::Defend.to_value()
+            } else {
+                ArmyStatus::Garrison.to_value()
+            };
+        }
+    }
+
     news
+}
+
+// ============================================================
+// T1: Attractiveness grid infrastructure
+// ============================================================
+
+/// Create a zero-initialized attractiveness grid matching map dimensions.
+pub fn create_attr_grid(map_x: usize, map_y: usize) -> Vec<Vec<i32>> {
+    vec![vec![0i32; map_y]; map_x]
+}
+
+/// Zero out an existing attractiveness grid (reuse allocation).
+pub fn clear_attr_grid(attr: &mut Vec<Vec<i32>>) {
+    for row in attr.iter_mut() {
+        for v in row.iter_mut() {
+            *v = 0;
+        }
+    }
+}
+
+// ============================================================
+// T2: NPC averages — find_avg_sector()
+// ============================================================
+
+/// Pre-computed world averages used by attractiveness functions.
+/// C: original/npc.c static Avg_food, Avg_tradegood, Avg_soldiers[]
+pub struct NpcAverages {
+    pub avg_food: i32,
+    pub avg_tradegood: i32,
+    pub avg_soldiers: [i64; NTOTAL],
+}
+
+/// find_avg_sector() — calculates global average food/tradegood values
+/// and per-nation average soldiers per occupied sector.
+/// C: original/npc.c:980
+pub fn find_avg_sector(state: &GameState, nation_idx: usize) -> NpcAverages {
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let mut total_food: i64 = 0;
+    let mut total_tg: i64 = 0;
+    let mut useable_land: i64 = 0;
+    let nation = &state.nations[nation_idx];
+
+    for x in 0..map_x {
+        for y in 0..map_y {
+            let sct = &state.sectors[x][y];
+            if sct.altitude != Altitude::Water as u8 && sct.altitude != Altitude::Peak as u8 {
+                useable_land += 1;
+                total_food += tofood(sct, Some(nation)) as i64;
+                if sct.trade_good != TradeGood::None as u8 {
+                    if sct.metal != 0 {
+                        total_tg += 500;
+                    } else if sct.jewels != 0 {
+                        total_tg += 500;
+                    } else {
+                        total_tg += 300;
+                    }
+                }
+            }
+        }
+    }
+
+    let (avg_food, avg_tradegood) = if useable_land > 0 {
+        (
+            (total_food / useable_land) as i32,
+            (total_tg / useable_land) as i32,
+        )
+    } else {
+        (0, 0)
+    };
+
+    let mut avg_soldiers = [0i64; NTOTAL];
+    for n in 1..NTOTAL {
+        let n_strat = NationStrategy::from_value(state.nations[n].active);
+        if !n_strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        // Count unique sectors occupied by nation n's armies
+        let mut total_sectors: i64 = 0;
+        'army_loop: for armynum in 1..MAXARM {
+            let arm = &state.nations[n].armies[armynum];
+            if arm.soldiers <= 0 {
+                continue;
+            }
+            let ax = arm.x;
+            let ay = arm.y;
+            // Ensure we only count each unique sector once
+            for i in 1..armynum {
+                let prev = &state.nations[n].armies[i];
+                if prev.soldiers > 0 && prev.x == ax && prev.y == ay {
+                    continue 'army_loop;
+                }
+            }
+            total_sectors += 1;
+        }
+        if total_sectors > 0 {
+            avg_soldiers[n] = state.nations[n].total_mil / total_sectors;
+        }
+    }
+
+    NpcAverages { avg_food, avg_tradegood, avg_soldiers }
+}
+
+// ============================================================
+// T3: n_unowned() — attract toward unowned land
+// ============================================================
+
+/// n_unowned() — score sectors for unowned/unclaimed land.
+/// C: original/npc.c:1355
+fn n_unowned(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    let cap_x = state.nations[nation_idx].cap_x as i32;
+    let cap_y = state.nations[nation_idx].cap_y as i32;
+    let nation = &state.nations[nation_idx];
+
+    // Around capitol (within 4): +450 for unowned
+    for x in (cap_x - 4)..=(cap_x + 4) {
+        for y in (cap_y - 4)..=(cap_y + 4) {
+            if state.on_map(x, y) && state.sectors[x as usize][y as usize].owner == 0 {
+                attr[x as usize][y as usize] += 450;
+            }
+        }
+    }
+
+    // Range scan
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            let sct = &state.sectors[x as usize][y as usize];
+
+            // Trade goods (always visible in our simplified version)
+            if sct.trade_good != TradeGood::None as u8 {
+                if sct.metal != 0 {
+                    attr[x as usize][y as usize] += 500;
+                } else if sct.jewels != 0 {
+                    attr[x as usize][y as usize] += 500;
+                } else {
+                    attr[x as usize][y as usize] += 300;
+                }
+            }
+
+            // Unowned / nomad land
+            let owner = sct.owner as usize;
+            if owner == 0 {
+                attr[x as usize][y as usize] += 300;
+            } else {
+                let o_strat = NationStrategy::from_value(state.nations[owner].active);
+                if o_strat == Some(NationStrategy::NpcNomad) {
+                    attr[x as usize][y as usize] += 100;
+                }
+            }
+
+            // Food value (visible: use actual; else: avg)
+            attr[x as usize][y as usize] += 50 * tofood(sct, Some(nation));
+
+            // Not habitable: divide by 5
+            if !is_habitable(sct) {
+                attr[x as usize][y as usize] /= 5;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T4: n_trespass() — avoid foreign territory
+// ============================================================
+
+/// n_trespass() — set attr=1 for foreign non-allied sectors we're not at war with.
+/// C: original/npc.c:1327
+fn n_trespass(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    let cap_x = state.nations[nation_idx].cap_x as i32;
+    let cap_y = state.nations[nation_idx].cap_y as i32;
+
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            let owner = state.sectors[x as usize][y as usize].owner as usize;
+            if owner == nation_idx || owner == 0 {
+                continue;
+            }
+            // More than 2 from capitol in both axes
+            if (x - cap_x).abs() <= 2 || (y - cap_y).abs() <= 2 {
+                continue;
+            }
+            let our_status = state.nations[nation_idx].diplomacy[owner];
+            let their_status = state.nations[owner].diplomacy[nation_idx];
+            // Not at war with owner, not allied (status > ALLIED)
+            if our_status >= DiplomaticStatus::War as u8 {
+                continue;
+            }
+            if their_status >= DiplomaticStatus::War as u8 {
+                continue;
+            }
+            if our_status <= DiplomaticStatus::Allied as u8 {
+                continue;
+            }
+            attr[x as usize][y as usize] = 1;
+        }
+    }
+}
+
+// ============================================================
+// T5: n_toofar() — stay near capitol
+// ============================================================
+
+/// n_toofar() — set attr=1 for all sectors outside NPC operating range.
+/// C: original/npc.c:1344
+fn n_toofar(
+    state: &GameState,
+    range: &NpcRange,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    let map_x = state.world.map_x as i32;
+    let map_y = state.world.map_y as i32;
+    for x in 0..map_x {
+        for y in 0..map_y {
+            if x < range.stx || y < range.sty || x >= range.endx || y >= range.endy {
+                attr[x as usize][y as usize] = 1;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T6: n_people() — population attractiveness
+// ============================================================
+
+/// n_people() — add or subtract people/4 to owned habitable sectors.
+/// Called with doadd=true before infantry moves, false after (before leaders).
+/// C: original/npc.c:1527
+fn n_people(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    doadd: bool,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            let sct = &state.sectors[x as usize][y as usize];
+            if sct.owner as usize == nation_idx && is_habitable(sct) {
+                let delta = (sct.people / 4) as i32;
+                if doadd {
+                    attr[x as usize][y as usize] += delta;
+                } else {
+                    attr[x as usize][y as usize] -= delta;
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// T7: n_survive() — capitol defense urgency
+// ============================================================
+
+/// n_survive() — add urgency to defend capitol if under threat.
+/// C: original/npc.c:1579
+fn n_survive(
+    state: &GameState,
+    nation_idx: usize,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    let cap_x = state.nations[nation_idx].cap_x as usize;
+    let cap_y = state.nations[nation_idx].cap_y as usize;
+
+    // If we've lost our capitol, urgently reclaim it
+    if state.sectors[cap_x][cap_y].owner as usize != nation_idx {
+        attr[cap_x][cap_y] = 1000;
+    }
+
+    // Defend against nearby war enemies
+    for nation in 1..NTOTAL {
+        let n_strat = NationStrategy::from_value(state.nations[nation].active);
+        if !n_strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        let our_status = state.nations[nation].diplomacy[nation_idx];
+        let their_status = state.nations[nation_idx].diplomacy[nation];
+        if our_status < DiplomaticStatus::War as u8
+            && their_status < DiplomaticStatus::War as u8
+        {
+            continue;
+        }
+
+        let cx = cap_x as i32;
+        let cy = cap_y as i32;
+
+        // Count armies visible (simplified: always visible)
+        let mut seen: Vec<(i32, i32)> = Vec::new();
+        for armynum in 1..MAXARM {
+            let arm = &state.nations[nation].armies[armynum];
+            if arm.soldiers <= 0 {
+                continue;
+            }
+            let ax = arm.x as i32;
+            let ay = arm.y as i32;
+            if ax < cx - 2 || ax > cx + 2 || ay < cy - 2 || ay > cy + 2 {
+                continue;
+            }
+            // Deduplicate by sector
+            if seen.iter().any(|&(sx, sy)| sx == ax && sy == ay) {
+                continue;
+            }
+            seen.push((ax, ay));
+
+            let soldiers = arm.soldiers as i32;
+            if ax == cx as i32 && ay == cy as i32 {
+                attr[cap_x][cap_y] += 2 * soldiers;
+            } else {
+                attr[ax as usize][ay as usize] += soldiers;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T8: n_defend() — defensive sector scoring
+// ============================================================
+
+/// n_defend() — score own sectors for defensive value against enemy nation.
+/// C: original/npc.c:1471
+fn n_defend(
+    state: &GameState,
+    nation_idx: usize,
+    enemy: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    // Add 1/10th of enemy soldiers in our sectors
+    for armynum in 1..MAXARM {
+        let arm = &state.nations[enemy].armies[armynum];
+        if arm.soldiers <= 0 {
+            continue;
+        }
+        let ax = arm.x as usize;
+        let ay = arm.y as usize;
+        if state.sectors[ax][ay].owner as usize == nation_idx {
+            attr[ax][ay] += (arm.soldiers / 10) as i32;
+        }
+    }
+
+    // +80 near capitol (C bug: x loop uses capy+1 instead of capx+1 — port faithfully)
+    let cap_x = state.nations[nation_idx].cap_x as i32;
+    let cap_y = state.nations[nation_idx].cap_y as i32;
+    for x in (cap_x - 1)..=(cap_y + 1) {
+        for y in (cap_y - 1)..=(cap_y + 1) {
+            if state.on_map(x, y) {
+                attr[x as usize][y as usize] += 80;
+            }
+        }
+    }
+
+    // Movement cost and population scoring
+    let total_civ = state.nations[nation_idx].total_civ;
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            let mc = state.move_cost[x as usize][y as usize];
+            if mc == 1 {
+                attr[x as usize][y as usize] += 50;
+            } else if mc <= 3 {
+                attr[x as usize][y as usize] += 20;
+            } else if mc <= 5 {
+                attr[x as usize][y as usize] += 10;
+            }
+
+            let sct = &state.sectors[x as usize][y as usize];
+            if sct.owner as usize == nation_idx {
+                let des = sct.designation;
+                if des == Designation::Town as u8
+                    || des == Designation::City as u8
+                    || des == Designation::Capitol as u8
+                {
+                    attr[x as usize][y as usize] += 50;
+                }
+                if total_civ > 0 {
+                    attr[x as usize][y as usize] +=
+                        (3000 * sct.people / total_civ) as i32;
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// T9: n_attack() — offensive targeting
+// ============================================================
+
+/// n_attack() — score enemy cities as attack targets.
+/// C: original/npc.c:1510
+fn n_attack(
+    state: &GameState,
+    nation_idx: usize,
+    enemy: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            if state.sectors[x as usize][y as usize].owner as usize != enemy {
+                continue;
+            }
+
+            let des = state.sectors[x as usize][y as usize].designation;
+            if des == Designation::City as u8
+                || des == Designation::Capitol as u8
+                || des == Designation::Town as u8
+            {
+                // Count our soldiers within 1 of this sector
+                let mut our_solds: i64 = 0;
+                for armynum in 1..MAXARM {
+                    let arm = &state.nations[nation_idx].armies[armynum];
+                    if arm.soldiers <= 0 {
+                        continue;
+                    }
+                    let ax = arm.x as i32;
+                    let ay = arm.y as i32;
+                    if (ax - x).abs() <= 1 && (ay - y).abs() <= 1 {
+                        our_solds += arm.soldiers;
+                    }
+                }
+
+                // Visible: check actual enemy strength
+                let enemy_solds = solds_in_sector(&state.nations[enemy], x as u8, y as u8);
+                if enemy_solds * 2 < 3 * our_solds {
+                    attr[x as usize][y as usize] += 500;
+                }
+            } else {
+                // Unseen: give some value (UNS_CITY_VALUE = 10)
+                attr[x as usize][y as usize] += 10;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T10: n_undefended() — target empty enemy sectors
+// ============================================================
+
+/// n_undefended() — score undefended enemy sectors.
+/// C: original/npc.c:1542
+fn n_undefended(
+    state: &GameState,
+    nation_idx: usize,
+    enemy: usize,
+    range: &NpcRange,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    for x in range.stx..range.endx {
+        for y in range.sty..range.endy {
+            if !state.on_map(x, y) {
+                continue;
+            }
+            let sct = &state.sectors[x as usize][y as usize];
+            if sct.owner as usize != enemy {
+                continue;
+            }
+            if !is_habitable(sct) {
+                attr[x as usize][y as usize] += 30;
+            } else if state.occupied[x as usize][y as usize] == 0 {
+                attr[x as usize][y as usize] += 100;
+            } else {
+                attr[x as usize][y as usize] += 60;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T11: n_between() — strategic blocking
+// ============================================================
+
+/// n_between() — +60 for sectors in bounding box between two capitols.
+/// C: original/npc.c:1544
+fn n_between(
+    state: &GameState,
+    nation_idx: usize,
+    enemy: usize,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    // Always visible in simplified version
+    let my_cap_x = state.nations[nation_idx].cap_x as i32;
+    let my_cap_y = state.nations[nation_idx].cap_y as i32;
+    let en_cap_x = state.nations[enemy].cap_x as i32;
+    let en_cap_y = state.nations[enemy].cap_y as i32;
+
+    let x1 = my_cap_x.min(en_cap_x);
+    let x2 = my_cap_x.max(en_cap_x);
+    let y1 = my_cap_y.min(en_cap_y);
+    let y2 = my_cap_y.max(en_cap_y);
+
+    for x in x1..=x2 {
+        for y in y1..=y2 {
+            if state.on_map(x, y) {
+                attr[x as usize][y as usize] += 60;
+            }
+        }
+    }
+}
+
+// ============================================================
+// T12: pceattr() — peacetime attractiveness
+// ============================================================
+
+/// pceattr() — calculate peacetime sector attractiveness.
+/// C: original/npc.c:1708 — n_unowned() ×3, n_trespass(), n_toofar(), n_survive()
+fn pceattr(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    n_unowned(state, nation_idx, range, avg, attr);
+    n_unowned(state, nation_idx, range, avg, attr);
+    n_unowned(state, nation_idx, range, avg, attr);
+    n_trespass(state, nation_idx, range, attr);
+    n_toofar(state, range, attr);
+    n_survive(state, nation_idx, avg, attr);
+}
+
+// ============================================================
+// T13: atkattr() — attack attractiveness
+// ============================================================
+
+/// atkattr() — calculate attack-mode sector attractiveness.
+/// C: original/npc.c:1674
+fn atkattr(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    n_unowned(state, nation_idx, range, avg, attr);
+
+    for nation in 1..NTOTAL {
+        let n_strat = NationStrategy::from_value(state.nations[nation].active);
+        if !n_strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        let our_status = state.nations[nation_idx].diplomacy[nation];
+        if our_status == DiplomaticStatus::War as u8 {
+            n_between(state, nation_idx, nation, attr);
+            n_undefended(state, nation_idx, nation, range, attr);
+            n_attack(state, nation_idx, nation, range, avg, attr);
+        } else if our_status == DiplomaticStatus::Jihad as u8 {
+            // ×4 attack, ×2 between, ×2 undefended (C calls them 4, 2, 2 times)
+            n_attack(state, nation_idx, nation, range, avg, attr);
+            n_attack(state, nation_idx, nation, range, avg, attr);
+            n_between(state, nation_idx, nation, attr);
+            n_undefended(state, nation_idx, nation, range, attr);
+            n_attack(state, nation_idx, nation, range, avg, attr);
+            n_between(state, nation_idx, nation, attr);
+            n_undefended(state, nation_idx, nation, range, attr);
+            n_attack(state, nation_idx, nation, range, avg, attr);
+        }
+    }
+
+    n_toofar(state, range, attr);
+    n_trespass(state, nation_idx, range, attr);
+    n_survive(state, nation_idx, avg, attr);
+}
+
+// ============================================================
+// T14: defattr() — defensive attractiveness
+// ============================================================
+
+/// defattr() — calculate defensive-mode sector attractiveness.
+/// C: original/npc.c:1650
+fn defattr(
+    state: &GameState,
+    nation_idx: usize,
+    range: &NpcRange,
+    avg: &NpcAverages,
+    attr: &mut Vec<Vec<i32>>,
+) {
+    n_unowned(state, nation_idx, range, avg, attr);
+
+    for nation in 1..NTOTAL {
+        let n_strat = NationStrategy::from_value(state.nations[nation].active);
+        if !n_strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        if state.nations[nation_idx].diplomacy[nation] >= DiplomaticStatus::War as u8 {
+            n_defend(state, nation_idx, nation, range, avg, attr);
+            n_between(state, nation_idx, nation, attr);
+            n_undefended(state, nation_idx, nation, range, attr);
+        }
+    }
+
+    n_trespass(state, nation_idx, range, attr);
+    n_toofar(state, range, attr);
+    n_survive(state, nation_idx, avg, attr);
 }
 
 #[cfg(test)]
