@@ -4,17 +4,14 @@
 // T231-T245: do_nomad, do_pirate, do_savage, do_lizard, monster(),
 // MORE_MONST spawning logic, monster movement and sector capture.
 
-use conquer_core::*;
+use crate::combat;
+use crate::utils::*;
 use conquer_core::rng::ConquerRng;
 use conquer_core::tables::*;
-use crate::utils::*;
-use crate::combat;
+use conquer_core::*;
 
 /// Run all monster nation updates. Matches C monster() exactly.
-pub fn update_monsters(
-    state: &mut GameState,
-    rng: &mut ConquerRng,
-) -> Vec<String> {
+pub fn update_monsters(state: &mut GameState, rng: &mut ConquerRng) -> Vec<String> {
     let mut news = Vec::new();
 
     for country in 1..NTOTAL {
@@ -46,11 +43,7 @@ pub fn update_monsters(
 
 /// do_nomad() — update nomad nation armies.
 /// Matches C do_nomad() exactly.
-fn do_nomad(
-    state: &mut GameState,
-    country: usize,
-    rng: &mut ConquerRng,
-) -> Vec<String> {
+fn do_nomad(state: &mut GameState, country: usize, rng: &mut ConquerRng) -> Vec<String> {
     let mut news = Vec::new();
     let map_x = state.world.map_x as i32;
     let map_y = state.world.map_y as i32;
@@ -67,8 +60,7 @@ fn do_nomad(
         let max_move = state.nations[country].max_move;
         let unit_idx = UnitType(atype).stats_index().unwrap_or(0);
         let umove = UNIT_MOVE.get(unit_idx).copied().unwrap_or(10);
-        state.nations[country].armies[armynum].movement =
-            (max_move as i32 * umove / 10) as u8;
+        state.nations[country].armies[armynum].movement = (max_move as i32 * umove / 10) as u8;
 
         // Growth: non-leaders grow 2%
         if atype < UnitType::MIN_LEADER {
@@ -112,8 +104,7 @@ fn do_nomad(
 
             // Capture undefended sectors
             let s_owner = state.sectors[x as usize][y as usize].owner as usize;
-            if (s_owner == 0
-                || solds_in_sector(&state.nations[s_owner], x as u8, y as u8) == 0)
+            if (s_owner == 0 || solds_in_sector(&state.nations[s_owner], x as u8, y as u8) == 0)
                 && NationStrategy::from_value(state.nations[s_owner].active)
                     .map_or(true, |s| s != NationStrategy::NpcNomad)
             {
@@ -135,11 +126,7 @@ fn do_nomad(
 
 /// do_savage() — update savage nation armies.
 /// Matches C do_savage() exactly.
-fn do_savage(
-    state: &mut GameState,
-    country: usize,
-    rng: &mut ConquerRng,
-) -> Vec<String> {
+fn do_savage(state: &mut GameState, country: usize, rng: &mut ConquerRng) -> Vec<String> {
     let mut news = Vec::new();
 
     for armynum in 0..MAXARM {
@@ -160,8 +147,7 @@ fn do_savage(
         let max_move = state.nations[country].max_move;
         let unit_idx = UnitType(atype).stats_index().unwrap_or(0);
         let umove = UNIT_MOVE.get(unit_idx).copied().unwrap_or(10);
-        state.nations[country].armies[armynum].movement =
-            (max_move as i32 * umove / 10) as u8;
+        state.nations[country].armies[armynum].movement = (max_move as i32 * umove / 10) as u8;
 
         let ax = state.nations[country].armies[armynum].x as i32;
         let ay = state.nations[country].armies[armynum].y as i32;
@@ -185,8 +171,7 @@ fn do_savage(
         state.nations[country].armies[armynum].y = y as u8;
 
         let s_owner = state.sectors[x as usize][y as usize].owner as usize;
-        if (s_owner == 0
-            || solds_in_sector(&state.nations[s_owner], x as u8, y as u8) == 0)
+        if (s_owner == 0 || solds_in_sector(&state.nations[s_owner], x as u8, y as u8) == 0)
             && NationStrategy::from_value(state.nations[s_owner].active)
                 .map_or(true, |s| s != NationStrategy::NpcSavage)
         {
@@ -207,11 +192,7 @@ fn do_savage(
 
 /// do_pirate() — update pirate nation fleets.
 /// Matches C do_pirate() exactly.
-fn do_pirate(
-    state: &mut GameState,
-    country: usize,
-    rng: &mut ConquerRng,
-) {
+fn do_pirate(state: &mut GameState, country: usize, rng: &mut ConquerRng) {
     // First pass: return pirate fleets to basecamp
     for nvynum in 0..MAXNAVY {
         let nvy = &state.nations[country].navies[nvynum];
@@ -231,8 +212,7 @@ fn do_pirate(
                 if !state.on_map(x, y) {
                     continue;
                 }
-                if state.sectors[x as usize][y as usize].designation
-                    == Designation::BaseCamp as u8
+                if state.sectors[x as usize][y as usize].designation == Designation::BaseCamp as u8
                 {
                     found_base = true;
                     campx = x;
@@ -295,11 +275,7 @@ fn do_pirate(
 /// do_lizard() — update lizard nation armies.
 /// Matches C do_lizard() from update.c line 730.
 /// Lizards come in pairs: even armies garrison, odd armies patrol around them.
-fn do_lizard(
-    state: &mut GameState,
-    country: usize,
-    rng: &mut ConquerRng,
-) {
+fn do_lizard(state: &mut GameState, country: usize, rng: &mut ConquerRng) {
     let map_x = state.world.map_x as i32;
     let map_y = state.world.map_y as i32;
 
@@ -336,7 +312,8 @@ fn do_lizard(
 
             // Try to move to relieve sieges or attack nearby sectors
             if state.nations[country].armies[armynum].status != ArmyStatus::Sieged.to_value()
-                && state.nations[country].armies[armynum - 1].status != ArmyStatus::Sieged.to_value()
+                && state.nations[country].armies[armynum - 1].status
+                    != ArmyStatus::Sieged.to_value()
             {
                 for dx in -1..=1i32 {
                     for dy in -1..=1i32 {
@@ -377,10 +354,7 @@ fn do_lizard(
 
 /// MORE_MONST: Spawn additional monster armies if the world needs them.
 /// Matches C monster() MORE_MONST block.
-fn spawn_more_monsters(
-    state: &mut GameState,
-    rng: &mut ConquerRng,
-) {
+fn spawn_more_monsters(state: &mut GameState, rng: &mut ConquerRng) {
     let map_x = state.world.map_x as i32;
     let map_y = state.world.map_y as i32;
     let numsects = (map_x * map_y) as i64;
@@ -404,8 +378,7 @@ fn spawn_more_monsters(
 
     // Calculate needed vs actual troops
     // neededtroops = (NUMSECTS/MONSTER) * ((5/12)*450 + (1/4)*250)
-    let needed_troops = (numsects / MONSTER as i64)
-        * ((5 * 450 / 12) + (250 / 4));
+    let needed_troops = (numsects / MONSTER as i64) * ((5 * 450 / 12) + (250 / 4));
 
     let mut actual_troops: i64 = 0;
     for i in 0..MAXARM {
@@ -473,9 +446,7 @@ fn spawn_more_monsters(
                 let sct = &state.sectors[x as usize][y as usize];
                 if sct.altitude != Altitude::Peak as u8
                     && sct.altitude != Altitude::Water as u8
-                    && (sct.owner == 0
-                        || sct.owner as usize == savages
-                        || sct.people < 50)
+                    && (sct.owner == 0 || sct.owner as usize == savages || sct.people < 50)
                 {
                     break;
                 }
@@ -544,8 +515,7 @@ mod tests {
     fn test_pirate_fleet_basecamp() {
         let mut state = GameState::new(16, 16);
         state.nations[1].active = NationStrategy::NpcPirate as u8;
-        state.nations[1].navies[0].warships =
-            NavalSize::set_ships(0, NavalSize::Light, 3);
+        state.nations[1].navies[0].warships = NavalSize::set_ships(0, NavalSize::Light, 3);
         state.nations[1].navies[0].x = 5;
         state.nations[1].navies[0].y = 5;
 

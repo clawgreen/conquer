@@ -5,11 +5,11 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use conquer_db::models::*;
-use conquer_db::ServerStats;
 use crate::app::AppState;
 use crate::errors::ApiError;
 use crate::jwt::Claims;
+use conquer_db::models::*;
+use conquer_db::ServerStats;
 
 // ============================================================
 // Request types
@@ -64,12 +64,17 @@ async fn require_game_admin(
 ) -> Result<Uuid, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    let is_admin = state.store.is_game_admin(game_id, user_id).await
+    let is_admin = state
+        .store
+        .is_game_admin(game_id, user_id)
+        .await
         .map_err(|e| ApiError::from(e))?;
     // Also allow global admins
     let is_global = state.store.is_admin(user_id).await;
     if !is_admin && !is_global {
-        return Err(ApiError::Forbidden("Only game creator or site admin can perform this action".to_string()));
+        return Err(ApiError::Forbidden(
+            "Only game creator or site admin can perform this action".to_string(),
+        ));
     }
     Ok(user_id)
 }
@@ -89,19 +94,22 @@ pub async fn admin_list_players(
     let players = state.store.list_players(game_id).await?;
     let game_state = state.store.get_game_state(game_id).await?;
 
-    let result: Vec<AdminPlayerInfo> = players.iter().map(|p| {
-        let nation = &game_state.nations[p.nation_id as usize];
-        AdminPlayerInfo {
-            user_id: p.user_id.to_string(),
-            nation_id: p.nation_id,
-            nation_name: nation.name.clone(),
-            race: nation.race,
-            class: nation.class,
-            is_done: p.is_done_this_turn,
-            score: nation.score,
-            joined_at: p.joined_at.to_rfc3339(),
-        }
-    }).collect();
+    let result: Vec<AdminPlayerInfo> = players
+        .iter()
+        .map(|p| {
+            let nation = &game_state.nations[p.nation_id as usize];
+            AdminPlayerInfo {
+                user_id: p.user_id.to_string(),
+                nation_id: p.nation_id,
+                nation_name: nation.name.clone(),
+                race: nation.race,
+                class: nation.class,
+                is_done: p.is_done_this_turn,
+                score: nation.score,
+                joined_at: p.joined_at.to_rfc3339(),
+            }
+        })
+        .collect();
 
     Ok(Json(result))
 }
@@ -117,16 +125,27 @@ pub async fn admin_kick_player(
     state.store.kick_player(game_id, req.nation_id).await?;
 
     // Broadcast system message
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::ChatMessage {
-        sender_nation_id: None,
-        sender_name: "SYSTEM".to_string(),
-        channel: "public".to_string(),
-        content: format!("⚠ Nation {} has been removed from the game by an admin.", req.nation_id),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        is_system: true,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::ChatMessage {
+                sender_nation_id: None,
+                sender_name: "SYSTEM".to_string(),
+                channel: "public".to_string(),
+                content: format!(
+                    "⚠ Nation {} has been removed from the game by an admin.",
+                    req.nation_id
+                ),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                is_system: true,
+            },
+        )
+        .await;
 
-    Ok(Json(serde_json::json!({"status": "kicked", "nation_id": req.nation_id})))
+    Ok(Json(
+        serde_json::json!({"status": "kicked", "nation_id": req.nation_id}),
+    ))
 }
 
 /// POST /api/games/:id/admin/status — Pause/resume/complete game (T423)
@@ -143,15 +162,26 @@ pub async fn admin_set_status(
         "paused" => GameStatus::Paused,
         "completed" => GameStatus::Completed,
         "waiting_for_players" => GameStatus::WaitingForPlayers,
-        _ => return Err(ApiError::BadRequest(format!("Invalid status: {}", req.status))),
+        _ => {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid status: {}",
+                req.status
+            )))
+        }
     };
 
     let info = state.store.set_game_status(game_id, status).await?;
 
     // Broadcast status change
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::SystemMessage {
-        content: format!("Game status changed to: {}", req.status),
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::SystemMessage {
+                content: format!("Game status changed to: {}", req.status),
+            },
+        )
+        .await;
 
     Ok(Json(info))
 }
@@ -166,23 +196,40 @@ pub async fn admin_advance_turn(
 
     let new_turn = state.store.run_turn(game_id).await?;
 
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::TurnEnd {
-        old_turn: new_turn - 1,
-        new_turn,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::TurnEnd {
+                old_turn: new_turn - 1,
+                new_turn,
+            },
+        )
+        .await;
 
     let season = ["Winter", "Spring", "Summer", "Fall"][(new_turn % 4) as usize];
     let year = (new_turn as i32 + 3) / 4;
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::ChatMessage {
-        sender_nation_id: None,
-        sender_name: "SYSTEM".to_string(),
-        channel: "public".to_string(),
-        content: format!("━━━ Turn {} ({}, Year {}) advanced by admin ━━━", new_turn, season, year),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        is_system: true,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::ChatMessage {
+                sender_nation_id: None,
+                sender_name: "SYSTEM".to_string(),
+                channel: "public".to_string(),
+                content: format!(
+                    "━━━ Turn {} ({}, Year {}) advanced by admin ━━━",
+                    new_turn, season, year
+                ),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                is_system: true,
+            },
+        )
+        .await;
 
-    Ok(Json(serde_json::json!({"status": "turn_advanced", "new_turn": new_turn})))
+    Ok(Json(
+        serde_json::json!({"status": "turn_advanced", "new_turn": new_turn}),
+    ))
 }
 
 /// GET /api/games/:id/admin/snapshots — List turn snapshots (T426)
@@ -194,9 +241,13 @@ pub async fn admin_list_snapshots(
     require_game_admin(&state, &claims, game_id).await?;
 
     let snapshots = state.store.list_turn_snapshots(game_id).await?;
-    let result: Vec<TurnSnapshotInfo> = snapshots.into_iter().map(|(turn, created_at)| {
-        TurnSnapshotInfo { turn, created_at: created_at.to_rfc3339() }
-    }).collect();
+    let result: Vec<TurnSnapshotInfo> = snapshots
+        .into_iter()
+        .map(|(turn, created_at)| TurnSnapshotInfo {
+            turn,
+            created_at: created_at.to_rfc3339(),
+        })
+        .collect();
 
     Ok(Json(result))
 }
@@ -212,11 +263,19 @@ pub async fn admin_rollback(
 
     let turn = state.store.rollback_turn(game_id, req.target_turn).await?;
 
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::SystemMessage {
-        content: format!("⚠ Game rolled back to turn {} by admin", turn),
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::SystemMessage {
+                content: format!("⚠ Game rolled back to turn {} by admin", turn),
+            },
+        )
+        .await;
 
-    Ok(Json(serde_json::json!({"status": "rolled_back", "turn": turn})))
+    Ok(Json(
+        serde_json::json!({"status": "rolled_back", "turn": turn}),
+    ))
 }
 
 /// PUT /api/games/:id/settings — Update game settings (T415-T418)
@@ -228,7 +287,10 @@ pub async fn update_game_settings(
 ) -> Result<Json<GameInfo>, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    let info = state.store.update_game_settings(game_id, user_id, settings).await?;
+    let info = state
+        .store
+        .update_game_settings(game_id, user_id, settings)
+        .await?;
     Ok(Json(info))
 }
 

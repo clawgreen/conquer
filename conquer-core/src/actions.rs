@@ -45,22 +45,46 @@ pub enum Action {
     AdjustArmyStat { nation: i16, army: i32, status: u8 },
 
     /// AADJMEN / XAMEN — set army soldiers and type
-    AdjustArmyMen { nation: i16, army: i16, soldiers: i64, unit_type: u8 },
+    AdjustArmyMen {
+        nation: i16,
+        army: i16,
+        soldiers: i64,
+        unit_type: u8,
+    },
 
     /// BRIBENATION / XBRIBE — bribe a nation
     BribeNation { nation: i32, cost: i64, target: i32 },
 
     /// AADJLOC / XALOC — move army
-    MoveArmy { nation: i16, army: i32, x: i32, y: i32 },
+    MoveArmy {
+        nation: i16,
+        army: i32,
+        x: i32,
+        y: i32,
+    },
 
     /// NADJLOC / XNLOC — move navy
-    MoveNavy { nation: i16, fleet: i32, x: i32, y: i32 },
+    MoveNavy {
+        nation: i16,
+        fleet: i32,
+        x: i32,
+        y: i32,
+    },
 
     /// NADJMER / XNAMER — adjust navy merchant ships
-    AdjustNavyMerchant { nation: i16, fleet: i32, merchant: i16 },
+    AdjustNavyMerchant {
+        nation: i16,
+        fleet: i32,
+        merchant: i16,
+    },
 
     /// NADJCRW / XNACREW — adjust navy crew and army
-    AdjustNavyCrew { nation: i16, fleet: i16, crew: i32, army_num: i32 },
+    AdjustNavyCrew {
+        nation: i16,
+        fleet: i16,
+        crew: i32,
+        army_num: i32,
+    },
 
     /// ECHGNAME / XECNAME — change nation name
     ChangeName { nation: i16, name: String },
@@ -72,13 +96,28 @@ pub enum Action {
     AdjustSpellPoints { nation: i16, cost: i32 },
 
     /// SADJDES / XSADES — redesignate sector
-    DesignateSector { nation: i16, x: i32, y: i32, designation: char },
+    DesignateSector {
+        nation: i16,
+        x: i32,
+        y: i32,
+        designation: char,
+    },
 
     /// SADJCIV / XSACIV — set sector civilian count
-    AdjustSectorCiv { nation: i16, people: i64, x: i32, y: i32 },
+    AdjustSectorCiv {
+        nation: i16,
+        people: i64,
+        x: i32,
+        y: i32,
+    },
 
     /// SADJCIV3 / XSACIV3 — add civilians to sector
-    AddSectorCiv { nation: i16, people: i64, x: i32, y: i32 },
+    AddSectorCiv {
+        nation: i16,
+        people: i64,
+        x: i32,
+        y: i32,
+    },
 
     /// INCFORT / XSIFORT — increase fortress level
     IncreaseFort { nation: i16, x: i32, y: i32 },
@@ -87,31 +126,66 @@ pub enum Action {
     AdjustNavyGold { nation: i16, gold: i64 },
 
     /// AADJMOV / XAMOV — adjust army movement points
-    AdjustArmyMove { nation: i16, army: i32, movement: i32 },
+    AdjustArmyMove {
+        nation: i16,
+        army: i32,
+        movement: i32,
+    },
 
     /// NADJMOV / XNMOV — adjust navy movement points
-    AdjustNavyMove { nation: i16, fleet: i32, movement: i32 },
+    AdjustNavyMove {
+        nation: i16,
+        fleet: i32,
+        movement: i32,
+    },
 
     /// SADJOWN / XSAOWN — take sector ownership
     TakeSectorOwnership { nation: i16, x: i32, y: i32 },
 
     /// EADJDIP / EDADJ — adjust diplomacy
-    AdjustDiplomacy { nation_a: i16, nation_b: i32, status: i32 },
+    AdjustDiplomacy {
+        nation_a: i16,
+        nation_b: i32,
+        status: i32,
+    },
 
     /// NADJWAR / XNAWAR — adjust navy warships
-    AdjustNavyWarships { nation: i16, fleet: i32, warships: i16 },
+    AdjustNavyWarships {
+        nation: i16,
+        fleet: i32,
+        warships: i16,
+    },
 
     /// NADJGAL / XNAGAL — adjust navy galleys
-    AdjustNavyGalleys { nation: i16, fleet: i32, galleys: i16 },
+    AdjustNavyGalleys {
+        nation: i16,
+        fleet: i32,
+        galleys: i16,
+    },
 
     /// NADJHLD / XNAHOLD — adjust navy hold (army + people)
-    AdjustNavyHold { nation: i16, fleet: i32, army_num: i16, people: i32 },
+    AdjustNavyHold {
+        nation: i16,
+        fleet: i32,
+        army_num: i16,
+        people: i32,
+    },
 
     /// NADJNTN2 / NPOP — adjust population stats
-    AdjustPopulation { nation: i16, popularity: i32, terror: i32, reputation: i32 },
+    AdjustPopulation {
+        nation: i16,
+        popularity: i32,
+        terror: i32,
+        reputation: i32,
+    },
 
     /// NADJNTN / NTAX — adjust tax rate, active status, charity
-    AdjustTax { nation: i16, tax_rate: i32, active: i32, charity: i32 },
+    AdjustTax {
+        nation: i16,
+        tax_rate: i32,
+        active: i32,
+        charity: i32,
+    },
 
     /// I_APLUS / INCAPLUS — increase attack bonus
     IncreaseAttack { nation: i16 },
@@ -120,7 +194,11 @@ pub enum Action {
     IncreaseDefense { nation: i16 },
 
     /// CHGMGK / CHG_MGK — change magic powers
-    ChangeMagic { nation: i16, powers: i64, new_power: i64 },
+    ChangeMagic {
+        nation: i16,
+        powers: i64,
+        new_power: i64,
+    },
 
     /// DESTROY / DESTRY — destroy a nation
     DestroyNation { target: i16, by: i16 },
@@ -129,14 +207,22 @@ pub enum Action {
     HireMercenaries { nation: i32, men: i64 },
 
     /// AADJDISB / MSETB — disband to mercenary pool
-    DisbandToMerc { nation: i32, men: i64, attack: i32, defense: i32 },
+    DisbandToMerc {
+        nation: i32,
+        men: i64,
+        attack: i32,
+        defense: i32,
+    },
 
     // ============================================================
     // Sprint: Commands Parity — new action variants
     // ============================================================
-
     /// T1: Split soldiers from an army into a new army at same location
-    SplitArmy { nation: i16, army: i32, soldiers: i64 },
+    SplitArmy {
+        nation: i16,
+        army: i32,
+        soldiers: i64,
+    },
 
     /// T2: Combine army2 into army1 (same location, compatible types)
     CombineArmies { nation: i16, army1: i32, army2: i32 },
@@ -145,7 +231,13 @@ pub enum Action {
     DivideArmy { nation: i16, army: i32 },
 
     /// T5: Draft/enlist soldiers in a sector
-    DraftUnit { nation: i16, x: i32, y: i32, unit_type: u8, count: i64 },
+    DraftUnit {
+        nation: i16,
+        x: i32,
+        y: i32,
+        unit_type: u8,
+        count: i64,
+    },
 
     /// T6: Construct fortification in a sector
     ConstructFort { nation: i16, x: i32, y: i32 },
@@ -154,7 +246,14 @@ pub enum Action {
     BuildRoad { nation: i16, x: i32, y: i32 },
 
     /// T8: Construct ships at a coastal sector
-    ConstructShip { nation: i16, x: i32, y: i32, ship_type: u8, ship_size: u8, count: i32 },
+    ConstructShip {
+        nation: i16,
+        x: i32,
+        y: i32,
+        ship_type: u8,
+        ship_size: u8,
+        count: i32,
+    },
 
     /// T9: Load army onto fleet
     LoadArmyOnFleet { nation: i16, army: i32, fleet: i32 },
@@ -163,19 +262,44 @@ pub enum Action {
     UnloadArmyFromFleet { nation: i16, fleet: i32 },
 
     /// T9: Load civilians onto fleet
-    LoadPeopleOnFleet { nation: i16, fleet: i32, x: i32, y: i32, amount: i64 },
+    LoadPeopleOnFleet {
+        nation: i16,
+        fleet: i32,
+        x: i32,
+        y: i32,
+        amount: i64,
+    },
 
     /// T9: Unload civilians from fleet
-    UnloadPeople { nation: i16, fleet: i32, x: i32, y: i32, amount: i64 },
+    UnloadPeople {
+        nation: i16,
+        fleet: i32,
+        x: i32,
+        y: i32,
+        amount: i64,
+    },
 
     /// T10: Cast a spell
-    CastSpell { nation: i16, spell_type: u8, target_x: i32, target_y: i32, target_nation: i16 },
+    CastSpell {
+        nation: i16,
+        spell_type: u8,
+        target_x: i32,
+        target_y: i32,
+        target_nation: i16,
+    },
 
     /// T11: Buy a magic power
     BuyMagicPower { nation: i16, power_type: u8 },
 
     /// T12: Propose a trade
-    ProposeTrade { nation: i16, target_nation: i16, offer_type: u8, offer_amount: i64, request_type: u8, request_amount: i64 },
+    ProposeTrade {
+        nation: i16,
+        target_nation: i16,
+        offer_type: u8,
+        offer_amount: i64,
+        request_type: u8,
+        request_amount: i64,
+    },
 
     /// T12: Accept a trade
     AcceptTrade { nation: i16, trade_id: u32 },
@@ -184,7 +308,14 @@ pub enum Action {
     RejectTrade { nation: i16, trade_id: u32 },
 
     /// T17: Send tribute (gold, food, metal, jewels)
-    SendTribute { nation: i16, target: i16, gold: i64, food: i64, metal: i64, jewels: i64 },
+    SendTribute {
+        nation: i16,
+        target: i16,
+        gold: i64,
+        food: i64,
+        metal: i64,
+        jewels: i64,
+    },
 }
 
 impl Action {
@@ -306,20 +437,45 @@ mod tests {
 
     #[test]
     fn test_action_codes() {
-        let a = Action::AdjustArmyStat { nation: 1, army: 0, status: 3 };
+        let a = Action::AdjustArmyStat {
+            nation: 1,
+            army: 0,
+            status: 3,
+        };
         assert_eq!(a.code(), codes::XASTAT);
 
-        let b = Action::MoveArmy { nation: 1, army: 0, x: 10, y: 20 };
+        let b = Action::MoveArmy {
+            nation: 1,
+            army: 0,
+            x: 10,
+            y: 20,
+        };
         assert_eq!(b.code(), codes::XALOC);
     }
 
     #[test]
     fn test_action_serde_roundtrip() {
         let actions = vec![
-            Action::AdjustArmyStat { nation: 1, army: 0, status: 3 },
-            Action::MoveArmy { nation: 2, army: 5, x: 10, y: 20 },
-            Action::ChangeName { nation: 3, name: "TestNation".to_string() },
-            Action::ChangeMagic { nation: 1, powers: 0xFF, new_power: 0x100 },
+            Action::AdjustArmyStat {
+                nation: 1,
+                army: 0,
+                status: 3,
+            },
+            Action::MoveArmy {
+                nation: 2,
+                army: 5,
+                x: 10,
+                y: 20,
+            },
+            Action::ChangeName {
+                nation: 3,
+                name: "TestNation".to_string(),
+            },
+            Action::ChangeMagic {
+                nation: 1,
+                powers: 0xFF,
+                new_power: 0x100,
+            },
         ];
 
         for action in &actions {

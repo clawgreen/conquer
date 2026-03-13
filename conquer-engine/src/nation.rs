@@ -2,9 +2,9 @@
 //
 // T271-T276: Nation creation, new nation formation, nation initialization
 //
-use conquer_core::*;
-use crate::utils::is_habitable;
 use crate::diplomacy::DIPL_UNMET;
+use crate::utils::is_habitable;
+use conquer_core::*;
 
 /// PC nation active status values (from C data.h)
 pub const PC_GOOD: u8 = 1;
@@ -44,7 +44,7 @@ pub fn create_nation(
     // Find empty nation slot
     let mut nation_id = 0u8;
     let mut found = false;
-    
+
     for i in 1..nations.len() {
         if nations[i].active == 0 {
             nation_id = i as u8;
@@ -52,7 +52,7 @@ pub fn create_nation(
             break;
         }
     }
-    
+
     if !found {
         return NationCreationResult {
             success: false,
@@ -60,7 +60,7 @@ pub fn create_nation(
             message: "No free nation slots".to_string(),
         };
     }
-    
+
     // Validate name length
     if name.len() > NAMELTH {
         return NationCreationResult {
@@ -69,7 +69,7 @@ pub fn create_nation(
             message: "Name too long".to_string(),
         };
     }
-    
+
     // Validate location
     let map_x = sectors.len();
     let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
@@ -80,9 +80,9 @@ pub fn create_nation(
             message: "Invalid start location".to_string(),
         };
     }
-    
+
     let sector = &sectors[start_x as usize][start_y as usize];
-    
+
     // Check if sector is habitable
     if !is_habitable(sector) {
         return NationCreationResult {
@@ -91,7 +91,7 @@ pub fn create_nation(
             message: "Start sector is not habitable".to_string(),
         };
     }
-    
+
     // Check if sector is already owned
     if sector.owner != 0 {
         return NationCreationResult {
@@ -100,17 +100,19 @@ pub fn create_nation(
             message: "Sector already owned".to_string(),
         };
     }
-    
+
     // Create nation
     let nation = &mut nations[nation_id as usize];
-    init_new_nation(nation, name, leader, race, password, class, start_x, start_y);
-    
+    init_new_nation(
+        nation, name, leader, race, password, class, start_x, start_y,
+    );
+
     // Assign starting sector
     assign_starting_sector(nation_id, sectors, start_x, start_y);
-    
+
     // Update world
     world.nations += 1;
-    
+
     NationCreationResult {
         success: true,
         nation_id,
@@ -132,63 +134,63 @@ fn init_new_nation(
 ) {
     // Set basic info
     // Note: nation index is set by the caller, not stored in Nation
-    
+
     // Name
     nation.name = name.to_string();
-    
+
     // Leader
     nation.leader = leader.to_string();
-    
+
     // Password
     nation.password = password.to_string();
-    
+
     // Race
     nation.race = race.to_char();
-    
+
     // Starting location
     nation.cap_x = start_x;
     nation.cap_y = start_y;
     nation.location = 'R'; // Random placement
-    
+
     // Active status (PC based on alignment)
     nation.active = match class {
         NationClass::Good => PC_GOOD as u8,
         NationClass::Neutral => PC_NEUTRAL as u8,
         NationClass::Evil => PC_EVIL as u8,
     };
-    
+
     // Starting gold and resources (based on MAXPTS = 65)
     nation.treasury_gold = 10000; // Starting gold
-    nation.total_food = 5000;  // Starting food
-    nation.metals = 500;   // Starting metal
-    nation.jewels = 100;   // Starting jewels
-    
+    nation.total_food = 5000; // Starting food
+    nation.metals = 500; // Starting metal
+    nation.jewels = 100; // Starting jewels
+
     // Powers (none initially)
     nation.powers = 0;
-    
+
     // Spell points
     nation.spell_points = 0;
-    
+
     // Population
     nation.total_civ = 1000; // Starting civilians
     nation.total_mil = 0;
-    
+
     // Max movement
     nation.max_move = 10;
-    
+
     // Reproduction rate
     nation.repro = 10;
-    
+
     // Score
     nation.score = 0;
-    
+
     // Class
     nation.class = class as i16;
-    
+
     // Attack/defense bonuses
     nation.attack_plus = 0;
     nation.defense_plus = 0;
-    
+
     // Initialize armies to empty
     for army in nation.armies.iter_mut() {
         army.soldiers = 0;
@@ -198,7 +200,7 @@ fn init_new_nation(
         army.status = ArmyStatus::Defend.to_value();
         army.movement = 0;
     }
-    
+
     // Initialize navies to empty
     for navy in nation.navies.iter_mut() {
         navy.warships = 0;
@@ -212,43 +214,38 @@ fn init_new_nation(
         navy.commodity = 0;
         navy.army_num = MAXARM as u8;
     }
-    
+
     // Initialize diplomatic status
     // Initialize diplomacy - self is Neutral (0), others are Unmet
     for i in 0..MAXNTOTAL {
         nation.diplomacy[i] = if i == 0 { 0 } else { DIPL_UNMET };
     }
-    
+
     // Tax rate
     nation.tax_rate = 50; // 50%
-    
+
     // Charity
     nation.charity = 0;
-    
+
     // Inflation
     nation.inflation = 0;
-    
+
     // Sectors
     nation.total_sectors = 0;
     nation.total_ships = 0;
-    
+
     // Popularity
     nation.popularity = 50;
 }
 
 /// Assign starting sector to new nation
-fn assign_starting_sector(
-    nation_id: u8,
-    sectors: &mut Vec<Vec<Sector>>,
-    x: u8,
-    y: u8,
-) {
+fn assign_starting_sector(nation_id: u8, sectors: &mut Vec<Vec<Sector>>, x: u8, y: u8) {
     let sector = &mut sectors[x as usize][y as usize];
     sector.owner = nation_id;
     sector.people = 1000; // Starting population
     sector.designation = Designation::Capitol as u8;
     sector.fortress = 2; // Starting fort level
-    
+
     // Mark seen (has_seen array would be updated)
 }
 
@@ -288,27 +285,27 @@ pub fn allocate_starting_points(
     powers_to_buy: &[Power],
 ) -> Result<(), String> {
     let mut remaining = points.power_points;
-    
+
     for &power in powers_to_buy {
         let cost = power_cost(power);
         if cost > remaining {
             return Err(format!("Not enough points for {:?}", power));
         }
-        
+
         if Power::has_power(nation.powers, power) {
             return Err(format!("Already have power {:?}", power));
         }
-        
+
         nation.powers |= power.bits();
         remaining -= cost;
     }
-    
+
     // Apply resources
     nation.treasury_gold += points.gold;
     nation.total_food += points.food;
     nation.metals += points.metal;
     nation.jewels += points.jewels;
-    
+
     Ok(())
 }
 
@@ -352,43 +349,40 @@ fn power_cost(power: Power) -> i32 {
 
 /// Find best starting location for new nation
 /// Matches C: findcap()
-pub fn find_starting_location(
-    sectors: &Vec<Vec<Sector>>,
-    desired_race: Race,
-) -> Option<(u8, u8)> {
+pub fn find_starting_location(sectors: &Vec<Vec<Sector>>, desired_race: Race) -> Option<(u8, u8)> {
     let mut best_x = 0u8;
     let mut best_y = 0u8;
     let mut best_score = -1i32;
-    
+
     let map_x = sectors.len();
     let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
     for x in 0..map_x {
         for y in 0..map_y {
             let sector = &sectors[x][y];
-            
+
             // Must be habitable
             if !is_habitable(sector) {
                 continue;
             }
-            
+
             // Must not be owned
             if sector.owner != 0 {
                 continue;
             }
-            
+
             // Check distance from other nations
             let mut too_close = false;
             for nx in 0..MAXNTOTAL {
                 // Would check against existing nations
             }
-            
+
             if too_close {
                 continue;
             }
-            
+
             // Score this location
             let score = score_starting_location(sector, desired_race);
-            
+
             if score > best_score {
                 best_score = score;
                 best_x = x as u8;
@@ -396,7 +390,7 @@ pub fn find_starting_location(
             }
         }
     }
-    
+
     if best_score < 0 {
         None
     } else {
@@ -407,27 +401,27 @@ pub fn find_starting_location(
 /// Score a potential starting location
 fn score_starting_location(sector: &Sector, race: Race) -> i32 {
     let mut score = 0;
-    
+
     // Base score from vegetation
     match sector.vegetation as char {
         'g' | 'G' => score += 10, // Good
-        'w' | 'W' => score += 8, // Wood
-        'f' | 'F' => score += 6, // Forest
+        'w' | 'W' => score += 8,  // Wood
+        'f' | 'F' => score += 6,  // Forest
         _ => score += 2,
     }
-    
+
     // Bonus for altitude
     match sector.altitude as char {
         '0' => score += 5, // Clear
         '-' => score += 3, // Hill
         _ => {}
     }
-    
+
     // Trade good bonus
     if sector.trade_good > 0 {
         score += 5;
     }
-    
+
     // Race-specific bonuses
     match race {
         Race::Dwarf => {
@@ -452,7 +446,7 @@ fn score_starting_location(sector: &Sector, race: Race) -> i32 {
         }
         _ => {}
     }
-    
+
     score
 }
 
@@ -476,14 +470,14 @@ pub fn init_npc_nation(
             break;
         }
     }
-    
+
     if nation_id == 0 {
         return None;
     }
-    
+
     // Initialize NPC
     let nation = &mut nations[nation_id as usize];
-    
+
     // NPC type determines starting resources and behavior
     let (active_value, gold, food, metal, jewels) = match npc_type {
         NpcType::Expansionist => (GOOD_0FREE as u8, 8000, 4000, 400, 50),
@@ -492,26 +486,26 @@ pub fn init_npc_nation(
         NpcType::Nomad => (NPC_NOMAD as u8, 5000, 2500, 150, 20),
         NpcType::Savage => (NPC_SAVAGE as u8, 3000, 1500, 100, 10),
     };
-    
+
     // Set active status
     nation.active = active_value;
-    
+
     // Basic setup
     // (would copy name, leader, etc.)
-    
+
     // Set resources
     nation.treasury_gold = gold;
     nation.total_food = food;
     nation.metals = metal;
     nation.jewels = jewels;
-    
+
     // Set capitol
     nation.cap_x = start_x;
     nation.cap_y = start_y;
-    
+
     // Assign starting sector
     // Would call assign_starting_sector
-    
+
     Some(nation_id)
 }
 

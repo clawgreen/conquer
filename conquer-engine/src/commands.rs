@@ -3,9 +3,9 @@
 // T251-T260: Player commands (form, attack, designate, construct, draft, etc.)
 //
 // Core command handlers that process player input
-use conquer_core::*;
-use conquer_core::tables::*;
 use crate::utils::*;
+use conquer_core::tables::*;
+use conquer_core::*;
 
 /// Command result
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub fn validate_designation(
     print_error: bool,
 ) -> CommandResult {
     let country = nation_idx as u8;
-    
+
     // Check vegetation requirement
     if new_designation != Designation::NoDesig as u8
         && new_designation != Designation::Road as u8
@@ -42,7 +42,7 @@ pub fn validate_designation(
             };
         }
     }
-    
+
     // Don't allow same designation
     if new_designation == sector.designation {
         return CommandResult {
@@ -52,10 +52,11 @@ pub fn validate_designation(
             metal_cost: 0,
         };
     }
-    
+
     // Check for city/capitol being made into something else
     if new_designation != Designation::Ruin as u8 {
-        if (new_designation != Designation::Capitol as u8 && sector.designation == Designation::City as u8)
+        if (new_designation != Designation::Capitol as u8
+            && sector.designation == Designation::City as u8)
             || sector.designation == Designation::Capitol as u8
         {
             if new_designation != Designation::Ruin as u8 {
@@ -71,7 +72,7 @@ pub fn validate_designation(
             }
         }
     }
-    
+
     // Check population requirement for city/town/capitol
     if sector.people < 500 {
         if new_designation == Designation::Capitol as u8
@@ -86,7 +87,7 @@ pub fn validate_designation(
             };
         }
     }
-    
+
     // Only god may create pirate base
     if new_designation == Designation::BaseCamp as u8 {
         return CommandResult {
@@ -96,7 +97,7 @@ pub fn validate_designation(
             metal_cost: 0,
         };
     }
-    
+
     // Check for ruin
     if new_designation == Designation::Ruin as u8 {
         if sector.designation != Designation::City as u8
@@ -110,7 +111,7 @@ pub fn validate_designation(
             };
         }
     }
-    
+
     // Check for special designation (requires magic)
     if new_designation == Designation::Special as u8 {
         if !Power::has_power(nation.powers, Power::SUMMON) {
@@ -122,7 +123,7 @@ pub fn validate_designation(
             };
         }
     }
-    
+
     CommandResult {
         success: true,
         message: "OK".to_string(),
@@ -133,20 +134,17 @@ pub fn validate_designation(
 
 /// Calculate cost for redesignation
 /// Matches C: SADJDES and related calculations
-pub fn redesignation_cost(
-    current_designation: u8,
-    new_designation: u8,
-) -> (i64, i64) {
+pub fn redesignation_cost(current_designation: u8, new_designation: u8) -> (i64, i64) {
     let mut gold_cost = DESCOST;
     let mut metal_cost = 0i64;
-    
+
     // Towns and forts have different costs
     if new_designation == Designation::Town as u8 || new_designation == Designation::Fort as u8 {
         metal_cost = DESCOST;
     }
     // City or Capitol
-    else if new_designation == Designation::City as u8 
-        || new_designation == Designation::Capitol as u8 
+    else if new_designation == Designation::City as u8
+        || new_designation == Designation::Capitol as u8
     {
         metal_cost = 5 * DESCOST;
     }
@@ -157,7 +155,7 @@ pub fn redesignation_cost(
     } else {
         gold_cost += 20 * DESCOST;
     }
-    
+
     (gold_cost, metal_cost)
 }
 
@@ -184,7 +182,7 @@ pub fn draft_unit(
             metal_cost: 0,
         };
     }
-    
+
     // Check gold
     let cost = enlist_cost(unit_type) * num_soldiers;
     if nation.treasury_gold < cost {
@@ -195,7 +193,7 @@ pub fn draft_unit(
             metal_cost: 0,
         };
     }
-    
+
     // Find empty army slot
     let mut army_idx = -1;
     for i in 0..MAXARM {
@@ -204,7 +202,7 @@ pub fn draft_unit(
             break;
         }
     }
-    
+
     if army_idx < 0 {
         return CommandResult {
             success: false,
@@ -213,7 +211,7 @@ pub fn draft_unit(
             metal_cost: 0,
         };
     }
-    
+
     // Create army
     let army = &mut nation.armies[army_idx as usize];
     army.soldiers = num_soldiers;
@@ -222,10 +220,10 @@ pub fn draft_unit(
     army.y = sector_y;
     army.status = ArmyStatus::Defend.to_value();
     army.movement = UNIT_MOVE.get(unit_type as usize).copied().unwrap_or(0) as u8;
-    
+
     // Deduct gold
     nation.treasury_gold -= cost;
-    
+
     CommandResult {
         success: true,
         message: format!("Drafted {} soldiers", num_soldiers),
@@ -246,10 +244,7 @@ pub fn enlist_cost(unit_type: u8) -> i64 {
 
 /// Construct a fort in a sector
 /// Matches C: construct() with fort option
-pub fn construct_fort(
-    nation: &mut Nation,
-    sector: &mut Sector,
-) -> CommandResult {
+pub fn construct_fort(nation: &mut Nation, sector: &mut Sector) -> CommandResult {
     // Must be in town, city, fort, or capitol
     let des = sector.designation;
     if des != Designation::Town as u8
@@ -264,7 +259,7 @@ pub fn construct_fort(
             metal_cost: 0,
         };
     }
-    
+
     // Check max fortress level
     if sector.fortress >= 12 {
         return CommandResult {
@@ -274,13 +269,13 @@ pub fn construct_fort(
             metal_cost: 0,
         };
     }
-    
+
     // Calculate cost (doubles with each level)
     let mut cost = FORTCOST;
     for _ in 0..sector.fortress {
         cost *= 2;
     }
-    
+
     // Check if can afford (debt limit based on jewels)
     let max_debt = nation.jewels * 10;
     if nation.treasury_gold - cost < -max_debt {
@@ -291,11 +286,11 @@ pub fn construct_fort(
             metal_cost: 0,
         };
     }
-    
+
     // Build fort
     nation.treasury_gold -= cost;
     sector.fortress = sector.fortress.saturating_add(1);
-    
+
     CommandResult {
         success: true,
         message: format!("Built fort (+{}%)", fort_bonus(sector, nation.powers)),
@@ -314,14 +309,14 @@ pub fn fort_bonus(sector: &Sector, powers: i64) -> i32 {
         d if d == Designation::Capitol as u8 => 8,
         _ => 0,
     };
-    
+
     let mut bonus = base * sector.fortress as i32;
-    
+
     // ARCHITECT power doubles
     if Power::has_power(powers, Power::ARCHITECT) {
         bonus *= 2;
     }
-    
+
     bonus
 }
 
@@ -330,23 +325,27 @@ pub fn is_next_to_water(sectors: &Vec<Vec<Sector>>, x: u8, y: u8) -> bool {
     let x = x as i32;
     let y = y as i32;
     let map_x = sectors.len() as i32;
-    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
-    
+    let map_y = if map_x > 0 {
+        sectors[0].len() as i32
+    } else {
+        0
+    };
+
     for dx in -1..=1 {
         for dy in -1..=1 {
             let nx = x + dx;
             let ny = y + dy;
-            
+
             if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y {
                 continue;
             }
-            
+
             if sectors[nx as usize][ny as usize].altitude == Altitude::Water as u8 {
                 return true;
             }
         }
     }
-    
+
     false
 }
 
@@ -362,7 +361,7 @@ pub fn construct_ship(
 ) -> CommandResult {
     // Check if next to water
     // Would need sectors access
-    
+
     // Check population
     let crew_needed = num_ships * (ship_class as i32 + 1) * SHIPCREW as i32;
     if sector.people < crew_needed as i64 {
@@ -373,7 +372,7 @@ pub fn construct_ship(
             metal_cost: 0,
         };
     }
-    
+
     // Calculate cost
     let base_cost = match ship_type {
         ShipType::Warship => WARSHPCOST,
@@ -382,14 +381,14 @@ pub fn construct_ship(
     };
     let size_mod = (ship_class as i32 + 1);
     let cost = num_ships as i64 * size_mod as i64 * base_cost;
-    
+
     // SAILOR power halves cost
     let cost = if Power::has_power(nation.powers, Power::SAILOR) {
         cost / 2
     } else {
         cost
     };
-    
+
     // Check gold
     if nation.treasury_gold < cost {
         return CommandResult {
@@ -399,13 +398,13 @@ pub fn construct_ship(
             metal_cost: 0,
         };
     }
-    
+
     // Build ships (simplified)
     // Would need navy management
-    
+
     nation.treasury_gold -= cost;
     sector.people = sector.people.saturating_sub(crew_needed as i64);
-    
+
     CommandResult {
         success: true,
         message: format!("Built {} ships", num_ships),
@@ -448,7 +447,7 @@ pub fn build_road(
             metal_cost: 0,
         };
     }
-    
+
     // Need 100+ people
     if sector.people < 100 {
         return CommandResult {
@@ -458,7 +457,7 @@ pub fn build_road(
             metal_cost: 0,
         };
     }
-    
+
     // Cost
     let cost = DESCOST;
     if nation.treasury_gold < cost {
@@ -469,9 +468,9 @@ pub fn build_road(
             metal_cost: 0,
         };
     }
-    
+
     nation.treasury_gold -= cost;
-    
+
     CommandResult {
         success: true,
         message: format!("Road built to ({}, {})", x, y),
@@ -495,10 +494,10 @@ pub fn execute_designation(
     if !validation.success {
         return validation;
     }
-    
+
     // Calculate costs
     let (gold_cost, metal_cost) = redesignation_cost(sector.designation, new_designation);
-    
+
     // Check metal
     if nation.metals < metal_cost {
         return CommandResult {
@@ -508,7 +507,7 @@ pub fn execute_designation(
             metal_cost: 0,
         };
     }
-    
+
     // Check gold (god is free)
     let actual_gold_cost = if is_god { 0 } else { gold_cost };
     if nation.treasury_gold < actual_gold_cost {
@@ -519,24 +518,24 @@ pub fn execute_designation(
             metal_cost: 0,
         };
     }
-    
+
     // Execute
     nation.treasury_gold -= actual_gold_cost;
     nation.metals = nation.metals.saturating_sub(metal_cost);
     sector.designation = new_designation;
-    
+
     // Special handling for capitol
     if new_designation == Designation::Capitol as u8 {
         // Demolish old capitol
         let old_cap_x = nation.cap_x;
         let old_cap_y = nation.cap_y;
         // Would need sectors access
-        
+
         // Set new capitol
         nation.cap_x = sector_x;
         nation.cap_y = sector_y;
     }
-    
+
     CommandResult {
         success: true,
         message: format!("Designated as {}", new_designation),
@@ -546,11 +545,7 @@ pub fn execute_designation(
 }
 
 /// Transfer gold between nations (tribute)
-pub fn send_tribute(
-    from: &mut Nation,
-    to_idx: usize,
-    amount: i64,
-) -> CommandResult {
+pub fn send_tribute(from: &mut Nation, to_idx: usize, amount: i64) -> CommandResult {
     if to_idx >= MAXNTOTAL {
         return CommandResult {
             success: false,
@@ -559,7 +554,7 @@ pub fn send_tribute(
             metal_cost: 0,
         };
     }
-    
+
     if from.treasury_gold < amount {
         return CommandResult {
             success: false,
@@ -568,10 +563,10 @@ pub fn send_tribute(
             metal_cost: 0,
         };
     }
-    
+
     from.treasury_gold -= amount;
     // Would add to recipient
-    
+
     CommandResult {
         success: true,
         message: format!("Sent {} gold tribute", amount),
@@ -591,7 +586,7 @@ mod tests {
             fortress: 3,
             ..Default::default()
         };
-        
+
         let bonus = fort_bonus(&sector, 0);
         assert_eq!(bonus, 15); // 5 * 3
     }

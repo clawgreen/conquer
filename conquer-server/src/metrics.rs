@@ -2,9 +2,9 @@
 //
 // Tracks active games, connected players, request counts, and uptime.
 
+use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use serde::Serialize;
 
 /// Server metrics collector (T453)
 pub struct Metrics {

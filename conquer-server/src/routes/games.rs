@@ -5,10 +5,10 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use conquer_db::models::*;
 use crate::app::AppState;
 use crate::errors::ApiError;
 use crate::jwt::Claims;
+use conquer_db::models::*;
 
 // ============================================================
 // Request/Response types
@@ -37,8 +37,12 @@ pub struct JoinGameRequest {
     pub mark: char,
 }
 
-fn default_class() -> i16 { 1 }
-fn default_mark() -> char { '*' }
+fn default_class() -> i16 {
+    1
+}
+fn default_mark() -> char {
+    '*'
+}
 
 #[derive(Debug, Serialize)]
 pub struct JoinGameResponse {
@@ -135,42 +139,72 @@ pub async fn join_game(
         return Err(ApiError::BadRequest("Nation name required".to_string()));
     }
 
-    let player = state.store.join_game(
-        game_id,
-        user_id,
-        &req.nation_name,
-        &req.leader_name,
-        req.race,
-        req.class,
-        req.mark,
-    ).await?;
+    let player = state
+        .store
+        .join_game(
+            game_id,
+            user_id,
+            &req.nation_name,
+            &req.leader_name,
+            req.race,
+            req.class,
+            req.mark,
+        )
+        .await?;
 
     // Broadcast player joined
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::PlayerJoined {
-        nation_id: player.nation_id,
-        nation_name: req.nation_name.clone(),
-        race: req.race,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::PlayerJoined {
+                nation_id: player.nation_id,
+                nation_name: req.nation_name.clone(),
+                race: req.race,
+            },
+        )
+        .await;
 
     // Broadcast system chat message (T395)
     let race_name = match req.race {
-        'H' => "Human", 'E' => "Elf", 'D' => "Dwarf", 'O' => "Orc",
-        'L' => "Lizard", 'P' => "Pirate", 'S' => "Savage", 'N' => "Nomad",
+        'H' => "Human",
+        'E' => "Elf",
+        'D' => "Dwarf",
+        'O' => "Orc",
+        'L' => "Lizard",
+        'P' => "Pirate",
+        'S' => "Savage",
+        'N' => "Nomad",
         _ => "Unknown",
     };
     let class_name = match req.class {
-        0 => "Monster", 1 => "King", 2 => "Emperor", 3 => "Wizard",
-        4 => "Priest", 5 => "Pirate", 6 => "Trader", 7 => "Warlord",
+        0 => "Monster",
+        1 => "King",
+        2 => "Emperor",
+        3 => "Wizard",
+        4 => "Priest",
+        5 => "Pirate",
+        6 => "Trader",
+        7 => "Warlord",
         _ => "Adventurer",
     };
-    state.ws_manager.broadcast(game_id, crate::ws::ServerMessage::ChatMessage {
-        sender_nation_id: None,
-        sender_name: "SYSTEM".to_string(),
-        channel: "public".to_string(),
-        content: format!("⚔ The nation of {} ({} {}) has entered the world!", req.nation_name, race_name, class_name),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        is_system: true,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            game_id,
+            crate::ws::ServerMessage::ChatMessage {
+                sender_nation_id: None,
+                sender_name: "SYSTEM".to_string(),
+                channel: "public".to_string(),
+                content: format!(
+                    "⚔ The nation of {} ({} {}) has entered the world!",
+                    req.nation_name, race_name, class_name
+                ),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                is_system: true,
+            },
+        )
+        .await;
 
     Ok(Json(JoinGameResponse {
         nation_id: player.nation_id,

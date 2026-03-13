@@ -3,23 +3,23 @@
 
 use axum::{
     extract::{FromRequestParts, State},
-    http::{request::Parts, StatusCode, header},
+    http::{header, request::Parts, StatusCode},
     middleware,
     routing::{delete, get, get_service, post, put},
     Json, Router,
 };
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
 
-use conquer_db::GameStore;
 use crate::config::ServerConfig;
 use crate::errors::ApiError;
 use crate::jwt::{Claims, JwtManager};
 use crate::metrics::{Metrics, MetricsSnapshot};
 use crate::routes;
 use crate::ws::ConnectionManager;
+use conquer_db::GameStore;
 
 // ============================================================
 // Application State
@@ -45,17 +45,22 @@ impl FromRequestParts<AppState> for Claims {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let header_val = parts.headers.get(header::AUTHORIZATION)
+        let header_val = parts
+            .headers
+            .get(header::AUTHORIZATION)
             .ok_or_else(|| ApiError::Unauthorized("Missing Authorization header".to_string()))?;
 
-        let header_str = header_val.to_str()
+        let header_str = header_val
+            .to_str()
             .map_err(|_| ApiError::Unauthorized("Invalid Authorization header".to_string()))?;
 
         let token = header_str
             .strip_prefix("Bearer ")
             .ok_or_else(|| ApiError::Unauthorized("Expected Bearer token".to_string()))?;
 
-        state.jwt.validate_token(token)
+        state
+            .jwt
+            .validate_token(token)
             .map_err(|e| ApiError::Unauthorized(format!("Invalid token: {}", e)))
     }
 }
@@ -119,47 +124,104 @@ pub fn build_router(state: AppState) -> Router {
         // Actions (T305-T311)
         .route("/games/{id}/actions", post(routes::actions::submit_actions))
         .route("/games/{id}/actions", get(routes::actions::get_actions))
-        .route("/games/{id}/actions/{action_id}", delete(routes::actions::retract_action))
+        .route(
+            "/games/{id}/actions/{action_id}",
+            delete(routes::actions::retract_action),
+        )
         .route("/games/{id}/end-turn", post(routes::actions::end_turn))
         .route("/games/{id}/run-turn", post(routes::actions::run_turn))
         // Chat (T392)
         .route("/games/{id}/chat", get(routes::state::get_chat))
-        .route("/games/{id}/chat/channels", get(routes::state::get_chat_channels))
+        .route(
+            "/games/{id}/chat/channels",
+            get(routes::state::get_chat_channels),
+        )
         .route("/games/{id}/presence", get(routes::state::get_presence))
         // WebSocket (T312)
         .route("/games/{id}/ws", get(routes::websocket::ws_upgrade))
         // Invites (T321-T323, T419-T422)
         .route("/games/{id}/invites", post(routes::invites::create_invite))
         .route("/games/{id}/invites", get(routes::invites::list_invites))
-        .route("/games/{id}/invites/{invite_id}", delete(routes::invites::revoke_invite))
+        .route(
+            "/games/{id}/invites/{invite_id}",
+            delete(routes::invites::revoke_invite),
+        )
         .route("/invites/{code}", get(routes::invites::get_invite))
-        .route("/invites/{code}/accept", post(routes::invites::accept_invite))
+        .route(
+            "/invites/{code}/accept",
+            post(routes::invites::accept_invite),
+        )
         // User profile & settings (T409-T411)
         .route("/users/me", get(routes::users::get_profile))
         .route("/users/me", put(routes::users::update_profile))
         .route("/users/me/password", put(routes::users::change_password))
         .route("/users/me/history", get(routes::users::get_history))
         // Admin dashboard (T423-T427)
-        .route("/games/{id}/admin/players", get(routes::admin::admin_list_players))
-        .route("/games/{id}/admin/kick", post(routes::admin::admin_kick_player))
-        .route("/games/{id}/admin/status", post(routes::admin::admin_set_status))
-        .route("/games/{id}/admin/advance-turn", post(routes::admin::admin_advance_turn))
-        .route("/games/{id}/admin/snapshots", get(routes::admin::admin_list_snapshots))
-        .route("/games/{id}/admin/rollback", post(routes::admin::admin_rollback))
-        .route("/games/{id}/settings", put(routes::admin::update_game_settings))
+        .route(
+            "/games/{id}/admin/players",
+            get(routes::admin::admin_list_players),
+        )
+        .route(
+            "/games/{id}/admin/kick",
+            post(routes::admin::admin_kick_player),
+        )
+        .route(
+            "/games/{id}/admin/status",
+            post(routes::admin::admin_set_status),
+        )
+        .route(
+            "/games/{id}/admin/advance-turn",
+            post(routes::admin::admin_advance_turn),
+        )
+        .route(
+            "/games/{id}/admin/snapshots",
+            get(routes::admin::admin_list_snapshots),
+        )
+        .route(
+            "/games/{id}/admin/rollback",
+            post(routes::admin::admin_rollback),
+        )
+        .route(
+            "/games/{id}/settings",
+            put(routes::admin::update_game_settings),
+        )
         .route("/admin/stats", get(routes::admin::server_stats))
         // Spectator mode (T428-T431)
-        .route("/games/{id}/spectate", post(routes::spectators::join_spectator))
-        .route("/games/{id}/spectate", delete(routes::spectators::leave_spectator))
-        .route("/games/{id}/spectate/map", get(routes::spectators::spectator_map))
+        .route(
+            "/games/{id}/spectate",
+            post(routes::spectators::join_spectator),
+        )
+        .route(
+            "/games/{id}/spectate",
+            delete(routes::spectators::leave_spectator),
+        )
+        .route(
+            "/games/{id}/spectate/map",
+            get(routes::spectators::spectator_map),
+        )
         // Game browser (T422)
         .route("/games/public", get(routes::games::list_public_games))
         // Notifications (T432-T434)
-        .route("/notifications", get(routes::notifications::get_notifications))
-        .route("/notifications/{id}/read", post(routes::notifications::mark_read))
-        .route("/notifications/read-all", post(routes::notifications::mark_all_read))
-        .route("/notifications/preferences", get(routes::notifications::get_preferences))
-        .route("/notifications/preferences", put(routes::notifications::set_preferences));
+        .route(
+            "/notifications",
+            get(routes::notifications::get_notifications),
+        )
+        .route(
+            "/notifications/{id}/read",
+            post(routes::notifications::mark_read),
+        )
+        .route(
+            "/notifications/read-all",
+            post(routes::notifications::mark_all_read),
+        )
+        .route(
+            "/notifications/preferences",
+            get(routes::notifications::get_preferences),
+        )
+        .route(
+            "/notifications/preferences",
+            put(routes::notifications::set_preferences),
+        );
 
     let mut router = Router::new()
         .nest("/api", api)
@@ -172,11 +234,9 @@ pub fn build_router(state: AppState) -> Router {
         if std::path::Path::new(&index_path).exists() {
             tracing::info!("Serving static files from {}", static_dir);
             // Serve static files, with SPA fallback to index.html
-            router = router
-                .fallback_service(
-                    ServeDir::new(static_dir)
-                        .not_found_service(ServeFile::new(&index_path))
-                );
+            router = router.fallback_service(
+                ServeDir::new(static_dir).not_found_service(ServeFile::new(&index_path)),
+            );
         }
     }
 
@@ -192,8 +252,8 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
     use serde_json::json;
+    use tower::ServiceExt;
 
     fn test_state() -> AppState {
         let config = ServerConfig::default();
@@ -236,7 +296,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let metrics: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(metrics["uptime_secs"].is_number());
         assert!(metrics["active_games"].is_number());
@@ -255,11 +317,14 @@ mod tests {
                     .method("POST")
                     .uri("/api/auth/register")
                     .header("Content-Type", "application/json")
-                    .body(Body::from(serde_json::to_string(&json!({
-                        "username": "testplayer",
-                        "email": "test@example.com",
-                        "password": "password123",
-                    })).unwrap()))
+                    .body(Body::from(
+                        serde_json::to_string(&json!({
+                            "username": "testplayer",
+                            "email": "test@example.com",
+                            "password": "password123",
+                        }))
+                        .unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -275,10 +340,13 @@ mod tests {
                     .method("POST")
                     .uri("/api/auth/login")
                     .header("Content-Type", "application/json")
-                    .body(Body::from(serde_json::to_string(&json!({
-                        "username": "testplayer",
-                        "password": "password123",
-                    })).unwrap()))
+                    .body(Body::from(
+                        serde_json::to_string(&json!({
+                            "username": "testplayer",
+                            "password": "password123",
+                        }))
+                        .unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -312,94 +380,127 @@ mod tests {
 
         // 1. Register
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/register")
-                .header("Content-Type", "application/json")
-                .body(Body::from(serde_json::to_string(&json!({
-                    "username": "player1",
-                    "email": "p1@test.com",
-                    "password": "password123",
-                })).unwrap()))
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/register")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&json!({
+                            "username": "player1",
+                            "email": "p1@test.com",
+                            "password": "password123",
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let auth: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let token = auth["token"].as_str().unwrap();
 
         // 2. Create game
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/games")
-                .header("Content-Type", "application/json")
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::from(serde_json::to_string(&json!({
-                    "name": "Test Game",
-                })).unwrap()))
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/games")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::from(
+                        serde_json::to_string(&json!({
+                            "name": "Test Game",
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let game: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let game_id = game["id"].as_str().unwrap();
 
         // 3. Join game
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(&format!("/api/games/{}/join", game_id))
-                .header("Content-Type", "application/json")
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::from(serde_json::to_string(&json!({
-                    "nation_name": "Gondor",
-                    "leader_name": "Aragorn",
-                    "race": "H",
-                    "class": 1,
-                    "mark": "G",
-                })).unwrap()))
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/games/{}/join", game_id))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::from(
+                        serde_json::to_string(&json!({
+                            "nation_name": "Gondor",
+                            "leader_name": "Aragorn",
+                            "race": "H",
+                            "class": 1,
+                            "mark": "G",
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // 4. Get nation
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .uri(&format!("/api/games/{}/nation", game_id))
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::empty())
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/games/{}/nation", game_id))
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let nation: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(nation["name"], "Gondor");
 
         // 5. Get map
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .uri(&format!("/api/games/{}/map", game_id))
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::empty())
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/games/{}/map", game_id))
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // 6. List games
         let app = build_router(state.clone());
-        let resp = app.oneshot(
-            Request::builder()
-                .uri("/api/games")
-                .header("Authorization", format!("Bearer {}", token))
-                .body(Body::empty())
-                .unwrap(),
-        ).await.unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/games")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
 }

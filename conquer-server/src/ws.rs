@@ -2,10 +2,10 @@
 //
 // T312-T320: WebSocket upgrade, per-game broadcast, heartbeat, reconnection
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ============================================================
@@ -36,20 +36,11 @@ pub enum ServerMessage {
         data: Option<serde_json::Value>,
     },
     /// News broadcast
-    News {
-        turn: i16,
-        messages: Vec<String>,
-    },
+    News { turn: i16, messages: Vec<String> },
     /// Turn has started
-    TurnStart {
-        turn: i16,
-        season: String,
-    },
+    TurnStart { turn: i16, season: String },
     /// Turn has ended, new turn begins
-    TurnEnd {
-        old_turn: i16,
-        new_turn: i16,
-    },
+    TurnEnd { old_turn: i16, new_turn: i16 },
     /// Player joined the game
     PlayerJoined {
         nation_id: u8,
@@ -57,10 +48,7 @@ pub enum ServerMessage {
         race: char,
     },
     /// Player marked done for this turn
-    PlayerDone {
-        nation_id: u8,
-        nation_name: String,
-    },
+    PlayerDone { nation_id: u8, nation_name: String },
     /// Chat message (T388)
     ChatMessage {
         sender_nation_id: Option<u8>,
@@ -81,9 +69,7 @@ pub enum ServerMessage {
         status: String, // "online", "offline"
     },
     /// System message
-    SystemMessage {
-        content: String,
-    },
+    SystemMessage { content: String },
     /// Pong response
     Pong,
     /// Notification (T432)
@@ -93,13 +79,9 @@ pub enum ServerMessage {
         game_id: Option<String>,
     },
     /// Game status changed (Phase 6)
-    GameStatusChanged {
-        status: String,
-    },
+    GameStatusChanged { status: String },
     /// Error message
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// A single chat message entry for history payloads
@@ -123,10 +105,7 @@ pub enum ClientMessage {
         action: conquer_core::actions::Action,
     },
     /// Send a chat message (T388)
-    ChatSend {
-        channel: String,
-        content: String,
-    },
+    ChatSend { channel: String, content: String },
     /// Request chat history for a channel
     ChatHistoryRequest {
         channel: String,
@@ -139,7 +118,9 @@ pub enum ClientMessage {
     Ping,
 }
 
-fn default_chat_limit() -> usize { 50 }
+fn default_chat_limit() -> usize {
+    50
+}
 
 // ============================================================
 // Connection Manager (T314)
@@ -248,7 +229,8 @@ impl ConnectionManager {
     /// Get online nation IDs for a game (T405)
     pub async fn get_online_nations(&self, game_id: Uuid) -> Vec<u8> {
         let presence = self.presence.read().await;
-        presence.get(&game_id)
+        presence
+            .get(&game_id)
             .map(|m| m.keys().copied().collect())
             .unwrap_or_default()
     }
@@ -280,7 +262,10 @@ mod tests {
 
     #[test]
     fn test_server_message_serialization() {
-        let msg = ServerMessage::TurnEnd { old_turn: 5, new_turn: 6 };
+        let msg = ServerMessage::TurnEnd {
+            old_turn: 5,
+            new_turn: 6,
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("turn_end"));
         assert!(json.contains("old_turn"));

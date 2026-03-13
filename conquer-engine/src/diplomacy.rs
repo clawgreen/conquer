@@ -4,8 +4,8 @@
 //
 // Diplomatic status levels: UNMET, TREATY, ALLIED, FRIENDLY, NEUTRAL, HOSTILE, WAR, JIHAD
 
-use conquer_core::*;
 use crate::rng::RngExt;
+use conquer_core::*;
 
 /// Diplomatic status constants (matching C)
 pub const DIPL_UNMET: u8 = 0;
@@ -34,10 +34,10 @@ pub fn dipl_name(status: u8) -> &'static str {
 
 /// Check if two nations can trade (must not be UNMET or HOSTILE/JIHAD/WAR)
 pub fn can_trade_with(dipl_status: u8) -> bool {
-    dipl_status != DIPL_UNMET 
-    && dipl_status != DIPL_HOSTILE 
-    && dipl_status != DIPL_WAR 
-    && dipl_status != DIPL_JIHAD
+    dipl_status != DIPL_UNMET
+        && dipl_status != DIPL_HOSTILE
+        && dipl_status != DIPL_WAR
+        && dipl_status != DIPL_JIHAD
 }
 
 /// Check if nation at given status can be contacted
@@ -105,7 +105,7 @@ pub fn init_diplomatic_status(nation: &mut Nation) {
 /// Matches C: verify_ntn() function
 pub fn verify_diplomatic_status(nation: &mut Nation, nation_idx: usize) -> Vec<String> {
     let mut errors = Vec::new();
-    
+
     // NPC_PEASANT and above must always be at WAR
     if nation.active >= NPC_PEASANT as u8 {
         for i in 0..MAXNTOTAL {
@@ -116,11 +116,11 @@ pub fn verify_diplomatic_status(nation: &mut Nation, nation_idx: usize) -> Vec<S
                 }
             }
         }
-        
+
         // Also ensure other nations are at WAR with this nation
         // (would need access to full nation list)
     }
-    
+
     // Check for invalid status (greater than JIHAD)
     for i in 0..MAXNTOTAL {
         if nation.diplomacy[i] > DIPL_JIHAD {
@@ -131,7 +131,7 @@ pub fn verify_diplomatic_status(nation: &mut Nation, nation_idx: usize) -> Vec<S
             nation.diplomacy[i] = DIPL_WAR;
         }
     }
-    
+
     errors
 }
 
@@ -142,12 +142,12 @@ pub fn can_change_diplomacy(current_status: u8, new_status: u8) -> bool {
     if current_status == DIPL_JIHAD && new_status < DIPL_JIHAD {
         return false; // Would need BREAKJIHAD
     }
-    
+
     // Can't go from WAR to ALLIED directly without TREATY first
     if current_status == DIPL_WAR && new_status >= DIPL_ALLIED {
         return false;
     }
-    
+
     true
 }
 
@@ -210,13 +210,13 @@ pub fn declare_war(nation: &mut Nation, nation_idx: usize, target_idx: usize) ->
     if target_idx >= MAXNTOTAL || target_idx == nation_idx {
         return false;
     }
-    
+
     // Can't declare war on own nation
     // Check if already at jihad
     if nation.diplomacy[target_idx] == DIPL_JIHAD {
         return false;
     }
-    
+
     nation.diplomacy[target_idx] = DIPL_WAR;
     true
 }
@@ -226,12 +226,12 @@ pub fn propose_peace(nation: &mut Nation, target_idx: usize) -> bool {
     if target_idx >= MAXNTOTAL {
         return false;
     }
-    
+
     let current = nation.diplomacy[target_idx];
     if current < DIPL_HOSTILE {
         return false; // Not hostile
     }
-    
+
     // Peace proposal accepted - move to neutral
     nation.diplomacy[target_idx] = DIPL_NEUTRAL;
     true
@@ -273,7 +273,7 @@ pub fn is_orc(race: char) -> bool {
 
 /// Set diplomatic status for nation1 toward nation2 when they first meet (UNMET -> known)
 /// Matches C: newdip() from npc.c
-/// 
+///
 /// This is called when two nations occupy adjacent sectors for the first time.
 /// It sets initial diplomatic status based on:
 /// - If nation1 is PC: neutral (or hostile toward Orcs)
@@ -292,10 +292,10 @@ pub fn newdip(
     let ntn1_active = nation1.active;
     let ntn2_race = nation2.race;
     let ntn2_active = nation2.active;
-    
+
     // Get current status (should be UNMET when newdip is called)
     let current_status = nation1.diplomacy[_nation2_idx];
-    
+
     // If nation1 is a PC (player-controlled)
     if is_pc(ntn1_active) {
         if is_orc(ntn2_race) {
@@ -305,7 +305,7 @@ pub fn newdip(
         }
         return;
     }
-    
+
     // If either nation is Orc
     if is_orc(nation1.race) || is_orc(ntn2_race) {
         if current_status == DIPL_UNMET {
@@ -316,17 +316,17 @@ pub fn newdip(
                 nation1.diplomacy[_nation2_idx] = DIPL_WAR;
             }
         }
-    } 
+    }
     // If nation2 is a monster
     else if is_monster(ntn2_active) {
         nation1.diplomacy[_nation2_idx] = DIPL_WAR;
-    } 
+    }
     // If nation1 is a PC
     else if is_pc(ntn1_active) {
         if current_status == DIPL_UNMET {
             nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
         }
-    } 
+    }
     // Same race
     else if nation1.race == ntn2_race {
         if rng.rand_mod(2) < 1 {
@@ -334,7 +334,7 @@ pub fn newdip(
         } else {
             nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
         }
-    } 
+    }
     // Different race (NPCs of different races)
     else {
         nation1.diplomacy[_nation2_idx] = DIPL_NEUTRAL;
@@ -352,28 +352,28 @@ pub fn update_npc_diplomacy(
 ) {
     // NPCs make treaties based on various factors
     // This is a simplified version
-    
+
     let current = npc.diplomacy[other_idx];
-    
+
     // Don't change status with self
     if other_idx == npc_idx {
         return;
     }
-    
+
     // NPCs at WAR stay at WAR
     if current == DIPL_WAR || current == DIPL_JIHAD {
         return;
     }
-    
+
     // Check if other nation is a monster nation - always WAR
     if other.active >= NPC_PEASANT as u8 {
         npc.diplomacy[other_idx] = DIPL_WAR;
         return;
     }
-    
+
     // Check relation based on other nation's status toward this one
     let other_status = other.diplomacy[npc_idx];
-    
+
     // Mirror enemy relations
     if other_status == DIPL_WAR || other_status == DIPL_JIHAD {
         npc.diplomacy[other_idx] = DIPL_WAR;
@@ -431,31 +431,31 @@ mod tests {
     }
 
     // Tests for newdip() - T233
-    
+
     #[test]
     fn test_is_pc() {
         // PC values: 1, 2, 3
-        assert!(is_pc(1));  // PcGood
-        assert!(is_pc(2));  // PcNeutral
-        assert!(is_pc(3));  // PcEvil
-        // NPC/monster values: >= 17
-        assert!(!is_pc(0));   // Inactive
-        assert!(!is_pc(17));  // NpcPeasant
-        assert!(!is_pc(21));  // NpcSavage
+        assert!(is_pc(1)); // PcGood
+        assert!(is_pc(2)); // PcNeutral
+        assert!(is_pc(3)); // PcEvil
+                           // NPC/monster values: >= 17
+        assert!(!is_pc(0)); // Inactive
+        assert!(!is_pc(17)); // NpcPeasant
+        assert!(!is_pc(21)); // NpcSavage
     }
-    
+
     #[test]
     fn test_is_monster() {
         // Monster values: >= 17
         assert!(is_monster(17)); // NpcPeasant
         assert!(is_monster(18)); // NpcPirate
         assert!(is_monster(21)); // NpcSavage
-        // Non-monster
+                                 // Non-monster
         assert!(!is_monster(0)); // Inactive
         assert!(!is_monster(1)); // PcGood
         assert!(!is_monster(3)); // PcEvil
     }
-    
+
     #[test]
     fn test_is_orc() {
         assert!(is_orc('O'));
@@ -470,16 +470,16 @@ mod tests {
         let mut ntn1 = Nation::default();
         ntn1.active = 1; // PC
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'O', // Orc
             active: 0,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         assert_eq!(ntn1.diplomacy[2], DIPL_HOSTILE);
     }
 
@@ -489,16 +489,16 @@ mod tests {
         let mut ntn1 = Nation::default();
         ntn1.active = 1; // PC
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'H', // Human
             active: 0,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
     }
 
@@ -509,16 +509,16 @@ mod tests {
         ntn1.active = 0; // NPC (not monster)
         ntn1.race = 'H'; // Human
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'H',
             active: 17, // Monster (NpcPeasant)
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         assert_eq!(ntn1.diplomacy[2], DIPL_WAR);
     }
 
@@ -530,17 +530,17 @@ mod tests {
         ntn1.active = 0; // NPC
         ntn1.race = 'H'; // Human
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'H', // Same race
             active: 0,
             ..Default::default()
         };
-        
+
         // With seed 0, rand_mod(2) returns 0 -> FRIENDLY (0 < 1)
         let mut rng = ConquerRng::new(0);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         // rand_mod(2) with seed 0 returns 0, which is < 1, so FRIENDLY
         assert!(ntn1.diplomacy[2] == DIPL_FRIENDLY || ntn1.diplomacy[2] == DIPL_NEUTRAL);
     }
@@ -552,16 +552,16 @@ mod tests {
         ntn1.active = 0; // NPC
         ntn1.race = 'H'; // Human
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'E', // Elf - different race
             active: 0,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
     }
 }
@@ -580,11 +580,14 @@ mod snapshot_tests {
     fn test_init_diplomatic_status() {
         let mut nation = Nation::default();
         init_diplomatic_status(&mut nation);
-        
+
         // All diplomatic relationships should start as UNMET
         for i in 0..MAXNTOTAL {
-            assert_eq!(nation.diplomacy[i], DIPL_UNMET, 
-                "Nation {} should start as UNMET", i);
+            assert_eq!(
+                nation.diplomacy[i], DIPL_UNMET,
+                "Nation {} should start as UNMET",
+                i
+            );
         }
     }
 
@@ -595,11 +598,11 @@ mod snapshot_tests {
         nation.diplomacy[1] = DIPL_ALLIED;
         nation.diplomacy[2] = DIPL_WAR;
         nation.diplomacy[3] = DIPL_NEUTRAL;
-        
+
         assert_eq!(get_diplomatic_status(&nation, 1), DIPL_ALLIED);
         assert_eq!(get_diplomatic_status(&nation, 2), DIPL_WAR);
         assert_eq!(get_diplomatic_status(&nation, 3), DIPL_NEUTRAL);
-        
+
         // Out of bounds should return UNMET
         assert_eq!(get_diplomatic_status(&nation, MAXNTOTAL), DIPL_UNMET);
     }
@@ -608,10 +611,10 @@ mod snapshot_tests {
     #[test]
     fn test_set_diplomatic_status() {
         let mut nation = Nation::default();
-        
+
         set_diplomatic_status(&mut nation, 0, 1, DIPL_ALLIED);
         assert_eq!(nation.diplomacy[1], DIPL_ALLIED);
-        
+
         set_diplomatic_status(&mut nation, 0, 2, DIPL_WAR);
         assert_eq!(nation.diplomacy[2], DIPL_WAR);
     }
@@ -628,18 +631,18 @@ mod snapshot_tests {
         assert!(is_hostile(DIPL_HOSTILE));
         assert!(is_hostile(DIPL_WAR));
         assert!(is_hostile(DIPL_JIHAD));
-        
+
         // is_at_war
         assert!(!is_at_war(DIPL_HOSTILE));
         assert!(is_at_war(DIPL_WAR));
         assert!(is_at_war(DIPL_JIHAD));
-        
+
         // have_met
         assert!(!have_met(DIPL_UNMET));
         assert!(have_met(DIPL_TREATY));
         assert!(have_met(DIPL_ALLIED));
         assert!(have_met(DIPL_WAR));
-        
+
         // can_pass_through
         assert!(can_pass_through(DIPL_UNMET));
         assert!(can_pass_through(DIPL_TREATY));
@@ -653,16 +656,16 @@ mod snapshot_tests {
     #[test]
     fn test_meet_nation() {
         let mut nation = Nation::default();
-        
+
         // Initially UNMET
         assert_eq!(nation.diplomacy[5], DIPL_UNMET);
-        
+
         // Meet the nation
         meet_nation(&mut nation, 1, 5);
-        
+
         // Should now be NEUTRAL
         assert_eq!(nation.diplomacy[5], DIPL_NEUTRAL);
-        
+
         // Meeting again should not change
         meet_nation(&mut nation, 1, 5);
         assert_eq!(nation.diplomacy[5], DIPL_NEUTRAL);
@@ -672,14 +675,14 @@ mod snapshot_tests {
     #[test]
     fn test_declare_war() {
         let mut nation = Nation::default();
-        
+
         // Can declare war on another nation
         assert!(declare_war(&mut nation, 1, 5));
         assert_eq!(nation.diplomacy[5], DIPL_WAR);
-        
+
         // Cannot declare war on self
         assert!(!declare_war(&mut nation, 1, 1));
-        
+
         // Cannot declare war if already at JIHAD
         nation.diplomacy[6] = DIPL_JIHAD;
         assert!(!declare_war(&mut nation, 1, 6));
@@ -689,17 +692,17 @@ mod snapshot_tests {
     #[test]
     fn test_propose_peace() {
         let mut nation = Nation::default();
-        
+
         // Can propose peace from HOSTILE
         nation.diplomacy[5] = DIPL_HOSTILE;
         assert!(propose_peace(&mut nation, 5));
         assert_eq!(nation.diplomacy[5], DIPL_NEUTRAL);
-        
+
         // Can propose peace from WAR
         nation.diplomacy[6] = DIPL_WAR;
         assert!(propose_peace(&mut nation, 6));
         assert_eq!(nation.diplomacy[6], DIPL_NEUTRAL);
-        
+
         // Cannot propose peace from NEUTRAL or better
         nation.diplomacy[7] = DIPL_NEUTRAL;
         assert!(!propose_peace(&mut nation, 7));
@@ -729,12 +732,12 @@ mod snapshot_tests {
     fn test_verify_diplomatic_status() {
         let mut nation = Nation::default();
         nation.active = 17; // NPC_PEASANT (monster)
-        
+
         // Add invalid status
         nation.diplomacy[1] = 99; // Invalid
-        
+
         let errors = verify_diplomatic_status(&mut nation, 1);
-        
+
         // Should have fixed the invalid status
         assert!(!errors.is_empty());
     }
@@ -760,10 +763,10 @@ mod snapshot_tests {
     fn test_can_change_diplomacy() {
         // Can change from HOSTILE to NEUTRAL
         assert!(can_change_diplomacy(DIPL_HOSTILE, DIPL_NEUTRAL));
-        
+
         // Can change from NEUTRAL to FRIENDLY
         assert!(can_change_diplomacy(DIPL_NEUTRAL, DIPL_FRIENDLY));
-        
+
         // Cannot change from JIHAD without breaking (simplified)
         assert!(!can_change_diplomacy(DIPL_JIHAD, DIPL_WAR));
     }
@@ -774,16 +777,16 @@ mod snapshot_tests {
         let mut ntn1 = Nation::default();
         ntn1.active = 1; // PC
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'E', // Elf
             active: 0,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         // PC meeting Elf -> NEUTRAL (not Orc)
         assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
     }
@@ -794,16 +797,16 @@ mod snapshot_tests {
         let mut ntn1 = Nation::default();
         ntn1.active = 1; // PC
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'D', // Dwarf
             active: 0,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         // PC meeting Dwarf -> NEUTRAL (not Orc)
         assert_eq!(ntn1.diplomacy[2], DIPL_NEUTRAL);
     }
@@ -815,17 +818,17 @@ mod snapshot_tests {
         ntn1.active = 0; // NPC
         ntn1.race = 'O'; // Orc
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'H', // Human
             active: 0,
             ..Default::default()
         };
-        
+
         // With seed 1, rand_mod(2) returns 1 -> HOSTILE
         let mut rng = ConquerRng::new(1);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         // Either HOSTILE or WAR
         assert!(ntn1.diplomacy[2] == DIPL_HOSTILE || ntn1.diplomacy[2] == DIPL_WAR);
     }
@@ -838,18 +841,18 @@ mod snapshot_tests {
         ntn1.active = 0; // NPC
         ntn1.race = 'E'; // Elf
         ntn1.diplomacy[2] = DIPL_UNMET;
-        
+
         let ntn2 = Nation {
             race: 'E', // Elf - same race
             active: 0,
             ..Default::default()
         };
-        
+
         // rand() % 2 < 1 means rand() % 2 == 0
         // Seed 12345 should produce 0 for first rand_mod(2)
         let mut rng = ConquerRng::new(12345);
         newdip(&mut ntn1, 1, &ntn2, 2, &mut rng);
-        
+
         // Either FRIENDLY or NEUTRAL
         assert!(ntn1.diplomacy[2] == DIPL_FRIENDLY || ntn1.diplomacy[2] == DIPL_NEUTRAL);
     }
@@ -860,14 +863,14 @@ mod snapshot_tests {
         let mut npc = Nation::default();
         npc.active = 0; // NPC
         npc.diplomacy[2] = DIPL_NEUTRAL;
-        
+
         let monster = Nation {
             active: 17, // Monster
             ..Default::default()
         };
-        
+
         update_npc_diplomacy(&mut npc, 1, &monster, 2, 1);
-        
+
         // Should be WAR with monster
         assert_eq!(npc.diplomacy[2], DIPL_WAR);
     }
@@ -878,21 +881,21 @@ mod snapshot_tests {
         let mut npc = Nation::default();
         npc.active = 0; // NPC
         npc.diplomacy[2] = DIPL_ALLIED;
-        
+
         let enemy = Nation {
             active: 1, // PC
             ..Default::default()
         };
-        
+
         // First set enemy's status toward this NPC to WAR
         // (Need to simulate this by checking what update_npc_diplomacy does)
-        
+
         // Manually set enemy to WAR
         let mut enemy_clone = enemy.clone();
         enemy_clone.diplomacy[1] = DIPL_WAR;
-        
+
         update_npc_diplomacy(&mut npc, 1, &enemy_clone, 2, 1);
-        
+
         // Should mirror to WAR
         assert_eq!(npc.diplomacy[2], DIPL_WAR);
     }
@@ -901,18 +904,18 @@ mod snapshot_tests {
     #[test]
     fn test_diplomatic_progression_to_war() {
         let mut nation = Nation::default();
-        
+
         // Start UNMET - check index 2 (not self-referencing)
         assert_eq!(nation.diplomacy[2], DIPL_UNMET);
-        
+
         // Meet nation (nation_idx=1, other_idx=2)
         meet_nation(&mut nation, 1, 2);
         assert_eq!(nation.diplomacy[2], DIPL_NEUTRAL);
-        
+
         // Relations worsen
         nation.diplomacy[2] = worsen_relations(nation.diplomacy[2]);
         assert_eq!(nation.diplomacy[2], DIPL_HOSTILE);
-        
+
         // War!
         nation.diplomacy[2] = worsen_relations(nation.diplomacy[2]);
         assert_eq!(nation.diplomacy[2], DIPL_WAR);
@@ -922,18 +925,18 @@ mod snapshot_tests {
     #[test]
     fn test_diplomatic_improvement() {
         let mut nation = Nation::default();
-        
+
         // Start at WAR
         nation.diplomacy[1] = DIPL_WAR;
-        
+
         // Propose peace
         assert!(propose_peace(&mut nation, 1));
         assert_eq!(nation.diplomacy[1], DIPL_NEUTRAL);
-        
+
         // Relations improve
         nation.diplomacy[1] = improve_relations(nation.diplomacy[1]);
         assert_eq!(nation.diplomacy[1], DIPL_FRIENDLY);
-        
+
         // Further improvement
         nation.diplomacy[1] = improve_relations(nation.diplomacy[1]);
         assert_eq!(nation.diplomacy[1], DIPL_ALLIED);
@@ -943,15 +946,15 @@ mod snapshot_tests {
     #[test]
     fn test_diplomatic_snapshot_multiple_nations() {
         let mut nation = Nation::default();
-        
+
         // Set up various diplomatic relationships
-        nation.diplomacy[1] = DIPL_ALLIED;    // Best friend
-        nation.diplomacy[2] = DIPL_FRIENDLY;  // Friend
-        nation.diplomacy[3] = DIPL_NEUTRAL;   // Neutral
-        nation.diplomacy[4] = DIPL_HOSTILE;   // Enemy
-        nation.diplomacy[5] = DIPL_WAR;       // At war
-        nation.diplomacy[6] = DIPL_JIHAD;    // Holy war
-        
+        nation.diplomacy[1] = DIPL_ALLIED; // Best friend
+        nation.diplomacy[2] = DIPL_FRIENDLY; // Friend
+        nation.diplomacy[3] = DIPL_NEUTRAL; // Neutral
+        nation.diplomacy[4] = DIPL_HOSTILE; // Enemy
+        nation.diplomacy[5] = DIPL_WAR; // At war
+        nation.diplomacy[6] = DIPL_JIHAD; // Holy war
+
         // Verify all helpers
         assert!(can_trade_with(nation.diplomacy[1])); // Allied
         assert!(can_trade_with(nation.diplomacy[2])); // Friendly
@@ -959,18 +962,18 @@ mod snapshot_tests {
         assert!(!can_trade_with(nation.diplomacy[4])); // Hostile
         assert!(!can_trade_with(nation.diplomacy[5])); // War
         assert!(!can_trade_with(nation.diplomacy[6])); // Jihad
-        
+
         // Verify hostile checks
         assert!(!is_hostile(nation.diplomacy[1]));
         assert!(is_hostile(nation.diplomacy[4]));
         assert!(is_hostile(nation.diplomacy[5]));
         assert!(is_hostile(nation.diplomacy[6]));
-        
+
         // Verify war checks
         assert!(!is_at_war(nation.diplomacy[4]));
         assert!(is_at_war(nation.diplomacy[5]));
         assert!(is_at_war(nation.diplomacy[6]));
-        
+
         // Verify pass-through
         assert!(can_pass_through(nation.diplomacy[1]));
         assert!(!can_pass_through(nation.diplomacy[3]));

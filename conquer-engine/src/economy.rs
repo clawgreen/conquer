@@ -3,18 +3,15 @@
 // T145-T157: updsectors, produce, spreadsheet, updcomodities, updmil,
 // taxation, population growth, food consumption, inflation, depletion.
 
-use conquer_core::*;
-use conquer_core::rng::ConquerRng;
-use conquer_core::powers::Power;
-use conquer_core::tables::*;
 use crate::utils::*;
+use conquer_core::powers::Power;
+use conquer_core::rng::ConquerRng;
+use conquer_core::tables::*;
+use conquer_core::*;
 
 /// Spreadsheet calculation — matches C spreadsheet() exactly.
 /// Computes food, gold, metal, jewels production for a nation.
-pub fn spreadsheet(
-    state: &GameState,
-    nation_id: usize,
-) -> Spreadsheet {
+pub fn spreadsheet(state: &GameState, nation_id: usize) -> Spreadsheet {
     let ntn = &state.nations[nation_id];
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
@@ -43,7 +40,9 @@ pub fn spreadsheet(
 
             if des == Designation::Mine as u8 {
                 // Check tg_ok
-                if !tg_ok(ntn, sct) { continue; }
+                if !tg_ok(ntn, sct) {
+                    continue;
+                }
                 spread.in_metal += sct.people;
                 if sct.people > TOMANYPEOPLE {
                     product = sct.metal as i64 * TOMANYPEOPLE;
@@ -51,8 +50,12 @@ pub fn spreadsheet(
                 } else {
                     product = sct.metal as i64 * sct.people;
                 }
-                if Power::has_power(ntn.powers, Power::MINER) { product *= 2; }
-                if Power::has_power(ntn.powers, Power::STEEL) { product *= 2; }
+                if Power::has_power(ntn.powers, Power::MINER) {
+                    product *= 2;
+                }
+                if Power::has_power(ntn.powers, Power::STEEL) {
+                    product *= 2;
+                }
                 spread.metal += product;
                 spread.rev_metal += product * TAXMETAL * ntn.tax_rate as i64 / 100;
             } else if des == Designation::Farm as u8 {
@@ -67,10 +70,16 @@ pub fn spreadsheet(
 
                 // Seasonal adjustment
                 match (turn % 4) as u8 {
-                    1 => { product /= 2; }  // SPRING
-                    2 => {}                  // SUMMER (full)
-                    3 => { product = product * 5 / 2; }  // FALL
-                    0 => { product = 0; }    // WINTER
+                    1 => {
+                        product /= 2;
+                    } // SPRING
+                    2 => {} // SUMMER (full)
+                    3 => {
+                        product = product * 5 / 2;
+                    } // FALL
+                    0 => {
+                        product = 0;
+                    } // WINTER
                     _ => {}
                 }
 
@@ -94,7 +103,9 @@ pub fn spreadsheet(
                 spread.food += product;
                 spread.rev_food += product * TAXFOOD * ntn.tax_rate as i64 / 100;
             } else if des == Designation::GoldMine as u8 {
-                if !tg_ok(ntn, sct) { continue; }
+                if !tg_ok(ntn, sct) {
+                    continue;
+                }
                 spread.in_gold += sct.people;
                 if sct.people > TOMANYPEOPLE {
                     product = sct.jewels as i64 * TOMANYPEOPLE;
@@ -102,7 +113,9 @@ pub fn spreadsheet(
                 } else {
                     product = sct.jewels as i64 * sct.people;
                 }
-                if Power::has_power(ntn.powers, Power::MINER) { product *= 2; }
+                if Power::has_power(ntn.powers, Power::MINER) {
+                    product *= 2;
+                }
                 spread.jewels += product;
                 spread.rev_jewels += product * TAXGOLD * ntn.tax_rate as i64 / 100;
             } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
@@ -134,8 +147,12 @@ pub fn spreadsheet(
         }
     }
 
-    spread.gold += spread.rev_food + spread.rev_jewels + spread.rev_metal
-        + spread.rev_city + spread.rev_cap + spread.rev_other;
+    spread.gold += spread.rev_food
+        + spread.rev_jewels
+        + spread.rev_metal
+        + spread.rev_city
+        + spread.rev_cap
+        + spread.rev_other;
 
     spread
 }
@@ -150,7 +167,9 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
     for x in 0..map_x {
         for y in 0..map_y {
             let owner = state.sectors[x][y].owner as usize;
-            if owner == 0 { continue; }
+            if owner == 0 {
+                continue;
+            }
 
             // Random resource discovery
             if rng.rand() % 100 < FINDPERCENT {
@@ -258,13 +277,21 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
             if sct_owner != 0 {
                 for i in (x as i32 - MEETNTN)..=(x as i32 + MEETNTN) {
                     for j in (y as i32 - MEETNTN)..=(y as i32 + MEETNTN) {
-                        if !state.on_map(i, j) { continue; }
+                        if !state.on_map(i, j) {
+                            continue;
+                        }
                         let adj_owner = state.sectors[i as usize][j as usize].owner as usize;
-                        if adj_owner == 0 || adj_owner == sct_owner { continue; }
-                        if state.nations[sct_owner].diplomacy[adj_owner] == DiplomaticStatus::Unmet as u8 {
+                        if adj_owner == 0 || adj_owner == sct_owner {
+                            continue;
+                        }
+                        if state.nations[sct_owner].diplomacy[adj_owner]
+                            == DiplomaticStatus::Unmet as u8
+                        {
                             crate::npc::new_diplomacy(state, sct_owner, adj_owner, rng);
                         }
-                        if state.nations[adj_owner].diplomacy[sct_owner] == DiplomaticStatus::Unmet as u8 {
+                        if state.nations[adj_owner].diplomacy[sct_owner]
+                            == DiplomaticStatus::Unmet as u8
+                        {
                             crate::npc::new_diplomacy(state, adj_owner, sct_owner, rng);
                         }
                     }
@@ -287,8 +314,9 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
             && (state.sectors[cap_x][cap_y].owner as usize == country
                 || state.sectors[cap_x][cap_y].owner == 0
                 || !NationStrategy::from_value(
-                    state.nations[state.sectors[cap_x][cap_y].owner as usize].active
-                ).map_or(false, |s| s.is_nation()));
+                    state.nations[state.sectors[cap_x][cap_y].owner as usize].active,
+                )
+                .map_or(false, |s| s.is_nation()));
         if !has_capitol {
             deplete(state, country, rng);
         }
@@ -323,7 +351,11 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
 
         ntn.treasury_gold = spread.gold - charity;
 
-        let charity_per_civ = if ntn.total_civ > 0 { charity / ntn.total_civ } else { 0 };
+        let charity_per_civ = if ntn.total_civ > 0 {
+            charity / ntn.total_civ
+        } else {
+            0
+        };
 
         // Calculate poverty base — matches C exactly
         if ntn.treasury_gold < 0 {
@@ -362,8 +394,8 @@ pub fn updsectors(state: &mut GameState, rng: &mut ConquerRng) {
         } else {
             ntn.inflation = 0;
         }
-        ntn.inflation += (ntn.tax_rate as i16 / 4)
-            + (rng.rand() % (ntn.tax_rate as i32 * 3 / 4 + 1)) as i16;
+        ntn.inflation +=
+            (ntn.tax_rate as i16 / 4) + (rng.rand() % (ntn.tax_rate as i32 * 3 / 4 + 1)) as i16;
 
         // Military adjustment to inflation
         if spread.civilians > 0 {
@@ -413,8 +445,12 @@ pub fn updcomodities(state: &mut GameState, _rng: &mut ConquerRng) {
             for x in 0..map_x {
                 for y in 0..map_y {
                     let sct = &mut state.sectors[x][y];
-                    if sct.owner as usize != country { continue; }
-                    if ntn.total_food >= 0 { break; }
+                    if sct.owner as usize != country {
+                        continue;
+                    }
+                    if ntn.total_food >= 0 {
+                        break;
+                    }
 
                     let des = sct.designation;
                     if des == Designation::Town as u8
@@ -457,10 +493,18 @@ pub fn updcomodities(state: &mut GameState, _rng: &mut ConquerRng) {
         }
 
         // Fix overflow
-        if ntn.treasury_gold < -BIG { ntn.treasury_gold = BIG; }
-        if ntn.total_food < -BIG { ntn.total_food = BIG; }
-        if ntn.jewels < -BIG { ntn.jewels = BIG; }
-        if ntn.metals < -BIG { ntn.metals = BIG; }
+        if ntn.treasury_gold < -BIG {
+            ntn.treasury_gold = BIG;
+        }
+        if ntn.total_food < -BIG {
+            ntn.total_food = BIG;
+        }
+        if ntn.jewels < -BIG {
+            ntn.jewels = BIG;
+        }
+        if ntn.metals < -BIG {
+            ntn.metals = BIG;
+        }
     }
 }
 
@@ -495,18 +539,28 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
         // Spell point gains from powers
         if Power::has_power(ntn.powers, Power::SUMMON) {
             ntn.spell_points += 4;
-            if Power::has_power(ntn.powers, Power::WYZARD) { ntn.spell_points += 3; }
-            if Power::has_power(ntn.powers, Power::SORCERER) { ntn.spell_points += 3; }
+            if Power::has_power(ntn.powers, Power::WYZARD) {
+                ntn.spell_points += 3;
+            }
+            if Power::has_power(ntn.powers, Power::SORCERER) {
+                ntn.spell_points += 3;
+            }
         }
-        if Power::has_power(ntn.powers, Power::MA_MONST) { ntn.spell_points += 2; }
-        if Power::has_power(ntn.powers, Power::AV_MONST) { ntn.spell_points += 1; }
+        if Power::has_power(ntn.powers, Power::MA_MONST) {
+            ntn.spell_points += 2;
+        }
+        if Power::has_power(ntn.powers, Power::AV_MONST) {
+            ntn.spell_points += 1;
+        }
         if Power::has_power(ntn.powers, Power::MI_MONST) && rng.rand() % 2 == 0 {
             ntn.spell_points += 1;
         }
 
         // Process armies
         for armynum in 0..MAXARM {
-            if ntn.armies[armynum].soldiers <= 0 { continue; }
+            if ntn.armies[armynum].soldiers <= 0 {
+                continue;
+            }
 
             let at = ntn.armies[armynum].unit_type;
             let stat = ntn.armies[armynum].status;
@@ -539,7 +593,8 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                         // C: garrison in owned fort = 0 move; otherwise reset to defend
                         let ax = ntn.armies[armynum].x as usize;
                         let ay = ntn.armies[armynum].y as usize;
-                        if ax < state.sectors.len() && ay < state.sectors[0].len()
+                        if ax < state.sectors.len()
+                            && ay < state.sectors[0].len()
                             && state.sectors[ax][ay].owner == country as u8
                             && state.sectors[ax][ay].fortress > 0
                         {
@@ -554,7 +609,8 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                         let ax = ntn.armies[armynum].x as usize;
                         let ay = ntn.armies[armynum].y as usize;
                         let is_leader = at >= UnitType::MIN_LEADER && at < UnitType::MIN_MONSTER;
-                        let in_city = ax < state.sectors.len() && ay < state.sectors[0].len()
+                        let in_city = ax < state.sectors.len()
+                            && ay < state.sectors[0].len()
                             && state.sectors[ax][ay].owner == country as u8
                             && (state.sectors[ax][ay].designation == Designation::City as u8
                                 || state.sectors[ax][ay].designation == Designation::Capitol as u8
@@ -570,8 +626,11 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                         // C: siege = 0 movement (validated elsewhere)
                         ntn.armies[armynum].movement = 0;
                     }
-                    ArmyStatus::Sieged | ArmyStatus::Sortie
-                        | ArmyStatus::Flight | ArmyStatus::MagDef | ArmyStatus::MagAtt => {
+                    ArmyStatus::Sieged
+                    | ArmyStatus::Sortie
+                    | ArmyStatus::Flight
+                    | ArmyStatus::MagDef
+                    | ArmyStatus::MagAtt => {
                         // C: reset to DEFEND
                         ntn.armies[armynum].status = ArmyStatus::Defend.to_value();
                         ntn.armies[armynum].movement = (ntn.max_move * unit_move) / 10;
@@ -583,9 +642,7 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
             }
 
             // Flight
-            if avian(at)
-                && ArmyStatus::from_value(stat) != ArmyStatus::OnBoard
-                && stat < NUMSTATUS
+            if avian(at) && ArmyStatus::from_value(stat) != ArmyStatus::OnBoard && stat < NUMSTATUS
             {
                 ntn.armies[armynum].status = ArmyStatus::Flight.to_value();
             }
@@ -596,7 +653,8 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                 let ax = ntn.armies[armynum].x as usize;
                 let ay = ntn.armies[armynum].y as usize;
                 if Power::has_power(ntn.powers, Power::ROADS)
-                    && ax < state.sectors.len() && ay < state.sectors[0].len()
+                    && ax < state.sectors.len()
+                    && ay < state.sectors[0].len()
                     && state.sectors[ax][ay].owner as usize != country
                 {
                     let smove = ntn.armies[armynum].movement;
@@ -624,7 +682,9 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                     for dy in -1i32..=1 {
                         let lx = ax as i32 + dx;
                         let ly = ay as i32 + dy;
-                        if lx < 0 || ly < 0 || lx >= map_x || ly >= map_y { continue; }
+                        if lx < 0 || ly < 0 || lx >= map_x || ly >= map_y {
+                            continue;
+                        }
                         for a2 in 0..MAXARM {
                             let arm2 = &ntn.armies[a2];
                             if arm2.soldiers > 0
@@ -649,9 +709,7 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
             let maint = UNIT_MAINTENANCE.get(maint_idx).copied().unwrap_or(50) as i64;
 
             let has_sapper = Power::has_power(ntn.powers, Power::SAPPER);
-            if has_sapper
-                && (at == UnitType::CATAPULT.0 || at == UnitType::SIEGE_UNIT.0)
-            {
+            if has_sapper && (at == UnitType::CATAPULT.0 || at == UnitType::SIEGE_UNIT.0) {
                 ntn.treasury_gold -= soldiers * maint / 2;
             } else if at < UnitType::MIN_LEADER {
                 ntn.treasury_gold -= soldiers * maint;
@@ -669,15 +727,17 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
         // P5: Group movement — GENERAL moves at rate of slowest +2
         // C: original/update.c:1260-1275
         for armynum in 0..MAXARM {
-            if ntn.armies[armynum].soldiers <= 0 { continue; }
-            if ntn.armies[armynum].status != ArmyStatus::General.to_value() { continue; }
+            if ntn.armies[armynum].soldiers <= 0 {
+                continue;
+            }
+            if ntn.armies[armynum].status != ArmyStatus::General.to_value() {
+                continue;
+            }
 
             let mut has_follower = false;
             let group_id = armynum as u8 + NUMSTATUS;
             for follower in 0..MAXARM {
-                if ntn.armies[follower].soldiers > 0
-                    && ntn.armies[follower].status == group_id
-                {
+                if ntn.armies[follower].soldiers > 0 && ntn.armies[follower].status == group_id {
                     has_follower = true;
                     if ntn.armies[armynum].movement > ntn.armies[follower].movement {
                         ntn.armies[armynum].movement = ntn.armies[follower].movement;
@@ -701,7 +761,8 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                 // C: original/update.c:1278-1310
                 let nx = ntn.navies[nvynum].x as usize;
                 let ny = ntn.navies[nvynum].y as usize;
-                if nx < state.sectors.len() && ny < state.sectors[0].len()
+                if nx < state.sectors.len()
+                    && ny < state.sectors[0].len()
                     && state.sectors[nx][ny].altitude == Altitude::Water as u8
                 {
                     let strat = NationStrategy::from_value(ntn.active);
@@ -743,7 +804,9 @@ pub fn updmil(state: &mut GameState, rng: &mut ConquerRng) {
                     let crew = ntn.navies[nvynum].crew;
                     let has_sailor = Power::has_power(ntn.powers, Power::SAILOR);
                     let mut mv = ((speed as u32 * crew as u32) / SHIPCREW as u32) as u8;
-                    if has_sailor { mv *= 2; }
+                    if has_sailor {
+                        mv *= 2;
+                    }
                     ntn.navies[nvynum].movement = mv;
                 } else {
                     ntn.navies[nvynum].movement = 0;
@@ -772,18 +835,28 @@ fn siege_validation(state: &mut GameState) {
     for country in 0..NTOTAL {
         for armynum in 0..MAXARM {
             let army = &state.nations[country].armies[armynum];
-            if army.soldiers <= 0 { continue; }
-            if army.status != ArmyStatus::Siege.to_value() { continue; }
+            if army.soldiers <= 0 {
+                continue;
+            }
+            if army.status != ArmyStatus::Siege.to_value() {
+                continue;
+            }
             let ax = army.x;
             let ay = army.y;
 
             // Must be in enemy fortified sector
-            if state.sectors[ax as usize][ay as usize].owner as usize == country { continue; }
+            if state.sectors[ax as usize][ay as usize].owner as usize == country {
+                continue;
+            }
             let powers = state.nations[country].powers;
-            if fort_val(&state.sectors[ax as usize][ay as usize], powers) <= 0 { continue; }
+            if fort_val(&state.sectors[ax as usize][ay as usize], powers) <= 0 {
+                continue;
+            }
 
             // Already tracked?
-            if sieges.iter().any(|&(sx, sy, _)| sx == ax && sy == ay) { continue; }
+            if sieges.iter().any(|&(sx, sy, _)| sx == ax && sy == ay) {
+                continue;
+            }
 
             // Count attackers (siege units count 3x)
             let mut asmen: i64 = 0;
@@ -791,7 +864,8 @@ fn siege_validation(state: &mut GameState) {
                 for a2 in 0..MAXARM {
                     let arm2 = &state.nations[n].armies[a2];
                     if arm2.soldiers > 0
-                        && arm2.x == ax && arm2.y == ay
+                        && arm2.x == ax
+                        && arm2.y == ay
                         && arm2.status == ArmyStatus::Siege.to_value()
                     {
                         if arm2.unit_type == UnitType::SIEGE_UNIT.0 {
@@ -823,20 +897,25 @@ fn siege_validation(state: &mut GameState) {
 
     // Apply siege effects: SIEGED on defenders, remove movement
     for &(sx, sy, valid) in &sieges {
-        if !valid { continue; }
+        if !valid {
+            continue;
+        }
         let def_nation = state.sectors[sx as usize][sy as usize].owner as usize;
         for armynum in 0..MAXARM {
             let army = &state.nations[def_nation].armies[armynum];
-            if army.soldiers <= 0 || army.x != sx || army.y != sy { continue; }
-            if army.status == ArmyStatus::Flight.to_value() { continue; }
+            if army.soldiers <= 0 || army.x != sx || army.y != sy {
+                continue;
+            }
+            if army.status == ArmyStatus::Flight.to_value() {
+                continue;
+            }
             state.nations[def_nation].armies[armynum].movement = 0;
             let cur_stat = state.nations[def_nation].armies[armynum].status;
             if cur_stat != ArmyStatus::OnBoard.to_value()
                 && cur_stat != ArmyStatus::Rule.to_value()
                 && cur_stat != ArmyStatus::Traded.to_value()
             {
-                state.nations[def_nation].armies[armynum].status =
-                    ArmyStatus::Sieged.to_value();
+                state.nations[def_nation].armies[armynum].status = ArmyStatus::Sieged.to_value();
             }
         }
     }
@@ -845,7 +924,9 @@ fn siege_validation(state: &mut GameState) {
     for country in 0..NTOTAL {
         for armynum in 0..MAXARM {
             let army = &state.nations[country].armies[armynum];
-            if army.soldiers <= 0 || army.status != ArmyStatus::Siege.to_value() { continue; }
+            if army.soldiers <= 0 || army.status != ArmyStatus::Siege.to_value() {
+                continue;
+            }
             let ax = army.x;
             let ay = army.y;
             let valid = sieges.iter().any(|&(sx, sy, v)| sx == ax && sy == ay && v);
@@ -908,7 +989,11 @@ fn fleet_speed(navy: &Navy) -> i32 {
         }
     }
 
-    if count > 0 { speed / count } else { 0 }
+    if count > 0 {
+        speed / count
+    } else {
+        0
+    }
 }
 
 /// fleet_ships(navy) — count total ships in fleet.
@@ -948,15 +1033,21 @@ pub fn update_leaders(state: &mut GameState, rng: &mut ConquerRng) {
     for nation in 0..NTOTAL {
         let active = state.nations[nation].active;
         let strat = NationStrategy::from_value(active);
-        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        if !strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
 
         // Monster nations spawn new monsters in Spring (C: updleader SPRING block)
         let is_spring = (state.world.turn % 4) == 1;
         if is_spring && Power::has_power(state.nations[nation].powers, Power::MI_MONST) {
             // Determine max monster strength from powers (C: born=100/200/BIG)
             let mut max_str: i64 = 100;
-            if Power::has_power(state.nations[nation].powers, Power::AV_MONST) { max_str = 200; }
-            if Power::has_power(state.nations[nation].powers, Power::MA_MONST) { max_str = 9999; }
+            if Power::has_power(state.nations[nation].powers, Power::AV_MONST) {
+                max_str = 200;
+            }
+            if Power::has_power(state.nations[nation].powers, Power::MA_MONST) {
+                max_str = 9999;
+            }
 
             // Pick a random monster type in range [MIN_MONSTER, MAX_MONSTER]
             let monster_range = (UnitType::MAX_MONSTER - UnitType::MIN_MONSTER + 1) as i32;
@@ -965,7 +1056,9 @@ pub fn update_leaders(state: &mut GameState, rng: &mut ConquerRng) {
             let cap_x = state.nations[nation].cap_x;
             let cap_y = state.nations[nation].cap_y;
             for armynum in 0..MAXARM {
-                if state.nations[nation].armies[armynum].soldiers != 0 { continue; }
+                if state.nations[nation].armies[armynum].soldiers != 0 {
+                    continue;
+                }
                 state.nations[nation].armies[armynum].unit_type = mtype;
                 state.nations[nation].armies[armynum].soldiers = max_str.min(150);
                 state.nations[nation].armies[armynum].x = cap_x;
@@ -979,27 +1072,36 @@ pub fn update_leaders(state: &mut GameState, rng: &mut ConquerRng) {
         // Leader birth rate by class (C: switch(curntn->class))
         let born: i32 = match state.nations[nation].class {
             c if c == NationClass::Npc as i16
-              || c == NationClass::King as i16
-              || c == NationClass::Trader as i16
-              || c == NationClass::Emperor as i16 => 50,
+                || c == NationClass::King as i16
+                || c == NationClass::Trader as i16
+                || c == NationClass::Emperor as i16 =>
+            {
+                50
+            }
             c if c == NationClass::Wizard as i16
-              || c == NationClass::Priest as i16
-              || c == NationClass::Pirate as i16
-              || c == NationClass::Warlord as i16
-              || c == NationClass::Demon as i16 => 25,
-            c if c == NationClass::Dragon as i16
-              || c == NationClass::Shadow as i16 => 2,
+                || c == NationClass::Priest as i16
+                || c == NationClass::Pirate as i16
+                || c == NationClass::Warlord as i16
+                || c == NationClass::Demon as i16 =>
+            {
+                25
+            }
+            c if c == NationClass::Dragon as i16 || c == NationClass::Shadow as i16 => 2,
             _ => 50,
         };
 
         // born represents yearly birth rate (out of 400 turns/year)
-        if rng.rand() % 400 >= born { continue; }
+        if rng.rand() % 400 >= born {
+            continue;
+        }
 
         // Find free army slot for a new leader
         let cap_x = state.nations[nation].cap_x;
         let cap_y = state.nations[nation].cap_y;
         for armynum in 0..MAXARM {
-            if state.nations[nation].armies[armynum].soldiers != 0 { continue; }
+            if state.nations[nation].armies[armynum].soldiers != 0 {
+                continue;
+            }
             // Spawn a basic leader unit
             state.nations[nation].armies[armynum].unit_type = UnitType::MIN_LEADER;
             state.nations[nation].armies[armynum].soldiers = 1;
@@ -1028,7 +1130,8 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
         let strat = NationStrategy::from_value(state.nations[x].active);
         match strat {
             Some(s) if s.is_pc() => {
-                pc_bonus += state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
+                pc_bonus +=
+                    state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
                 pc_score += state.nations[x].score;
                 pc_count += 1;
             }
@@ -1039,14 +1142,17 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
                 {
                     state.nations[x].treasury_gold += 10_000;
                 }
-                npc_bonus += state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
+                npc_bonus +=
+                    state.nations[x].attack_plus as i32 + state.nations[x].defense_plus as i32;
                 npc_count += 1;
             }
             _ => {}
         }
     }
 
-    if pc_count == 0 || npc_count == 0 { return; }
+    if pc_count == 0 || npc_count == 0 {
+        return;
+    }
     let pc_avg = pc_bonus / pc_count;
     let npc_avg = npc_bonus / npc_count;
     let avg_score = pc_score / pc_count as i64;
@@ -1054,11 +1160,13 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
     // If NPC behind PC in combat skill, give them a +1 bonus
     for x in 1..NTOTAL {
         let strat = NationStrategy::from_value(state.nations[x].active);
-        if !strat.map_or(false, |s| s.is_npc()) { continue; }
-        if state.nations[x].race == 'O' { continue; } // No cheat for orcs
-        if state.nations[x].score < avg_score
-            && rng.rand() % 100 < (pc_avg - npc_avg).max(0)
-        {
+        if !strat.map_or(false, |s| s.is_npc()) {
+            continue;
+        }
+        if state.nations[x].race == 'O' {
+            continue;
+        } // No cheat for orcs
+        if state.nations[x].score < avg_score && rng.rand() % 100 < (pc_avg - npc_avg).max(0) {
             if state.nations[x].attack_plus > state.nations[x].defense_plus {
                 state.nations[x].defense_plus += 1;
             } else {
@@ -1072,22 +1180,32 @@ pub fn npc_cheat(state: &mut GameState, rng: &mut ConquerRng) {
     // Different race → 25% chance reduce by 1 (except JIHAD)
     for x in 1..NTOTAL {
         let x_strat = NationStrategy::from_value(state.nations[x].active);
-        if !x_strat.map_or(false, |s| s.is_npc()) { continue; }
+        if !x_strat.map_or(false, |s| s.is_npc()) {
+            continue;
+        }
         for y in 1..NTOTAL {
-            if x == y { continue; }
+            if x == y {
+                continue;
+            }
             let y_strat = NationStrategy::from_value(state.nations[y].active);
-            if !y_strat.map_or(false, |s| s.is_npc()) { continue; }
+            if !y_strat.map_or(false, |s| s.is_npc()) {
+                continue;
+            }
             let ds = state.nations[x].diplomacy[y];
             if ds == DiplomaticStatus::Treaty as u8 || ds == DiplomaticStatus::Unmet as u8 {
                 continue;
             }
             if state.nations[x].race == state.nations[y].race {
                 // Same race: always improve by 1
-                if ds > 0 { state.nations[x].diplomacy[y] = ds - 1; }
+                if ds > 0 {
+                    state.nations[x].diplomacy[y] = ds - 1;
+                }
             } else {
                 // Different race: 25% chance, but not below JIHAD
                 if ds != DiplomaticStatus::Jihad as u8 && rng.rand() % 4 == 0 {
-                    if ds > 0 { state.nations[x].diplomacy[y] = ds - 1; }
+                    if ds > 0 {
+                        state.nations[x].diplomacy[y] = ds - 1;
+                    }
                 }
             }
         }
@@ -1117,16 +1235,22 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
 
     for country in 1..NTOTAL {
         let ntn = &state.nations[country];
-        if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) { continue; }
+        if !NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_nation()) {
+            continue;
+        }
         w_jewels += ntn.jewels;
-        if ntn.treasury_gold > 0 { w_gold += ntn.treasury_gold; }
+        if ntn.treasury_gold > 0 {
+            w_gold += ntn.treasury_gold;
+        }
         w_metal += ntn.metals;
         w_food += ntn.total_food;
         w_score += ntn.score;
         w_civ += ntn.total_civ;
         w_mil += ntn.total_mil;
     }
-    if w_gold == 0 { w_gold = 1; }
+    if w_gold == 0 {
+        w_gold = 1;
+    }
 
     // Store world totals
     state.world.world_jewels = w_jewels;
@@ -1137,7 +1261,10 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
 
     for country in 1..NTOTAL {
         if !NationStrategy::from_value(state.nations[country].active)
-            .map_or(false, |s| s.is_nation()) { continue; }
+            .map_or(false, |s| s.is_nation())
+        {
+            continue;
+        }
 
         // Count sector types
         let mut cityfolk: i64 = 0;
@@ -1153,7 +1280,9 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
 
         for x in 0..map_x {
             for y in 0..map_y {
-                if state.sectors[x][y].owner as usize != country { continue; }
+                if state.sectors[x][y].owner as usize != country {
+                    continue;
+                }
                 let des = state.sectors[x][y].designation;
                 let people = state.sectors[x][y].people;
 
@@ -1167,7 +1296,8 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
                         minepts += state.sectors[x][y].metal as i64;
                     }
                 } else if des == Designation::Farm as u8 {
-                    foodpts += people * tofood(&state.sectors[x][y], Some(&state.nations[country])) as i64;
+                    foodpts +=
+                        people * tofood(&state.sectors[x][y], Some(&state.nations[country])) as i64;
                 } else if des == Designation::Capitol as u8 {
                     ncities += 3;
                     cityfolk += people;
@@ -1194,21 +1324,27 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
         let ntn = &mut state.nations[country];
 
         // Eat rate calculation (C: weighted average)
-        if ntn.eat_rate < 25 { ntn.eat_rate = 25; }
+        if ntn.eat_rate < 25 {
+            ntn.eat_rate = 25;
+        }
         if turn != 1 {
             let season = (turn % 4) as u8;
             let temp = match season {
-                0 => 180 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // WINTER
-                1 => 204 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // SPRING
-                2 => 250 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // SUMMER
-                3 => 312 * ntn.total_food / (ntn.eat_rate as i64 + 25),  // FALL
+                0 => 180 * ntn.total_food / (ntn.eat_rate as i64 + 25), // WINTER
+                1 => 204 * ntn.total_food / (ntn.eat_rate as i64 + 25), // SPRING
+                2 => 250 * ntn.total_food / (ntn.eat_rate as i64 + 25), // SUMMER
+                3 => 312 * ntn.total_food / (ntn.eat_rate as i64 + 25), // FALL
                 _ => 250 * ntn.total_food / (ntn.eat_rate as i64 + 25),
             };
             let x = if ntn.total_civ > 0 {
                 ntn.eat_rate as i64 / 2 + temp / ntn.total_civ
-            } else { 25 };
+            } else {
+                25
+            };
             ntn.eat_rate = x.min(MAXTGVAL as i64) as u8;
-            if ntn.eat_rate < 25 { ntn.eat_rate = 25; }
+            if ntn.eat_rate < 25 {
+                ntn.eat_rate = 25;
+            }
         } else {
             // Turn 1: approximate steady state
             // C sets cityfolk = 10 here (overrides the calculation)
@@ -1234,7 +1370,9 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
         }
         let temp_terror = if ntn.total_mil > 0 && ntn.total_civ > 0 {
             (1000 * ntn.total_mil) / ntn.total_civ + (1000 * mercs) / ntn.total_mil
-        } else { 0 };
+        } else {
+            0
+        };
         ntn.terror = (temp_terror / 5).min(MAXTGVAL as i64) as u8;
 
         // Communications
@@ -1244,13 +1382,21 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
         // Power
         let temp_power = if w_score > 0 && w_mil > 0 {
             1000 * ntn.score / w_score + 1000 * ntn.total_mil / w_mil
-        } else { 0 };
+        } else {
+            0
+        };
         ntn.power = (temp_power / 5).min(MAXTGVAL as i64) as u8;
 
         // Wealth
-        let tgold = if ntn.treasury_gold > 0 { ntn.treasury_gold } else { 0 };
-        let temp_wealth = (1000 * tgold / w_gold + 1000 * ntn.jewels / w_jewels
-            + 1000 * ntn.metals / w_metal) + cityfolk * 5 / 3 + townfolk * 5 / 6;
+        let tgold = if ntn.treasury_gold > 0 {
+            ntn.treasury_gold
+        } else {
+            0
+        };
+        let temp_wealth =
+            (1000 * tgold / w_gold + 1000 * ntn.jewels / w_jewels + 1000 * ntn.metals / w_metal)
+                + cityfolk * 5 / 3
+                + townfolk * 5 / 6;
         if temp_wealth >= ntn.wealth as i64 {
             ntn.wealth = (temp_wealth / 10).max(0).min(MAXTGVAL as i64) as u8;
         } else {
@@ -1268,15 +1414,23 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
             ntn.prestige = temp_prest.min(MAXTGVAL as i64) as u8;
 
             // Farm ability
-            let temp_farm = if ntn.total_civ > 0 { foodpts * 10 / ntn.total_civ } else { 0 };
+            let temp_farm = if ntn.total_civ > 0 {
+                foodpts * 10 / ntn.total_civ
+            } else {
+                0
+            };
             ntn.farm_ability = temp_farm.min(MAXTGVAL as i64) as u8;
         }
 
         // Mine ability
         let temp_mine = minepts / 3 + cityfolk / 2 + townfolk / 2 + blksmths;
         let mut mine_bonus = temp_mine;
-        if Power::has_power(ntn.powers, Power::MINER) { mine_bonus += 15; }
-        if Power::has_power(ntn.powers, Power::STEEL) { mine_bonus += 15; }
+        if Power::has_power(ntn.powers, Power::MINER) {
+            mine_bonus += 15;
+        }
+        if Power::has_power(ntn.powers, Power::STEEL) {
+            mine_bonus += 15;
+        }
         if mine_bonus >= ntn.mine_ability as i64 {
             ntn.mine_ability = mine_bonus.max(0).min(MAXTGVAL as i64) as u8;
         } else {
@@ -1290,28 +1444,49 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
 
         // Popularity
         let eat_rate_scaled = ntn.eat_rate as i64; // C: 10*P_EATRATE uses scaled value
-        let temp_pop = (ntn.wealth as i64 + 10 * eat_rate_scaled / 25 + clerics + ntn.popularity as i64) / 2;
+        let temp_pop =
+            (ntn.wealth as i64 + 10 * eat_rate_scaled / 25 + clerics + ntn.popularity as i64) / 2;
         ntn.popularity = temp_pop.min(MAXTGVAL as i64) as u8;
 
         // Power bonuses
-        if Power::has_power(ntn.powers, Power::SLAVER) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
-        if Power::has_power(ntn.powers, Power::RELIGION) { ntn.popularity = (ntn.popularity as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::SLAVER) {
+            ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
+        if Power::has_power(ntn.powers, Power::RELIGION) {
+            ntn.popularity = (ntn.popularity as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
         if Power::has_power(ntn.powers, Power::URBAN) {
             ntn.popularity = ntn.popularity.saturating_sub(PWR_NA as u8);
         }
         if Power::has_power(ntn.powers, Power::DEMOCRACY) {
             ntn.eat_rate = (ntn.eat_rate as i32 + 25).min(MAXTGVAL) as u8;
             ntn.terror = ntn.terror.saturating_sub(PWR_NA as u8);
-            if ntn.charity < 15 { ntn.charity += 2; }
+            if ntn.charity < 15 {
+                ntn.charity += 2;
+            }
         }
-        if Power::has_power(ntn.powers, Power::KNOWALL) { ntn.knowledge = (ntn.knowledge as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::KNOWALL) {
+            ntn.knowledge = (ntn.knowledge as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
         if Power::has_power(ntn.powers, Power::ARCHITECT) {
-            ntn.spoil_rate = if ntn.spoil_rate >= PWR_NA as u8 { ntn.spoil_rate - PWR_NA as u8 } else { 1 };
+            ntn.spoil_rate = if ntn.spoil_rate >= PWR_NA as u8 {
+                ntn.spoil_rate - PWR_NA as u8
+            } else {
+                1
+            };
         }
-        if Power::has_power(ntn.powers, Power::ROADS) { ntn.communications = (ntn.communications as i32 + 50).min(2 * MAXTGVAL) as u8; }
-        if Power::has_power(ntn.powers, Power::DESTROYER) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
-        if Power::has_power(ntn.powers, Power::ROADS) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
-        if Power::has_power(ntn.powers, Power::VAMPIRE) { ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8; }
+        if Power::has_power(ntn.powers, Power::ROADS) {
+            ntn.communications = (ntn.communications as i32 + 50).min(2 * MAXTGVAL) as u8;
+        }
+        if Power::has_power(ntn.powers, Power::DESTROYER) {
+            ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
+        if Power::has_power(ntn.powers, Power::ROADS) {
+            ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
+        if Power::has_power(ntn.powers, Power::VAMPIRE) {
+            ntn.terror = (ntn.terror as i32 + PWR_NA).min(MAXTGVAL) as u8;
+        }
 
         // Class bonuses
         match NationClass::from_value(ntn.class) {
@@ -1333,8 +1508,10 @@ pub fn att_base_gs(state: &mut GameState, rng: &mut ConquerRng) {
             Some(NationClass::Priest) => {
                 ntn.popularity = (ntn.popularity as i32 + CLA_NA).min(MAXTGVAL) as u8;
             }
-            Some(NationClass::Pirate) | Some(NationClass::Demon)
-            | Some(NationClass::Dragon) | Some(NationClass::Shadow) => {
+            Some(NationClass::Pirate)
+            | Some(NationClass::Demon)
+            | Some(NationClass::Dragon)
+            | Some(NationClass::Shadow) => {
                 ntn.terror = (ntn.terror as i32 + CLA_NA).min(MAXTGVAL) as u8;
             }
             Some(NationClass::Warlord) => {
@@ -1374,15 +1551,23 @@ pub fn att_bonus_gs(state: &mut GameState) {
     for x in 0..map_x {
         for y in 0..map_y {
             let owner = state.sectors[x][y].owner as usize;
-            if owner == 0 { continue; }
+            if owner == 0 {
+                continue;
+            }
             let strat = NationStrategy::from_value(state.nations[owner].active);
-            if !strat.map_or(false, |s| s.is_nation()) { continue; }
+            if !strat.map_or(false, |s| s.is_nation()) {
+                continue;
+            }
 
             let sct = &state.sectors[x][y];
-            if !tg_ok(&state.nations[owner], sct) { continue; }
+            if !tg_ok(&state.nations[owner], sct) {
+                continue;
+            }
 
             let good = sct.trade_good as usize;
-            if good >= TG_SECTOR_TYPE.len() { continue; }
+            if good >= TG_SECTOR_TYPE.len() {
+                continue;
+            }
 
             let tg_stype = TG_SECTOR_TYPE.as_bytes()[good] as char;
             let des = sct.designation;
@@ -1390,18 +1575,22 @@ pub fn att_bonus_gs(state: &mut GameState) {
             // Check sector type compatibility (matches C tg_stype logic)
             let compatible = tg_stype == 'x'
                 || (tg_stype == 'f' && (des == Designation::Farm as u8))
-                || (tg_stype == 't' && (des == Designation::Town as u8
-                    || des == Designation::City as u8
-                    || des == Designation::Capitol as u8))
+                || (tg_stype == 't'
+                    && (des == Designation::Town as u8
+                        || des == Designation::City as u8
+                        || des == Designation::Capitol as u8))
                 || (tg_stype == 'l' && des == Designation::LumberYard as u8)
-                || (tg_stype == 'u' && (des == Designation::University as u8
-                    || des == Designation::City as u8
-                    || des == Designation::Capitol as u8))
+                || (tg_stype == 'u'
+                    && (des == Designation::University as u8
+                        || des == Designation::City as u8
+                        || des == Designation::Capitol as u8))
                 || (tg_stype == 'c' && des == Designation::Church as u8)
                 || (tg_stype == 'm' && des == Designation::Mine as u8)
                 || (tg_stype == '$' && des == Designation::GoldMine as u8);
 
-            if !compatible { continue; }
+            if !compatible {
+                continue;
+            }
 
             let val = tg_value(good);
             let good_u8 = good as u8;
@@ -1479,91 +1668,97 @@ fn move_people_for_nation(state: &mut GameState, country: usize) {
     let map_y = state.world.map_y as usize;
     let race = state.nations[country].race;
 
-        // Pre-compute attractiveness grid for this nation
-        let mut attr_grid = vec![vec![0i32; map_y]; map_x];
-        for x in 0..map_x {
-            for y in 0..map_y {
-                if state.sectors[x][y].owner as usize == country {
-                    attr_grid[x][y] = attract(state, x, y, race);
-                }
+    // Pre-compute attractiveness grid for this nation
+    let mut attr_grid = vec![vec![0i32; map_y]; map_x];
+    for x in 0..map_x {
+        for y in 0..map_y {
+            if state.sectors[x][y].owner as usize == country {
+                attr_grid[x][y] = attract(state, x, y, race);
             }
         }
+    }
 
-        // 5-row sliding window buffer (C: newpop[x%5][y])
-        let mut newpop = vec![vec![0i64; map_y]; 5];
+    // 5-row sliding window buffer (C: newpop[x%5][y])
+    let mut newpop = vec![vec![0i64; map_y]; 5];
 
-        // Initialize first 3 rows
-        for x in 0..3usize.min(map_x) {
-            for y in 0..map_y {
-                if state.sectors[x][y].owner as usize == country {
-                    newpop[x % 5][y] = state.sectors[x][y].people;
-                }
+    // Initialize first 3 rows
+    for x in 0..3usize.min(map_x) {
+        for y in 0..map_y {
+            if state.sectors[x][y].owner as usize == country {
+                newpop[x % 5][y] = state.sectors[x][y].people;
             }
         }
+    }
 
-        for x in 0..map_x {
-            for y in 0..map_y {
-                if state.sectors[x][y].owner as usize != country { continue; }
-                if state.sectors[x][y].people == 0 { continue; }
+    for x in 0..map_x {
+        for y in 0..map_y {
+            if state.sectors[x][y].owner as usize != country {
+                continue;
+            }
+            if state.sectors[x][y].people == 0 {
+                continue;
+            }
 
-                // Sum attractiveness in 5x5 neighborhood
-                let mut t_attr: i64 = 0;
+            // Sum attractiveness in 5x5 neighborhood
+            let mut t_attr: i64 = 0;
+            for i in (x as i32 - 2)..(x as i32 + 3) {
+                for j in (y as i32 - 2)..(y as i32 + 3) {
+                    if state.on_map(i, j) {
+                        t_attr += attr_grid[i as usize][j as usize] as i64;
+                    }
+                }
+            }
+
+            if t_attr > 0 {
+                t_attr *= 5;
+                let people = state.sectors[x][y].people;
+
                 for i in (x as i32 - 2)..(x as i32 + 3) {
                     for j in (y as i32 - 2)..(y as i32 + 3) {
-                        if state.on_map(i, j) {
-                            t_attr += attr_grid[i as usize][j as usize] as i64;
+                        if !state.on_map(i, j) {
+                            continue;
                         }
-                    }
-                }
-
-                if t_attr > 0 {
-                    t_attr *= 5;
-                    let people = state.sectors[x][y].people;
-
-                    for i in (x as i32 - 2)..(x as i32 + 3) {
-                        for j in (y as i32 - 2)..(y as i32 + 3) {
-                            if !state.on_map(i, j) { continue; }
-                            let a = attr_grid[i as usize][j as usize] as i64;
-                            let moved = people * a;
-                            if moved > 0 {
-                                let moved = moved / t_attr;
-                                newpop[x % 5][y] -= moved;
-                                newpop[i as usize % 5][j as usize] += moved;
-                            }
+                        let a = attr_grid[i as usize][j as usize] as i64;
+                        let moved = people * a;
+                        if moved > 0 {
+                            let moved = moved / t_attr;
+                            newpop[x % 5][y] -= moved;
+                            newpop[i as usize % 5][j as usize] += moved;
                         }
-                    }
-                }
-            }
-
-            // Sliding window: write back old row, load new row
-            if x >= 2 {
-                let wx = x - 2;
-                for y in 0..map_y {
-                    if state.sectors[wx][y].owner as usize == country {
-                        state.sectors[wx][y].people = newpop[wx % 5][y];
-                    }
-                }
-            }
-            if x + 3 < map_x {
-                let lx = x + 3;
-                for y in 0..map_y {
-                    if state.sectors[lx][y].owner as usize == country {
-                        newpop[lx % 5][y] = state.sectors[lx][y].people;
-                    } else {
-                        newpop[lx % 5][y] = 0;
                     }
                 }
             }
         }
 
-        // Write back final rows
-        for x in map_x.saturating_sub(2)..map_x {
+        // Sliding window: write back old row, load new row
+        if x >= 2 {
+            let wx = x - 2;
             for y in 0..map_y {
-                if state.sectors[x][y].owner as usize == country {
-                    state.sectors[x][y].people = newpop[x % 5][y];
+                if state.sectors[wx][y].owner as usize == country {
+                    state.sectors[wx][y].people = newpop[wx % 5][y];
                 }
             }
         }
+        if x + 3 < map_x {
+            let lx = x + 3;
+            for y in 0..map_y {
+                if state.sectors[lx][y].owner as usize == country {
+                    newpop[lx % 5][y] = state.sectors[lx][y].people;
+                } else {
+                    newpop[lx % 5][y] = 0;
+                }
+            }
+        }
+    }
+
+    // Write back final rows
+    for x in map_x.saturating_sub(2)..map_x {
+        for y in 0..map_y {
+            if state.sectors[x][y].owner as usize == country {
+                state.sectors[x][y].people = newpop[x % 5][y];
+            }
+        }
+    }
 }
 
 // ━━━ P1: deplete() — capitol loss depletion ━━━
@@ -1576,7 +1771,9 @@ pub fn deplete(state: &mut GameState, nation: usize, rng: &mut ConquerRng) {
     // Disband PDEPLETE% of armies, all monsters
     for armynum in 0..MAXARM {
         let army = &state.nations[nation].armies[armynum];
-        if army.soldiers <= 0 { continue; }
+        if army.soldiers <= 0 {
+            continue;
+        }
 
         let at = army.unit_type;
         if at < UnitType::MIN_LEADER {
@@ -1587,9 +1784,7 @@ pub fn deplete(state: &mut GameState, nation: usize, rng: &mut ConquerRng) {
                 let ay = state.nations[nation].armies[armynum].y as usize;
                 // Return soldiers to population if same race owns the sector
                 let s_owner = state.sectors[ax][ay].owner as usize;
-                if s_owner != 0
-                    && state.nations[s_owner].race == state.nations[nation].race
-                {
+                if s_owner != 0 && state.nations[s_owner].race == state.nations[nation].race {
                     state.sectors[ax][ay].people += soldiers;
                 }
                 state.nations[nation].armies[armynum].soldiers = 0;
@@ -1608,8 +1803,12 @@ pub fn deplete(state: &mut GameState, nation: usize, rng: &mut ConquerRng) {
 
     for i in 0..map_x {
         for j in 0..map_y {
-            if state.sectors[i][j].owner as usize != nation { continue; }
-            if i == cap_x && j == cap_y { continue; }
+            if state.sectors[i][j].owner as usize != nation {
+                continue;
+            }
+            if i == cap_x && j == cap_y {
+                continue;
+            }
 
             if state.sectors[i][j].people > 0 && rng.rand() % 100 < PDEPLETE {
                 if rng.rand() % 100 < PDEPLETE {
@@ -1665,8 +1864,11 @@ pub fn attract(state: &GameState, x: usize, y: usize, race: char) -> i32 {
 
     // Designation-based attractiveness
     if des == Designation::GoldMine as u8 {
-        if sct.jewels >= 6 { attr += GOLDATTR * sct.jewels as i32 * 2; }
-        else { attr += GOLDATTR * sct.jewels as i32; }
+        if sct.jewels >= 6 {
+            attr += GOLDATTR * sct.jewels as i32 * 2;
+        } else {
+            attr += GOLDATTR * sct.jewels as i32;
+        }
     } else if des == Designation::Farm as u8 {
         let owner = sct.owner as usize;
         if owner > 0 {
@@ -1682,8 +1884,11 @@ pub fn attract(state: &GameState, x: usize, y: usize, race: char) -> i32 {
     } else if des == Designation::Town as u8 {
         attr += TOWNATTR;
     } else if des == Designation::Mine as u8 {
-        if sct.metal > 6 { attr += MINEATTR * sct.metal as i32 * 2; }
-        else { attr += MINEATTR * sct.metal as i32; }
+        if sct.metal > 6 {
+            attr += MINEATTR * sct.metal as i32 * 2;
+        } else {
+            attr += MINEATTR * sct.metal as i32;
+        }
     } else if des != Designation::Road as u8
         && des != Designation::NoDesig as u8
         && des != Designation::Devastated as u8
@@ -1695,51 +1900,105 @@ pub fn attract(state: &GameState, x: usize, y: usize, race: char) -> i32 {
     // Race-specific modifiers
     match race {
         'D' => {
-            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += DGOLDATTR; }
-            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += DMINEATTR; }
-            else if des == Designation::Town as u8 { attr += DTOWNATTR; }
-            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += DCITYATTR; }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += DWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += DFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += DMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += DHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += DCLERATTR; }
-            else { attr = 0; }
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 {
+                attr += DGOLDATTR;
+            } else if des == Designation::Mine as u8 && sct.metal > 3 {
+                attr += DMINEATTR;
+            } else if des == Designation::Town as u8 {
+                attr += DTOWNATTR;
+            } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
+                attr += DCITYATTR;
+            }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += DWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += DFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += DMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += DHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += DCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'E' => {
-            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += EGOLDATTR; }
-            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += EMINEATTR; }
-            else if des == Designation::Town as u8 || des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += ECITYATTR; }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += EWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += EFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += EMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += EHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += ECLERATTR; }
-            else { attr = 0; }
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 {
+                attr += EGOLDATTR;
+            } else if des == Designation::Mine as u8 && sct.metal > 3 {
+                attr += EMINEATTR;
+            } else if des == Designation::Town as u8
+                || des == Designation::City as u8
+                || des == Designation::Capitol as u8
+            {
+                attr += ECITYATTR;
+            }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += EWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += EFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += EMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += EHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += ECLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'H' => {
-            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += HGOLDATTR; }
-            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += HMINEATTR; }
-            else if des == Designation::Town as u8 { attr += HTOWNATTR; }
-            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += HCITYATTR; }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += HWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += HFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += HMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += HHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += HCLERATTR; }
-            else { attr = 0; }
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 {
+                attr += HGOLDATTR;
+            } else if des == Designation::Mine as u8 && sct.metal > 3 {
+                attr += HMINEATTR;
+            } else if des == Designation::Town as u8 {
+                attr += HTOWNATTR;
+            } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
+                attr += HCITYATTR;
+            }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += HWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += HFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += HMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += HHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += HCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'O' => {
-            if des == Designation::GoldMine as u8 && sct.jewels > 3 { attr += OGOLDATTR; }
-            else if des == Designation::Mine as u8 && sct.metal > 3 { attr += OMINEATTR; }
-            else if des == Designation::Town as u8 { attr += OTOWNATTR; }
-            else if des == Designation::City as u8 || des == Designation::Capitol as u8 { attr += OCITYATTR; }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += OWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += OFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += OMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += OHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += OCLERATTR; }
-            else { attr = 0; }
+            if des == Designation::GoldMine as u8 && sct.jewels > 3 {
+                attr += OGOLDATTR;
+            } else if des == Designation::Mine as u8 && sct.metal > 3 {
+                attr += OMINEATTR;
+            } else if des == Designation::Town as u8 {
+                attr += OTOWNATTR;
+            } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
+                attr += OCITYATTR;
+            }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += OWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += OFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += OMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += OHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += OCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         _ => {}
     }

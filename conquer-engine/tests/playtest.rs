@@ -2,11 +2,11 @@
 //
 // Runs 10 turns of gameplay and compares against C oracle snapshots.
 
-use conquer_core::*;
 use conquer_core::rng::ConquerRng;
-use conquer_engine::worldgen::{create_world, zeroworld};
-use conquer_engine::turn::update_turn;
+use conquer_core::*;
 use conquer_engine::nation::create_nation;
+use conquer_engine::turn::update_turn;
+use conquer_engine::worldgen::{create_world, zeroworld};
 
 use std::fs;
 use std::path::PathBuf;
@@ -40,9 +40,18 @@ fn load_oracle_snapshot(path: &str) -> Option<OracleSnapshot> {
 
     let total_pop: i64 = active.iter().map(|n| n["tciv"].as_i64().unwrap_or(0)).sum();
     let total_mil: i64 = active.iter().map(|n| n["tmil"].as_i64().unwrap_or(0)).sum();
-    let total_gold: i64 = active.iter().map(|n| n["tgold"].as_i64().unwrap_or(0)).sum();
-    let total_food: i64 = active.iter().map(|n| n["tfood"].as_i64().unwrap_or(0)).sum();
-    let score_sum: i64 = active.iter().map(|n| n["score"].as_i64().unwrap_or(0)).sum();
+    let total_gold: i64 = active
+        .iter()
+        .map(|n| n["tgold"].as_i64().unwrap_or(0))
+        .sum();
+    let total_food: i64 = active
+        .iter()
+        .map(|n| n["tfood"].as_i64().unwrap_or(0))
+        .sum();
+    let score_sum: i64 = active
+        .iter()
+        .map(|n| n["score"].as_i64().unwrap_or(0))
+        .sum();
 
     let nation_scores: Vec<(String, i64)> = active
         .iter()
@@ -86,21 +95,231 @@ struct NpcConfig {
 }
 
 const NPC_NATIONS: &[NpcConfig] = &[
-    NpcConfig { name: "argos",   leader: "The_Ed",  race: 'H', mark: 'A', atk: 10, def: 10, max_move: 9,  gold: 50000,  mil: 1000, points: 60, repro: 8,  alignment: 'i', class: 1 },
-    NpcConfig { name: "anorian", leader: "Anudil",   race: 'E', mark: 'a', atk: 30, def: 40, max_move: 8,  gold: 70000,  mil: 1500, points: 60, repro: 8,  alignment: 'g', class: 3 },
-    NpcConfig { name: "bobland", leader: "Dogon",    race: 'O', mark: 'B', atk: 20, def: 0,  max_move: 6,  gold: 12000,  mil: 1500, points: 70, repro: 12, alignment: 'i', class: 9 },
-    NpcConfig { name: "darboth", leader: "balrog",   race: 'O', mark: 'D', atk: 0,  def: 0,  max_move: 7,  gold: 70000,  mil: 1500, points: 70, repro: 12, alignment: 'e', class: 8 },
-    NpcConfig { name: "edland",  leader: "Debbra",   race: 'H', mark: 'E', atk: 10, def: 15, max_move: 12, gold: 30000,  mil: 1000, points: 60, repro: 8,  alignment: 'g', class: 1 },
-    NpcConfig { name: "fung",    leader: "Fungus",   race: 'E', mark: 'F', atk: 10, def: 40, max_move: 8,  gold: 50000,  mil: 1000, points: 70, repro: 8,  alignment: 'i', class: 1 },
-    NpcConfig { name: "goldor",  leader: "Train",    race: 'D', mark: 'G', atk: 10, def: 15, max_move: 8,  gold: 30000,  mil: 1000, points: 70, repro: 8,  alignment: 'n', class: 2 },
-    NpcConfig { name: "haro",    leader: "Cesear",   race: 'H', mark: 'H', atk: 10, def: 10, max_move: 9,  gold: 30000,  mil: 1500, points: 60, repro: 7,  alignment: 'i', class: 1 },
-    NpcConfig { name: "jodoba",  leader: "Ganalf",   race: 'H', mark: 'J', atk: 10, def: 10, max_move: 2,  gold: 30000,  mil: 1500, points: 60, repro: 8,  alignment: 'n', class: 3 },
-    NpcConfig { name: "muldor",  leader: "Gilur",    race: 'D', mark: 'M', atk: 10, def: 30, max_move: 6,  gold: 160000, mil: 1500, points: 70, repro: 9,  alignment: 'n', class: 1 },
-    NpcConfig { name: "tokus",   leader: "Sumu",     race: 'H', mark: 'T', atk: 10, def: 10, max_move: 8,  gold: 30000,  mil: 1000, points: 60, repro: 8,  alignment: 'e', class: 1 },
-    NpcConfig { name: "woooo",   leader: "Nastus",   race: 'O', mark: 'W', atk: 10, def: 10, max_move: 10, gold: 60000,  mil: 3500, points: 75, repro: 11, alignment: 'e', class: 10 },
-    NpcConfig { name: "frika",   leader: "Frik",     race: 'D', mark: 'f', atk: 10, def: 10, max_move: 8,  gold: 50000,  mil: 1200, points: 60, repro: 10, alignment: 'n', class: 1 },
-    NpcConfig { name: "amazon",  leader: "Diana",    race: 'E', mark: 'X', atk: 10, def: 10, max_move: 8,  gold: 50000,  mil: 1200, points: 60, repro: 10, alignment: 'e', class: 2 },
-    NpcConfig { name: "sahara",  leader: "Barbar",   race: 'H', mark: 'S', atk: 10, def: 10, max_move: 8,  gold: 50000,  mil: 1200, points: 60, repro: 10, alignment: 'i', class: 4 },
+    NpcConfig {
+        name: "argos",
+        leader: "The_Ed",
+        race: 'H',
+        mark: 'A',
+        atk: 10,
+        def: 10,
+        max_move: 9,
+        gold: 50000,
+        mil: 1000,
+        points: 60,
+        repro: 8,
+        alignment: 'i',
+        class: 1,
+    },
+    NpcConfig {
+        name: "anorian",
+        leader: "Anudil",
+        race: 'E',
+        mark: 'a',
+        atk: 30,
+        def: 40,
+        max_move: 8,
+        gold: 70000,
+        mil: 1500,
+        points: 60,
+        repro: 8,
+        alignment: 'g',
+        class: 3,
+    },
+    NpcConfig {
+        name: "bobland",
+        leader: "Dogon",
+        race: 'O',
+        mark: 'B',
+        atk: 20,
+        def: 0,
+        max_move: 6,
+        gold: 12000,
+        mil: 1500,
+        points: 70,
+        repro: 12,
+        alignment: 'i',
+        class: 9,
+    },
+    NpcConfig {
+        name: "darboth",
+        leader: "balrog",
+        race: 'O',
+        mark: 'D',
+        atk: 0,
+        def: 0,
+        max_move: 7,
+        gold: 70000,
+        mil: 1500,
+        points: 70,
+        repro: 12,
+        alignment: 'e',
+        class: 8,
+    },
+    NpcConfig {
+        name: "edland",
+        leader: "Debbra",
+        race: 'H',
+        mark: 'E',
+        atk: 10,
+        def: 15,
+        max_move: 12,
+        gold: 30000,
+        mil: 1000,
+        points: 60,
+        repro: 8,
+        alignment: 'g',
+        class: 1,
+    },
+    NpcConfig {
+        name: "fung",
+        leader: "Fungus",
+        race: 'E',
+        mark: 'F',
+        atk: 10,
+        def: 40,
+        max_move: 8,
+        gold: 50000,
+        mil: 1000,
+        points: 70,
+        repro: 8,
+        alignment: 'i',
+        class: 1,
+    },
+    NpcConfig {
+        name: "goldor",
+        leader: "Train",
+        race: 'D',
+        mark: 'G',
+        atk: 10,
+        def: 15,
+        max_move: 8,
+        gold: 30000,
+        mil: 1000,
+        points: 70,
+        repro: 8,
+        alignment: 'n',
+        class: 2,
+    },
+    NpcConfig {
+        name: "haro",
+        leader: "Cesear",
+        race: 'H',
+        mark: 'H',
+        atk: 10,
+        def: 10,
+        max_move: 9,
+        gold: 30000,
+        mil: 1500,
+        points: 60,
+        repro: 7,
+        alignment: 'i',
+        class: 1,
+    },
+    NpcConfig {
+        name: "jodoba",
+        leader: "Ganalf",
+        race: 'H',
+        mark: 'J',
+        atk: 10,
+        def: 10,
+        max_move: 2,
+        gold: 30000,
+        mil: 1500,
+        points: 60,
+        repro: 8,
+        alignment: 'n',
+        class: 3,
+    },
+    NpcConfig {
+        name: "muldor",
+        leader: "Gilur",
+        race: 'D',
+        mark: 'M',
+        atk: 10,
+        def: 30,
+        max_move: 6,
+        gold: 160000,
+        mil: 1500,
+        points: 70,
+        repro: 9,
+        alignment: 'n',
+        class: 1,
+    },
+    NpcConfig {
+        name: "tokus",
+        leader: "Sumu",
+        race: 'H',
+        mark: 'T',
+        atk: 10,
+        def: 10,
+        max_move: 8,
+        gold: 30000,
+        mil: 1000,
+        points: 60,
+        repro: 8,
+        alignment: 'e',
+        class: 1,
+    },
+    NpcConfig {
+        name: "woooo",
+        leader: "Nastus",
+        race: 'O',
+        mark: 'W',
+        atk: 10,
+        def: 10,
+        max_move: 10,
+        gold: 60000,
+        mil: 3500,
+        points: 75,
+        repro: 11,
+        alignment: 'e',
+        class: 10,
+    },
+    NpcConfig {
+        name: "frika",
+        leader: "Frik",
+        race: 'D',
+        mark: 'f',
+        atk: 10,
+        def: 10,
+        max_move: 8,
+        gold: 50000,
+        mil: 1200,
+        points: 60,
+        repro: 10,
+        alignment: 'n',
+        class: 1,
+    },
+    NpcConfig {
+        name: "amazon",
+        leader: "Diana",
+        race: 'E',
+        mark: 'X',
+        atk: 10,
+        def: 10,
+        max_move: 8,
+        gold: 50000,
+        mil: 1200,
+        points: 60,
+        repro: 10,
+        alignment: 'e',
+        class: 2,
+    },
+    NpcConfig {
+        name: "sahara",
+        leader: "Barbar",
+        race: 'H',
+        mark: 'S',
+        atk: 10,
+        def: 10,
+        max_move: 8,
+        gold: 50000,
+        mil: 1200,
+        points: 60,
+        repro: 10,
+        alignment: 'i',
+        class: 4,
+    },
 ];
 
 fn create_seeded_world(seed: u32) -> (GameState, ConquerRng) {
@@ -174,7 +393,9 @@ fn place_npc_nations(state: &mut GameState, rng: &mut ConquerRng) {
             // Place surrounding sectors
             for dx in -2i32..=2 {
                 for dy in -2i32..=2 {
-                    if dx == 0 && dy == 0 { continue; }
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
                     let nx = x as i32 + dx;
                     let ny = y as i32 + dy;
                     if nx >= 0 && ny >= 0 && nx < map_x as i32 && ny < map_y as i32 {
@@ -312,7 +533,10 @@ fn collect_stats(state: &GameState) -> TurnStats {
 
 fn oracle_dir() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.parent().unwrap().join("oracle/snapshots/seed42_turns")
+    manifest
+        .parent()
+        .unwrap()
+        .join("oracle/snapshots/seed42_turns")
 }
 
 // ════════════════════════════════════════════════════════════
@@ -341,15 +565,23 @@ fn test_10_turn_playtest_seed42() {
     // Debug: check what worldgen produced
     for (i, n) in state.nations.iter().enumerate() {
         if n.is_active() {
-            let sector_count: usize = state.sectors.iter().flatten()
+            let sector_count: usize = state
+                .sectors
+                .iter()
+                .flatten()
                 .filter(|s| s.owner as usize == i)
                 .count();
-            let sector_pop: i64 = state.sectors.iter().flatten()
+            let sector_pop: i64 = state
+                .sectors
+                .iter()
+                .flatten()
                 .filter(|s| s.owner as usize == i)
                 .map(|s| s.people)
                 .sum();
             let alive_armies = n.armies.iter().filter(|a| a.soldiers > 0).count();
-            let army_types: Vec<u8> = n.armies.iter()
+            let army_types: Vec<u8> = n
+                .armies
+                .iter()
                 .filter(|a| a.soldiers > 0)
                 .map(|a| a.unit_type)
                 .collect();
@@ -359,8 +591,11 @@ fn test_10_turn_playtest_seed42() {
             );
         }
     }
-    
-    assert!(init_stats.active_nations > 0, "No active nations after worldgen!");
+
+    assert!(
+        init_stats.active_nations > 0,
+        "No active nations after worldgen!"
+    );
     // Population may be 0 initially if worldgen doesn't set total_civ;
     // it gets calculated during first economy update
     if init_stats.total_pop == 0 {
@@ -368,9 +603,7 @@ fn test_10_turn_playtest_seed42() {
     }
 
     // Compare with oracle turn 1
-    if let Some(oracle) = load_oracle_snapshot(
-        &oracle_path.join("turn1.json").to_string_lossy(),
-    ) {
+    if let Some(oracle) = load_oracle_snapshot(&oracle_path.join("turn1.json").to_string_lossy()) {
         check_oracle_parity("init", &init_stats, &oracle, &mut parity_issues);
     }
 
@@ -592,8 +825,14 @@ fn test_economy_produces_resources() {
     let after = collect_stats(&state);
 
     println!("\n=== Economy test ===");
-    println!("  Before: gold={} food={}", before.total_gold, before.total_food);
-    println!("  After:  gold={} food={}", after.total_gold, after.total_food);
+    println!(
+        "  Before: gold={} food={}",
+        before.total_gold, before.total_food
+    );
+    println!(
+        "  After:  gold={} food={}",
+        after.total_gold, after.total_food
+    );
 
     // After one turn, economy should have produced SOMETHING
     // Gold or food should have changed from initial values
@@ -660,12 +899,27 @@ fn test_deterministic() {
     let stats2 = collect_stats(&state2);
 
     println!("\n=== Determinism test ===");
-    println!("  Run 1: pop={} gold={} scores={}", stats1.total_pop, stats1.total_gold, stats1.score_sum);
-    println!("  Run 2: pop={} gold={} scores={}", stats2.total_pop, stats2.total_gold, stats2.score_sum);
+    println!(
+        "  Run 1: pop={} gold={} scores={}",
+        stats1.total_pop, stats1.total_gold, stats1.score_sum
+    );
+    println!(
+        "  Run 2: pop={} gold={} scores={}",
+        stats2.total_pop, stats2.total_gold, stats2.score_sum
+    );
 
-    assert_eq!(stats1.total_pop, stats2.total_pop, "Population not deterministic!");
-    assert_eq!(stats1.total_gold, stats2.total_gold, "Gold not deterministic!");
-    assert_eq!(stats1.score_sum, stats2.score_sum, "Scores not deterministic!");
+    assert_eq!(
+        stats1.total_pop, stats2.total_pop,
+        "Population not deterministic!"
+    );
+    assert_eq!(
+        stats1.total_gold, stats2.total_gold,
+        "Gold not deterministic!"
+    );
+    assert_eq!(
+        stats1.score_sum, stats2.score_sum,
+        "Scores not deterministic!"
+    );
     assert_eq!(
         stats1.active_nations, stats2.active_nations,
         "Active nations not deterministic!"

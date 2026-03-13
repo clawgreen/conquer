@@ -1,7 +1,7 @@
 // conquer-server/src/routes/websocket.rs — WebSocket upgrade and handling (T312-T320)
 
-use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
@@ -56,7 +56,9 @@ pub async fn ws_upgrade(
         Err(_) => {
             return axum::http::Response::builder()
                 .status(403)
-                .body(axum::body::Body::from("Not a player or spectator in this game"))
+                .body(axum::body::Body::from(
+                    "Not a player or spectator in this game",
+                ))
                 .unwrap()
                 .into_response();
         }
@@ -79,10 +81,16 @@ async fn handle_ws(
     // Register presence (T405) — only for players
     if let Some(nid) = nation_id {
         state.ws_manager.player_connected(game_id, nid).await;
-        state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
-            nation_id: nid,
-            status: "online".to_string(),
-        }).await;
+        state
+            .ws_manager
+            .broadcast(
+                game_id,
+                ServerMessage::PresenceUpdate {
+                    nation_id: nid,
+                    status: "online".to_string(),
+                },
+            )
+            .await;
     }
 
     // Subscribe to game broadcasts
@@ -139,9 +147,15 @@ async fn handle_ws(
                             ClientMessage::Action { action } => {
                                 // Spectators can't submit actions (T429)
                                 if is_spec {
-                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
-                                        message: "Spectators cannot submit actions".to_string(),
-                                    }).await;
+                                    ws_mgr
+                                        .broadcast(
+                                            game_id,
+                                            ServerMessage::Error {
+                                                message: "Spectators cannot submit actions"
+                                                    .to_string(),
+                                            },
+                                        )
+                                        .await;
                                     continue;
                                 }
                                 if let Some(nation_id) = nid {
@@ -151,9 +165,15 @@ async fn handle_ws(
                             ClientMessage::ChatSend { channel, content } => {
                                 // Spectators can only read chat (T431)
                                 if is_spec {
-                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
-                                        message: "Spectators cannot send chat messages".to_string(),
-                                    }).await;
+                                    ws_mgr
+                                        .broadcast(
+                                            game_id,
+                                            ServerMessage::Error {
+                                                message: "Spectators cannot send chat messages"
+                                                    .to_string(),
+                                            },
+                                        )
+                                        .await;
                                     continue;
                                 }
                                 let nation_id = match nid {
@@ -161,34 +181,58 @@ async fn handle_ws(
                                     None => continue,
                                 };
                                 // Validate channel access for private channels (T390)
-                                if channel != "public" && !conquer_db::GameStore::nation_can_see_channel_pub(nation_id, &channel) {
-                                    ws_mgr.broadcast(game_id, ServerMessage::Error {
-                                        message: "Cannot send to this channel".to_string(),
-                                    }).await;
+                                if channel != "public"
+                                    && !conquer_db::GameStore::nation_can_see_channel_pub(
+                                        nation_id, &channel,
+                                    )
+                                {
+                                    ws_mgr
+                                        .broadcast(
+                                            game_id,
+                                            ServerMessage::Error {
+                                                message: "Cannot send to this channel".to_string(),
+                                            },
+                                        )
+                                        .await;
                                     continue;
                                 }
                                 // Store and broadcast chat (T388)
-                                match store.send_chat(
-                                    game_id, Some(nation_id), &channel, &content,
-                                ).await {
+                                match store
+                                    .send_chat(game_id, Some(nation_id), &channel, &content)
+                                    .await
+                                {
                                     Ok(msg) => {
-                                        ws_mgr.broadcast(game_id, ServerMessage::ChatMessage {
-                                            sender_nation_id: Some(nation_id),
-                                            sender_name: msg.sender_name,
-                                            channel: msg.channel,
-                                            content: msg.content,
-                                            timestamp: msg.created_at.to_rfc3339(),
-                                            is_system: false,
-                                        }).await;
+                                        ws_mgr
+                                            .broadcast(
+                                                game_id,
+                                                ServerMessage::ChatMessage {
+                                                    sender_nation_id: Some(nation_id),
+                                                    sender_name: msg.sender_name,
+                                                    channel: msg.channel,
+                                                    content: msg.content,
+                                                    timestamp: msg.created_at.to_rfc3339(),
+                                                    is_system: false,
+                                                },
+                                            )
+                                            .await;
                                     }
                                     Err(e) => {
-                                        ws_mgr.broadcast(game_id, ServerMessage::Error {
-                                            message: format!("Chat error: {}", e),
-                                        }).await;
+                                        ws_mgr
+                                            .broadcast(
+                                                game_id,
+                                                ServerMessage::Error {
+                                                    message: format!("Chat error: {}", e),
+                                                },
+                                            )
+                                            .await;
                                     }
                                 }
                             }
-                            ClientMessage::ChatHistoryRequest { channel, before, limit } => {
+                            ClientMessage::ChatHistoryRequest {
+                                channel,
+                                before,
+                                limit,
+                            } => {
                                 // Validate channel access — spectators only see public (T431)
                                 if channel != "public" {
                                     match nid {
@@ -196,23 +240,35 @@ async fn handle_ws(
                                         _ => continue,
                                     }
                                 }
-                                let before_dt = before.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&chrono::Utc)));
+                                let before_dt = before.and_then(|s| {
+                                    chrono::DateTime::parse_from_rfc3339(&s)
+                                        .ok()
+                                        .map(|d| d.with_timezone(&chrono::Utc))
+                                });
                                 let limit = limit.min(100);
-                                if let Ok(msgs) = store.get_chat(game_id, &channel, limit, before_dt).await {
-                                    let entries: Vec<crate::ws::ChatHistoryEntry> = msgs.into_iter().map(|m| {
-                                        crate::ws::ChatHistoryEntry {
+                                if let Ok(msgs) =
+                                    store.get_chat(game_id, &channel, limit, before_dt).await
+                                {
+                                    let entries: Vec<crate::ws::ChatHistoryEntry> = msgs
+                                        .into_iter()
+                                        .map(|m| crate::ws::ChatHistoryEntry {
                                             sender_nation_id: m.sender_nation_id,
                                             sender_name: m.sender_name,
                                             channel: m.channel,
                                             content: m.content,
                                             timestamp: m.created_at.to_rfc3339(),
                                             is_system: m.is_system,
-                                        }
-                                    }).collect();
-                                    ws_mgr.broadcast(game_id, ServerMessage::ChatHistory {
-                                        channel,
-                                        messages: entries,
-                                    }).await;
+                                        })
+                                        .collect();
+                                    ws_mgr
+                                        .broadcast(
+                                            game_id,
+                                            ServerMessage::ChatHistory {
+                                                channel,
+                                                messages: entries,
+                                            },
+                                        )
+                                        .await;
                                 }
                             }
                         }
@@ -236,9 +292,15 @@ async fn handle_ws(
     // Unregister presence (T405) — only for players
     if let Some(nid) = nation_id {
         state.ws_manager.player_disconnected(game_id, nid).await;
-        state.ws_manager.broadcast(game_id, ServerMessage::PresenceUpdate {
-            nation_id: nid,
-            status: "offline".to_string(),
-        }).await;
+        state
+            .ws_manager
+            .broadcast(
+                game_id,
+                ServerMessage::PresenceUpdate {
+                    nation_id: nid,
+                    status: "offline".to_string(),
+                },
+            )
+            .await;
     }
 }

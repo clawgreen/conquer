@@ -6,15 +6,15 @@
 // - User management with argon2 password hashing
 // - Game lifecycle management
 
+pub mod auth;
 pub mod error;
 pub mod models;
 pub mod store;
-pub mod auth;
 
 #[cfg(feature = "postgres")]
 pub mod pg;
 
+pub use auth::AuthManager;
 pub use error::DbError;
 pub use models::*;
 pub use store::{GameStore, PublicNationInfo, ScoreEntry, ServerStats};
-pub use auth::AuthManager;

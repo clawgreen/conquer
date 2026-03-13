@@ -9,10 +9,10 @@
 // - app: Application state and router construction
 // - metrics: Server metrics collection (T453)
 
+pub mod app;
 pub mod config;
+pub mod errors;
 pub mod jwt;
+pub mod metrics;
 pub mod routes;
 pub mod ws;
-pub mod errors;
-pub mod app;
-pub mod metrics;

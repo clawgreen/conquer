@@ -1,3 +1,4 @@
+use conquer_core::rng::ConquerRng;
 /// Canonical C Parity Tests
 ///
 /// These tests load C oracle snapshots (seed42, turns 1-11) and verify
@@ -6,16 +7,17 @@
 ///
 /// If any of these tests fail after a code change, it means the Rust
 /// engine diverged from C behavior — investigate before committing.
-
 use conquer_core::*;
-use conquer_core::rng::ConquerRng;
 use conquer_engine::economy;
 use conquer_oracle::OracleSnapshot;
 use std::fs;
 use std::path::PathBuf;
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn load_snapshot(name: &str) -> Option<OracleSnapshot> {
@@ -40,8 +42,12 @@ fn compare_nations(
     let expected_nations = expected.nations.as_ref().unwrap();
 
     for en in expected_nations {
-        if en.id == 0 || en.active == 0 { continue; }
-        if en.id >= NTOTAL { continue; }
+        if en.id == 0 || en.active == 0 {
+            continue;
+        }
+        if en.id >= NTOTAL {
+            continue;
+        }
 
         let rn = &rust_state.nations[en.id];
 
@@ -72,10 +78,7 @@ fn compare_nations(
 }
 
 /// Compare army positions and soldier counts.
-fn compare_armies(
-    rust_state: &GameState,
-    expected: &OracleSnapshot,
-) -> Vec<String> {
+fn compare_armies(rust_state: &GameState, expected: &OracleSnapshot) -> Vec<String> {
     let mut mismatches = Vec::new();
     let expected_armies = match &expected.armies {
         Some(a) => a,
@@ -83,7 +86,9 @@ fn compare_armies(
     };
 
     for ea in expected_armies {
-        if ea.nation >= NTOTAL || ea.army >= MAXARM { continue; }
+        if ea.nation >= NTOTAL || ea.army >= MAXARM {
+            continue;
+        }
         let ra = &rust_state.nations[ea.nation].armies[ea.army];
 
         if ra.soldiers != ea.sold {
@@ -116,7 +121,9 @@ fn compare_sectors(
     };
 
     for es in expected_sectors {
-        if es.x >= rust_state.sectors.len() || es.y >= rust_state.sectors[0].len() { continue; }
+        if es.x >= rust_state.sectors.len() || es.y >= rust_state.sectors[0].len() {
+            continue;
+        }
         let rs = &rust_state.sectors[es.x][es.y];
 
         if rs.owner != es.owner {
@@ -156,7 +163,9 @@ fn parity_load_turn1() {
     assert!(active >= 10, "Expected 10+ active nations, got {}", active);
 
     // Should have armies
-    let total_armies: i64 = gs.nations.iter()
+    let total_armies: i64 = gs
+        .nations
+        .iter()
         .flat_map(|n| n.armies.iter())
         .filter(|a| a.soldiers > 0)
         .count() as i64;
@@ -186,7 +195,9 @@ fn parity_nation_metrics_turn1_to_turn2() {
 
     // Compare nation-level metrics
     // Use tolerance because floating-point paths (eat_rate) may differ slightly
-    let fields = ["tgold", "tfood", "tciv", "tmil", "tsctrs", "score", "metals", "jewels"];
+    let fields = [
+        "tgold", "tfood", "tciv", "tmil", "tsctrs", "score", "metals", "jewels",
+    ];
     let mismatches = compare_nations(&gs, &t2, &fields, 0);
 
     if !mismatches.is_empty() {
@@ -271,8 +282,10 @@ fn parity_sector_changes_count() {
             if initial.sectors[x][y].owner != gs.sectors[x][y].owner {
                 rust_changes += 1;
                 if rust_changes <= 10 {
-                    rust_captures.push(format!("  ({},{}) {}→{}",
-                        x, y, initial.sectors[x][y].owner, gs.sectors[x][y].owner));
+                    rust_captures.push(format!(
+                        "  ({},{}) {}→{}",
+                        x, y, initial.sectors[x][y].owner, gs.sectors[x][y].owner
+                    ));
                 }
             }
         }
@@ -280,9 +293,13 @@ fn parity_sector_changes_count() {
 
     eprintln!("\n=== SECTOR CHANGE COMPARISON ===");
     eprintln!("C changes: {} sectors changed owner", c_changes);
-    for c in &c_captures { eprintln!("{}", c); }
+    for c in &c_captures {
+        eprintln!("{}", c);
+    }
     eprintln!("Rust changes: {} sectors changed owner", rust_changes);
-    for r in &rust_captures { eprintln!("{}", r); }
+    for r in &rust_captures {
+        eprintln!("{}", r);
+    }
 
     // Count per-nation sector totals
     let mut rust_sctrs = vec![0i32; NTOTAL];
@@ -300,8 +317,10 @@ fn parity_sector_changes_count() {
         if rust_sctrs[n] != 0 || c_sctrs[n] != 0 {
             let diff = rust_sctrs[n] - c_sctrs[n];
             let marker = if diff.abs() > 2 { " ⚠️" } else { "" };
-            eprintln!("  Nation {:2} ({}): Rust={:3} C={:3} diff={:+3}{}",
-                n, gs.nations[n].name, rust_sctrs[n], c_sctrs[n], diff, marker);
+            eprintln!(
+                "  Nation {:2} ({}): Rust={:3} C={:3} diff={:+3}{}",
+                n, gs.nations[n].name, rust_sctrs[n], c_sctrs[n], diff, marker
+            );
         }
     }
     eprintln!("=== END SECTOR COMPARISON ===\n");
@@ -326,16 +345,34 @@ fn parity_5_turn_stability() {
 
         // Verify no nation has impossible values
         for (i, n) in gs.nations.iter().enumerate() {
-            if !n.is_active() { continue; }
-            assert!(n.total_civ >= 0, "Turn {}: Nation {} has negative civilians: {}", turn, i, n.total_civ);
-            assert!(n.total_mil >= 0, "Turn {}: Nation {} has negative military: {}", turn, i, n.total_mil);
+            if !n.is_active() {
+                continue;
+            }
+            assert!(
+                n.total_civ >= 0,
+                "Turn {}: Nation {} has negative civilians: {}",
+                turn,
+                i,
+                n.total_civ
+            );
+            assert!(
+                n.total_mil >= 0,
+                "Turn {}: Nation {} has negative military: {}",
+                turn,
+                i,
+                n.total_mil
+            );
         }
     }
 
     let final_active = gs.nations.iter().filter(|n| n.is_active()).count();
     // Allow some nations to fall, but not all
-    assert!(final_active >= initial_active / 2,
-        "Too many nations died: {} → {}", initial_active, final_active);
+    assert!(
+        final_active >= initial_active / 2,
+        "Too many nations died: {} → {}",
+        initial_active,
+        final_active
+    );
 }
 
 /// After a full turn (NPC redesignation + att_base), mine_ability should be nonzero
@@ -356,11 +393,15 @@ fn parity_mine_ability_after_turn() {
     let mut any_mine_ability = false;
     for country in 1..NTOTAL {
         let strat = NationStrategy::from_value(gs.nations[country].active);
-        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        if !strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
         if gs.nations[country].mine_ability > 0 {
             any_mine_ability = true;
-            eprintln!("  Nation {} ({}) mine_ability={}",
-                country, gs.nations[country].name, gs.nations[country].mine_ability);
+            eprintln!(
+                "  Nation {} ({}) mine_ability={}",
+                country, gs.nations[country].name, gs.nations[country].mine_ability
+            );
         }
     }
     eprintln!("Any mine_ability > 0: {}", any_mine_ability);
@@ -382,10 +423,16 @@ fn parity_eat_rate_set_by_att_base() {
     for country in 1..NTOTAL {
         let strat = NationStrategy::from_value(gs.nations[country].active);
         // Only check regular nations (isntn), not monsters
-        if !strat.map_or(false, |s| s.is_nation()) { continue; }
-        assert!(gs.nations[country].eat_rate >= 25,
+        if !strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
+        assert!(
+            gs.nations[country].eat_rate >= 25,
             "Nation {} ({}) eat_rate={} (should be >= 25)",
-            country, gs.nations[country].name, gs.nations[country].eat_rate);
+            country,
+            gs.nations[country].name,
+            gs.nations[country].eat_rate
+        );
     }
 }
 
@@ -401,12 +448,20 @@ fn parity_occupancy_enables_capture() {
     // Count how many sectors have a sole army occupier that could capture
     let mut capturable = 0;
     for country in 1..NTOTAL {
-        if !gs.nations[country].is_active() { continue; }
+        if !gs.nations[country].is_active() {
+            continue;
+        }
         for armynum in 0..MAXARM {
             let army = &gs.nations[country].armies[armynum];
-            if army.soldiers <= 0 { continue; }
-            if army.unit_type >= UnitType::MIN_LEADER { continue; }
-            if army.status == ArmyStatus::OnBoard.to_value() { continue; }
+            if army.soldiers <= 0 {
+                continue;
+            }
+            if army.unit_type >= UnitType::MIN_LEADER {
+                continue;
+            }
+            if army.status == ArmyStatus::OnBoard.to_value() {
+                continue;
+            }
             let ax = army.x as usize;
             let ay = army.y as usize;
             if gs.sectors[ax][ay].owner as usize != country
@@ -433,8 +488,10 @@ fn parity_progressive_drift_report() {
     let fields = ["tgold", "tfood", "tciv", "tmil", "tsctrs"];
 
     eprintln!("\n=== PROGRESSIVE PARITY DRIFT REPORT ===");
-    eprintln!("{:>5} {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "Turn", "Gold Δ", "Food Δ", "Civ Δ", "Mil Δ", "Sctrs Δ");
+    eprintln!(
+        "{:>5} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "Turn", "Gold Δ", "Food Δ", "Civ Δ", "Mil Δ", "Sctrs Δ"
+    );
 
     for turn_num in 2..=11 {
         let filename = format!("turn{}.json", turn_num);
@@ -451,7 +508,9 @@ fn parity_progressive_drift_report() {
         let mut count = 0;
 
         for en in expected_nations {
-            if en.id == 0 || en.active == 0 || en.id >= NTOTAL { continue; }
+            if en.id == 0 || en.active == 0 || en.id >= NTOTAL {
+                continue;
+            }
             let rn = &gs.nations[en.id];
             count += 1;
 
@@ -469,7 +528,8 @@ fn parity_progressive_drift_report() {
         }
 
         if count > 0 {
-            eprintln!("{:>5} {:>10} {:>10} {:>10} {:>10} {:>10}",
+            eprintln!(
+                "{:>5} {:>10} {:>10} {:>10} {:>10} {:>10}",
                 turn_num,
                 field_diffs[0] / count,
                 field_diffs[1] / count,

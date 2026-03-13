@@ -67,21 +67,24 @@ pub async fn save_user(pool: &PgPool, user: &User) -> Result<(), DbError> {
 
 pub async fn load_all_users(pool: &PgPool) -> Result<Vec<User>, DbError> {
     let rows = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, email, password_hash, display_name, created_at, is_admin FROM users"
+        "SELECT id, username, email, password_hash, display_name, created_at, is_admin FROM users",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| DbError::Internal(format!("Failed to load users: {}", e)))?;
 
-    Ok(rows.into_iter().map(|r| User {
-        id: r.id,
-        username: r.username,
-        email: r.email,
-        password_hash: r.password_hash,
-        display_name: r.display_name,
-        created_at: r.created_at,
-        is_admin: r.is_admin,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| User {
+            id: r.id,
+            username: r.username,
+            email: r.email,
+            password_hash: r.password_hash,
+            display_name: r.display_name,
+            created_at: r.created_at,
+            is_admin: r.is_admin,
+        })
+        .collect())
 }
 
 #[derive(sqlx::FromRow)]
@@ -146,8 +149,8 @@ pub async fn save_game_state(
     turn: i16,
     state: &GameState,
 ) -> Result<(), DbError> {
-    let state_json = serde_json::to_value(state)
-        .map_err(|e| DbError::SerializationError(e.to_string()))?;
+    let state_json =
+        serde_json::to_value(state).map_err(|e| DbError::SerializationError(e.to_string()))?;
 
     sqlx::query(
         r#"INSERT INTO game_worlds (game_id, turn, data, created_at)
@@ -170,7 +173,7 @@ pub async fn load_latest_game_state(
     game_id: Uuid,
 ) -> Result<Option<(i16, GameState)>, DbError> {
     let row = sqlx::query_as::<_, GameWorldRow>(
-        "SELECT turn, data FROM game_worlds WHERE game_id = $1 ORDER BY turn DESC LIMIT 1"
+        "SELECT turn, data FROM game_worlds WHERE game_id = $1 ORDER BY turn DESC LIMIT 1",
     )
     .bind(game_id)
     .fetch_optional(pool)
@@ -179,8 +182,9 @@ pub async fn load_latest_game_state(
 
     match row {
         Some(r) => {
-            let state: GameState = serde_json::from_value(r.data)
-                .map_err(|e| DbError::SerializationError(format!("Failed to deserialize GameState: {}", e)))?;
+            let state: GameState = serde_json::from_value(r.data).map_err(|e| {
+                DbError::SerializationError(format!("Failed to deserialize GameState: {}", e))
+            })?;
             Ok(Some((r.turn as i16, state)))
         }
         None => Ok(None),
@@ -223,7 +227,7 @@ pub async fn update_player_done(
     done: bool,
 ) -> Result<(), DbError> {
     sqlx::query(
-        "UPDATE game_players SET is_done_this_turn = $1 WHERE game_id = $2 AND user_id = $3"
+        "UPDATE game_players SET is_done_this_turn = $1 WHERE game_id = $2 AND user_id = $3",
     )
     .bind(done)
     .bind(game_id)
@@ -262,13 +266,16 @@ pub async fn load_players(pool: &PgPool, game_id: Uuid) -> Result<Vec<Player>, D
     .await
     .map_err(|e| DbError::Internal(format!("Failed to load players: {}", e)))?;
 
-    Ok(rows.into_iter().map(|r| Player {
-        game_id: r.game_id,
-        user_id: r.user_id,
-        nation_id: r.nation_id as u8,
-        joined_at: r.joined_at,
-        is_done_this_turn: r.is_done_this_turn,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| Player {
+            game_id: r.game_id,
+            user_id: r.user_id,
+            nation_id: r.nation_id as u8,
+            joined_at: r.joined_at,
+            is_done_this_turn: r.is_done_this_turn,
+        })
+        .collect())
 }
 
 #[derive(sqlx::FromRow)]
@@ -326,8 +333,10 @@ pub async fn load_actions(pool: &PgPool, game_id: Uuid) -> Result<Vec<SubmittedA
 
     let mut actions = Vec::new();
     for r in rows {
-        let action: conquer_core::actions::Action = serde_json::from_value(r.action)
-            .map_err(|e| DbError::SerializationError(format!("Failed to deserialize action: {}", e)))?;
+        let action: conquer_core::actions::Action =
+            serde_json::from_value(r.action).map_err(|e| {
+                DbError::SerializationError(format!("Failed to deserialize action: {}", e))
+            })?;
         actions.push(SubmittedAction {
             id: r.id,
             game_id: r.game_id,
@@ -383,25 +392,28 @@ pub async fn load_chat_messages(pool: &PgPool, game_id: Uuid) -> Result<Vec<Chat
     .await
     .map_err(|e| DbError::Internal(format!("Failed to load chat: {}", e)))?;
 
-    Ok(rows.into_iter().map(|r| {
-        let sender_nation_id = r.sender_nation_id.map(|n| n as u8);
-        let is_system = sender_nation_id.is_none();
-        let sender_name = if is_system {
-            "SYSTEM".to_string()
-        } else {
-            format!("Nation {}", sender_nation_id.unwrap())
-        };
-        ChatMessage {
-            id: r.id,
-            game_id: r.game_id,
-            sender_nation_id,
-            sender_name,
-            channel: r.channel,
-            content: r.content,
-            created_at: r.created_at,
-            is_system,
-        }
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let sender_nation_id = r.sender_nation_id.map(|n| n as u8);
+            let is_system = sender_nation_id.is_none();
+            let sender_name = if is_system {
+                "SYSTEM".to_string()
+            } else {
+                format!("Nation {}", sender_nation_id.unwrap())
+            };
+            ChatMessage {
+                id: r.id,
+                game_id: r.game_id,
+                sender_nation_id,
+                sender_name,
+                channel: r.channel,
+                content: r.content,
+                created_at: r.created_at,
+                is_system,
+            }
+        })
+        .collect())
 }
 
 #[derive(sqlx::FromRow)]
@@ -456,15 +468,18 @@ pub async fn load_invites(pool: &PgPool, game_id: Uuid) -> Result<Vec<GameInvite
     .await
     .map_err(|e| DbError::Internal(format!("Failed to load invites: {}", e)))?;
 
-    Ok(rows.into_iter().map(|r| GameInvite {
-        id: r.id,
-        game_id: r.game_id,
-        invite_code: r.invite_code,
-        created_by: r.created_by,
-        expires_at: r.expires_at,
-        max_uses: r.max_uses.map(|u| u as u32),
-        uses: r.uses as u32,
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| GameInvite {
+            id: r.id,
+            game_id: r.game_id,
+            invite_code: r.invite_code,
+            created_by: r.created_by,
+            expires_at: r.expires_at,
+            max_uses: r.max_uses.map(|u| u as u32),
+            uses: r.uses as u32,
+        })
+        .collect())
 }
 
 #[derive(sqlx::FromRow)]
@@ -496,7 +511,7 @@ struct GameMetaRow {
 pub async fn load_all_games(pool: &PgPool) -> Result<Vec<ManagedGame>, DbError> {
     // Load game metadata
     let meta_rows = sqlx::query_as::<_, GameMetaRowSqlx>(
-        "SELECT id, name, seed, status, settings, created_at, updated_at FROM games"
+        "SELECT id, name, seed, status, settings, created_at, updated_at FROM games",
     )
     .fetch_all(pool)
     .await
@@ -516,8 +531,8 @@ pub async fn load_all_games(pool: &PgPool) -> Result<Vec<ManagedGame>, DbError> 
             }
         };
 
-        let settings: GameSettings = serde_json::from_value(meta.settings.clone())
-            .unwrap_or_else(|e| {
+        let settings: GameSettings =
+            serde_json::from_value(meta.settings.clone()).unwrap_or_else(|e| {
                 tracing::warn!("Failed to deserialize settings for game {}: {}", meta.id, e);
                 GameSettings::default()
             });
@@ -545,17 +560,20 @@ pub async fn load_all_games(pool: &PgPool) -> Result<Vec<ManagedGame>, DbError> 
         let invites = load_invites(pool, meta.id).await?;
 
         // Fix up chat sender names from loaded state
-        let mut fixed_chat: Vec<ChatMessage> = chat_messages.into_iter().map(|mut msg| {
-            if let Some(nid) = msg.sender_nation_id {
-                if (nid as usize) < state.nations.len() {
-                    let n = &state.nations[nid as usize];
-                    if !n.name.is_empty() {
-                        msg.sender_name = format!("{} ({})", n.name, n.leader);
+        let mut fixed_chat: Vec<ChatMessage> = chat_messages
+            .into_iter()
+            .map(|mut msg| {
+                if let Some(nid) = msg.sender_nation_id {
+                    if (nid as usize) < state.nations.len() {
+                        let n = &state.nations[nid as usize];
+                        if !n.name.is_empty() {
+                            msg.sender_name = format!("{} ({})", n.name, n.leader);
+                        }
                     }
                 }
-            }
-            msg
-        }).collect();
+                msg
+            })
+            .collect();
 
         let rng = conquer_engine::rng::ConquerRng::new(settings.seed as u32);
 

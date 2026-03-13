@@ -1,3 +1,7 @@
+use conquer_core::constants::*;
+use conquer_core::enums::*;
+use conquer_core::structs::*;
+use conquer_core::tables::*;
 /// Oracle JSON loader — reads C oracle JSON dumps into Rust types.
 ///
 /// The C oracle outputs JSON in this format:
@@ -5,12 +9,7 @@
 /// - nations: [{id, name, leader, active, race, mark, tgold, tfood, tciv, tmil, tsctrs, score, metals, jewels, capx, capy}]
 /// - armies: [{nation, army, xloc, yloc, sold, type, stat}]
 /// - sectors: [{x, y, owner, des, alt, veg, people, metal, jewels}]
-
 use serde::Deserialize;
-use conquer_core::structs::*;
-use conquer_core::constants::*;
-use conquer_core::enums::*;
-use conquer_core::tables::*;
 
 // ============================================================
 // Oracle JSON structures (match the C oracle output exactly)
@@ -185,7 +184,9 @@ impl OracleSnapshot {
         // Nations
         if let Some(nations) = &self.nations {
             for on in nations {
-                if on.id >= NTOTAL { continue; }
+                if on.id >= NTOTAL {
+                    continue;
+                }
                 let n = &mut gs.nations[on.id];
                 n.name = on.name.clone();
                 n.leader = on.leader.clone();
@@ -203,30 +204,78 @@ impl OracleSnapshot {
                 n.cap_x = on.capx;
                 n.cap_y = on.capy;
                 // Extended fields (v2 oracle)
-                if let Some(v) = on.class { n.class = v; }
-                if let Some(v) = on.maxmove { n.max_move = v; }
-                if let Some(v) = on.repro { n.repro = v; }
-                if let Some(v) = on.powers { n.powers = v; }
-                if let Some(v) = on.aplus { n.attack_plus = v; }
-                if let Some(v) = on.dplus { n.defense_plus = v; }
-                if let Some(v) = on.spellpts { n.spell_points = v; }
-                if let Some(v) = on.tships { n.total_ships = v; }
-                if let Some(v) = on.inflation { n.inflation = v; }
-                if let Some(v) = on.charity { n.charity = v; }
-                if let Some(v) = on.tax_rate { n.tax_rate = v; }
-                if let Some(v) = on.prestige { n.prestige = v; }
-                if let Some(v) = on.popularity { n.popularity = v; }
-                if let Some(v) = on.power { n.power = v; }
-                if let Some(v) = on.communications { n.communications = v; }
-                if let Some(v) = on.wealth { n.wealth = v; }
-                if let Some(v) = on.eatrate { n.eat_rate = v; }
-                if let Some(v) = on.spoilrate { n.spoil_rate = v; }
-                if let Some(v) = on.knowledge { n.knowledge = v; }
-                if let Some(v) = on.farm_ability { n.farm_ability = v; }
-                if let Some(v) = on.mine_ability { n.mine_ability = v; }
-                if let Some(v) = on.poverty { n.poverty = v; }
-                if let Some(v) = on.terror { n.terror = v; }
-                if let Some(v) = on.reputation { n.reputation = v; }
+                if let Some(v) = on.class {
+                    n.class = v;
+                }
+                if let Some(v) = on.maxmove {
+                    n.max_move = v;
+                }
+                if let Some(v) = on.repro {
+                    n.repro = v;
+                }
+                if let Some(v) = on.powers {
+                    n.powers = v;
+                }
+                if let Some(v) = on.aplus {
+                    n.attack_plus = v;
+                }
+                if let Some(v) = on.dplus {
+                    n.defense_plus = v;
+                }
+                if let Some(v) = on.spellpts {
+                    n.spell_points = v;
+                }
+                if let Some(v) = on.tships {
+                    n.total_ships = v;
+                }
+                if let Some(v) = on.inflation {
+                    n.inflation = v;
+                }
+                if let Some(v) = on.charity {
+                    n.charity = v;
+                }
+                if let Some(v) = on.tax_rate {
+                    n.tax_rate = v;
+                }
+                if let Some(v) = on.prestige {
+                    n.prestige = v;
+                }
+                if let Some(v) = on.popularity {
+                    n.popularity = v;
+                }
+                if let Some(v) = on.power {
+                    n.power = v;
+                }
+                if let Some(v) = on.communications {
+                    n.communications = v;
+                }
+                if let Some(v) = on.wealth {
+                    n.wealth = v;
+                }
+                if let Some(v) = on.eatrate {
+                    n.eat_rate = v;
+                }
+                if let Some(v) = on.spoilrate {
+                    n.spoil_rate = v;
+                }
+                if let Some(v) = on.knowledge {
+                    n.knowledge = v;
+                }
+                if let Some(v) = on.farm_ability {
+                    n.farm_ability = v;
+                }
+                if let Some(v) = on.mine_ability {
+                    n.mine_ability = v;
+                }
+                if let Some(v) = on.poverty {
+                    n.poverty = v;
+                }
+                if let Some(v) = on.terror {
+                    n.terror = v;
+                }
+                if let Some(v) = on.reputation {
+                    n.reputation = v;
+                }
                 if let Some(ref ds) = on.dstatus {
                     for (i, &val) in ds.iter().enumerate() {
                         if i < NTOTAL {
@@ -240,7 +289,9 @@ impl OracleSnapshot {
         // Armies
         if let Some(armies) = &self.armies {
             for oa in armies {
-                if oa.nation >= NTOTAL || oa.army >= MAXARM { continue; }
+                if oa.nation >= NTOTAL || oa.army >= MAXARM {
+                    continue;
+                }
                 let a = &mut gs.nations[oa.nation].armies[oa.army];
                 a.x = oa.xloc;
                 a.y = oa.yloc;
@@ -256,7 +307,9 @@ impl OracleSnapshot {
         // Sectors
         if let Some(sectors) = &self.sectors {
             for os in sectors {
-                if os.x >= map_x || os.y >= map_y { continue; }
+                if os.x >= map_x || os.y >= map_y {
+                    continue;
+                }
                 let s = &mut gs.sectors[os.x][os.y];
                 // des is a char like 't', 'c', '-', etc.
                 s.designation = os.des.bytes().next().unwrap_or(0);
@@ -266,17 +319,25 @@ impl OracleSnapshot {
                 s.people = os.people;
                 s.metal = os.metal;
                 s.jewels = os.jewels;
-                if let Some(v) = os.fortress { s.fortress = v; }
-                if let Some(v) = os.tradegood { s.trade_good = v; }
+                if let Some(v) = os.fortress {
+                    s.fortress = v;
+                }
+                if let Some(v) = os.tradegood {
+                    s.trade_good = v;
+                }
             }
         }
 
         // Navies
         if let Some(navies) = &self.navies {
             for on in navies {
-                if on.nation >= NTOTAL { continue; }
+                if on.nation >= NTOTAL {
+                    continue;
+                }
                 let navy_idx = on.navy;
-                if navy_idx >= MAXNAVY { continue; }
+                if navy_idx >= MAXNAVY {
+                    continue;
+                }
                 let nvy = &mut gs.nations[on.nation].navies[navy_idx];
                 nvy.x = on.xloc;
                 nvy.y = on.yloc;
@@ -291,7 +352,10 @@ impl OracleSnapshot {
 
         // Post-load: set army movement and max_move when oracle didn't provide them.
         // v2 oracle includes smove directly; v1 needs reconstruction.
-        let has_smove = self.armies.as_ref().map_or(false, |a| a.first().map_or(false, |a| a.smove.is_some()));
+        let has_smove = self
+            .armies
+            .as_ref()
+            .map_or(false, |a| a.first().map_or(false, |a| a.smove.is_some()));
         for country in 1..NTOTAL {
             let strat = NationStrategy::from_value(gs.nations[country].active);
             if !strat.map_or(false, |s| s.is_nation()) && !strat.map_or(false, |s| s.is_monster()) {
@@ -308,7 +372,9 @@ impl OracleSnapshot {
                 let max_move = gs.nations[country].max_move;
                 for armynum in 0..MAXARM {
                     let a = &gs.nations[country].armies[armynum];
-                    if a.soldiers <= 0 { continue; }
+                    if a.soldiers <= 0 {
+                        continue;
+                    }
                     let at = a.unit_type as usize;
                     let unit_move_idx = at % (UTYPE as usize);
                     let unit_move = UNIT_MOVE.get(unit_move_idx).copied().unwrap_or(10);

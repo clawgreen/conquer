@@ -1,6 +1,6 @@
-use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use argon2::password_hash::{SaltString, rand_core::OsRng};
 use crate::error::DbError;
+use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 
 /// Authentication helper for password hashing and verification
 pub struct AuthManager;

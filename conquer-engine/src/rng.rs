@@ -18,12 +18,16 @@ pub trait RngExt {
 
 impl RngExt for ConquerRng {
     fn rand_mod(&mut self, n: i32) -> i32 {
-        if n <= 0 { return 0; }
+        if n <= 0 {
+            return 0;
+        }
         self.rand() % n
     }
 
     fn rand_range(&mut self, lo: i32, hi: i32) -> i32 {
-        if hi <= lo { return lo; }
+        if hi <= lo {
+            return lo;
+        }
         lo + self.rand_mod(hi - lo + 1)
     }
 

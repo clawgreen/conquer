@@ -4,11 +4,11 @@
 // T158-T175: combat(), fight(), cbonus(), retreat(), navalcbt(), takeover(), etc.
 // Every formula, constant, and edge case matches the C exactly.
 
-use conquer_core::*;
+use crate::utils::*;
 use conquer_core::powers::Power;
 use conquer_core::rng::ConquerRng;
 use conquer_core::tables::*;
-use crate::utils::*;
+use conquer_core::*;
 
 /// Maximum number of units in a single battle
 const MGKNUM: usize = 32;
@@ -28,10 +28,10 @@ const COMBAT_N: u8 = 2;
 /// Battle participant info
 #[derive(Debug, Clone)]
 struct BattleUnit {
-    army_idx: usize,     // index into nation.armies
-    owner: i32,          // nation index, negative-1-owner if fled
-    side: i32,           // ATKR, DFND, NTRL, WIMP
-    troops: i64,         // starting troops
+    army_idx: usize, // index into nation.armies
+    owner: i32,      // nation index, negative-1-owner if fled
+    side: i32,       // ATKR, DFND, NTRL, WIMP
+    troops: i64,     // starting troops
 }
 
 /// Result of a single battle
@@ -126,8 +126,7 @@ pub fn cbonus(
     // Dervish/Destroyer bonus in desert/ice
     if (Power::has_power(nation.powers, Power::DESTROYER)
         || Power::has_power(nation.powers, Power::DERVISH))
-        && (sct.vegetation == Vegetation::Ice as u8
-            || sct.vegetation == Vegetation::Desert as u8)
+        && (sct.vegetation == Vegetation::Ice as u8 || sct.vegetation == Vegetation::Desert as u8)
     {
         armbonus += 30;
     }
@@ -212,8 +211,7 @@ pub fn cbonus(
                 armbonus += 5;
             } else if atype == UnitType::LT_CAV.0 || atype == UnitType::CAVALRY.0 {
                 armbonus += 10;
-            } else if avian(atype) || atype == UnitType::ELEPHANT.0 || atype == UnitType::KNIGHT.0
-            {
+            } else if avian(atype) || atype == UnitType::ELEPHANT.0 || atype == UnitType::KNIGHT.0 {
                 armbonus += 15;
             }
             // BUG-COMPAT: C uses (ATYPE>=MINMONSTER)||(ATYPE<=MAXMONSTER) which is always true
@@ -284,8 +282,7 @@ pub fn cbonus_with_merc(
     // Dervish/Destroyer bonus in desert/ice
     if (Power::has_power(nation.powers, Power::DESTROYER)
         || Power::has_power(nation.powers, Power::DERVISH))
-        && (sct.vegetation == Vegetation::Ice as u8
-            || sct.vegetation == Vegetation::Desert as u8)
+        && (sct.vegetation == Vegetation::Ice as u8 || sct.vegetation == Vegetation::Desert as u8)
     {
         armbonus += 30;
     }
@@ -363,8 +360,7 @@ pub fn cbonus_with_merc(
                 armbonus += 5;
             } else if atype == UnitType::LT_CAV.0 || atype == UnitType::CAVALRY.0 {
                 armbonus += 10;
-            } else if avian(atype) || atype == UnitType::ELEPHANT.0 || atype == UnitType::KNIGHT.0
-            {
+            } else if avian(atype) || atype == UnitType::ELEPHANT.0 || atype == UnitType::KNIGHT.0 {
                 armbonus += 15;
             }
             // BUG-COMPAT: C condition always true for monsters due to ||
@@ -529,15 +525,14 @@ pub fn run_combat(state: &mut GameState, rng: &mut ConquerRng) -> Vec<BattleResu
                         continue;
                     }
 
-                    if c != ctry && state.nations[ctry].diplomacy[c] > DiplomaticStatus::Hostile as u8
+                    if c != ctry
+                        && state.nations[ctry].diplomacy[c] > DiplomaticStatus::Hostile as u8
                     {
                         valid = true;
                         if state.sectors[ax][ay].owner as usize == ctry {
                             dnation = ctry;
                             anation = c;
-                        } else if rng.rand() % 2 == 0
-                            || state.sectors[ax][ay].owner as usize == c
-                        {
+                        } else if rng.rand() % 2 == 0 || state.sectors[ax][ay].owner as usize == c {
                             anation = ctry;
                             dnation = c;
                         } else {
@@ -556,7 +551,9 @@ pub fn run_combat(state: &mut GameState, rng: &mut ConquerRng) -> Vec<BattleResu
             }
 
             if valid {
-                let result = fight(state, rng, &mut units, ax as i32, ay as i32, anation, dnation);
+                let result = fight(
+                    state, rng, &mut units, ax as i32, ay as i32, anation, dnation,
+                );
                 results.push(result);
             }
         }
@@ -604,7 +601,8 @@ pub fn run_combat(state: &mut GameState, rng: &mut ConquerRng) -> Vec<BattleResu
 
                     fought[n.x as usize][n.y as usize] |= COMBAT_N;
 
-                    if c != ctry && state.nations[ctry].diplomacy[c] > DiplomaticStatus::Hostile as u8
+                    if c != ctry
+                        && state.nations[ctry].diplomacy[c] > DiplomaticStatus::Hostile as u8
                     {
                         valid = true;
                         anation = ctry;
@@ -621,7 +619,9 @@ pub fn run_combat(state: &mut GameState, rng: &mut ConquerRng) -> Vec<BattleResu
             }
 
             if valid {
-                let result = naval_combat(state, rng, &mut units, nx as i32, ny as i32, anation, dnation);
+                let result = naval_combat(
+                    state, rng, &mut units, nx as i32, ny as i32, anation, dnation,
+                );
                 results.push(result);
             }
         }
@@ -692,7 +692,9 @@ fn fight(
         let astat = army.status;
 
         // Mercenary/orc/goblin 15% chance to refuse to fight
-        if (atype == UnitType::MERCENARY.0 || atype == UnitType::ORC.0 || atype == UnitType::GOBLIN.0)
+        if (atype == UnitType::MERCENARY.0
+            || atype == UnitType::ORC.0
+            || atype == UnitType::GOBLIN.0)
             && astat < NUMSTATUS
             && rng.rand() % 100 < 15
         {
@@ -706,7 +708,8 @@ fn fight(
                 nation.armies[aidx].soldiers = nation.armies[aidx].soldiers * 7 / 10;
             } else {
                 // Retreat and kill 20%
-                state.nations[o].armies[aidx].soldiers = state.nations[o].armies[aidx].soldiers * 8 / 10;
+                state.nations[o].armies[aidx].soldiers =
+                    state.nations[o].armies[aidx].soldiers * 8 / 10;
                 state.nations[o].armies[aidx].x = rx as u8;
                 state.nations[o].armies[aidx].y = ry as u8;
             }
@@ -819,14 +822,30 @@ fn fight(
 
         if units[i].side == ATKR {
             let cb = cbonus_with_merc(
-                army, nation, ATKR, xspot, yspot, sct, o, mc,
-                state.world.merc_aplus, state.world.merc_dplus,
+                army,
+                nation,
+                ATKR,
+                xspot,
+                yspot,
+                sct,
+                o,
+                mc,
+                state.world.merc_aplus,
+                state.world.merc_dplus,
             );
             abonus += (cb as i64) * units[i].troops;
         } else if units[i].side == DFND && army.status != ArmyStatus::Rule.to_value() {
             let cb = cbonus_with_merc(
-                army, nation, DFND, xspot, yspot, sct, o, mc,
-                state.world.merc_aplus, state.world.merc_dplus,
+                army,
+                nation,
+                DFND,
+                xspot,
+                yspot,
+                sct,
+                o,
+                mc,
+                state.world.merc_aplus,
+                state.world.merc_dplus,
             );
             dbonus += (cb as i64) * units[i].troops;
         }
@@ -977,12 +996,14 @@ fn fight(
     // Retreat check
     let mut retreat_side: i32 = 0;
 
-    if pd_loss > 2 * pa_loss && odds > 150
+    if pd_loss > 2 * pa_loss
+        && odds > 150
         && ((pd_loss >= 50 && rng.rand() % 4 == 0) || rng.rand() % 8 != 0)
     {
         retreat_side = DFND;
     }
-    if pa_loss > 2 * pd_loss && odds < 150
+    if pa_loss > 2 * pd_loss
+        && odds < 150
         && ((pa_loss >= 50 && rng.rand() % 2 == 0) || rng.rand() % 6 != 0)
     {
         retreat_side = ATKR;
@@ -1033,7 +1054,9 @@ fn fight(
         let mut loss: i64;
 
         if units[i].side == ATKR {
-            if UnitType(atype).is_leader() || UnitType(atype).is_monster() && atype >= UnitType::MIN_LEADER {
+            if UnitType(atype).is_leader()
+                || UnitType(atype).is_monster() && atype >= UnitType::MIN_LEADER
+            {
                 if (rng.rand() % 100) < pa_loss {
                     // Kill leader
                     for jj in 0..MAXARM {
@@ -1106,7 +1129,13 @@ fn fight(
             && atype != UnitType::ZOMBIE.0
             && atype < UnitType::MIN_LEADER
         {
-            loss = troops * (if units[i].side == ATKR { pa_loss } else { pd_loss }) as i64 / 100;
+            loss = troops
+                * (if units[i].side == ATKR {
+                    pa_loss
+                } else {
+                    pd_loss
+                }) as i64
+                / 100;
             vampire_pool += loss / 3;
         }
     }

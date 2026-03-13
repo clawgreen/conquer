@@ -1,19 +1,26 @@
-/// Debug test: trace NPC army movement for a single nation to find why armies don't move.
-use conquer_core::*;
 use conquer_core::constants::*;
 use conquer_core::enums::*;
+/// Debug test: trace NPC army movement for a single nation to find why armies don't move.
+use conquer_core::*;
 use conquer_engine::rng::ConquerRng;
 use conquer_oracle::OracleSnapshot;
 use std::fs;
 use std::path::PathBuf;
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn load_snapshot(name: &str) -> Option<OracleSnapshot> {
-    let path = project_root().join("oracle/snapshots/seed42_turns").join(name);
-    if !path.exists() { return None; }
+    let path = project_root()
+        .join("oracle/snapshots/seed42_turns")
+        .join(name);
+    if !path.exists() {
+        return None;
+    }
     let data = fs::read_to_string(&path).ok()?;
     serde_json::from_str(&data).ok()
 }
@@ -22,7 +29,10 @@ fn load_snapshot(name: &str) -> Option<OracleSnapshot> {
 fn debug_army_status_all_nations() {
     let t1 = match load_snapshot("turn1.json") {
         Some(s) => s,
-        None => { eprintln!("No snapshot"); return; },
+        None => {
+            eprintln!("No snapshot");
+            return;
+        }
     };
     let gs = t1.to_game_state();
 
@@ -37,7 +47,9 @@ fn debug_army_status_all_nations() {
             if a.soldiers > 0 {
                 alive += 1;
                 total_soldiers += a.soldiers;
-                if a.movement > 0 { has_movement += 1; }
+                if a.movement > 0 {
+                    has_movement += 1;
+                }
             }
         }
         let sectors: usize = (0..gs.world.map_x as usize)
@@ -59,11 +71,16 @@ fn debug_nation_run_trace() {
     let mut rng = ConquerRng::new(42);
 
     // Consume 19 RNG values for nation ordering
-    for _ in 0..19 { rng.rand(); }
+    for _ in 0..19 {
+        rng.rand();
+    }
 
     // First nation in C order is 6 (fung)
     let nation_idx = 6;
-    eprintln!("\n=== RUNNING NATION {} ({}) ===", nation_idx, gs.nations[nation_idx].name);
+    eprintln!(
+        "\n=== RUNNING NATION {} ({}) ===",
+        nation_idx, gs.nations[nation_idx].name
+    );
 
     // Armies before
     let mut before = Vec::new();
@@ -71,8 +88,10 @@ fn debug_nation_run_trace() {
         let a = &gs.nations[nation_idx].armies[i];
         if a.soldiers > 0 {
             before.push((i, a.x, a.y, a.status, a.unit_type, a.soldiers, a.movement));
-            eprintln!("  Before Army[{:2}]: ({},{}) type={} stat={} sold={} move={}",
-                i, a.x, a.y, a.unit_type, a.status, a.soldiers, a.movement);
+            eprintln!(
+                "  Before Army[{:2}]: ({},{}) type={} stat={} sold={} move={}",
+                i, a.x, a.y, a.unit_type, a.status, a.soldiers, a.movement
+            );
         }
     }
 
@@ -94,12 +113,16 @@ fn debug_nation_run_trace() {
             if let Some(&(_, bx, by, bstat, _, _, _)) = before.iter().find(|&&(idx, ..)| idx == i) {
                 if a.x != bx || a.y != by {
                     moved += 1;
-                    eprintln!("  MOVED Army[{:2}]: ({},{})->({},{}) stat={}->{}",
-                        i, bx, by, a.x, a.y, bstat, a.status);
+                    eprintln!(
+                        "  MOVED Army[{:2}]: ({},{})->({},{}) stat={}->{}",
+                        i, bx, by, a.x, a.y, bstat, a.status
+                    );
                 } else if a.status != bstat {
                     stat_changed += 1;
-                    eprintln!("  STAT  Army[{:2}]: ({},{}) stat={}->{}",
-                        i, a.x, a.y, bstat, a.status);
+                    eprintln!(
+                        "  STAT  Army[{:2}]: ({},{}) stat={}->{}",
+                        i, a.x, a.y, bstat, a.status
+                    );
                 }
             }
         }
@@ -110,8 +133,10 @@ fn debug_nation_run_trace() {
         .filter(|&(x, y)| gs.sectors[x][y].owner == nation_idx as u8)
         .count();
 
-    eprintln!("After: {} moved, {} stat changed, sectors {}->{}",
-        moved, stat_changed, before_sectors, after_sectors);
+    eprintln!(
+        "After: {} moved, {} stat changed, sectors {}->{}",
+        moved, stat_changed, before_sectors, after_sectors
+    );
     if !news.is_empty() {
         eprintln!("News: {:?}", &news[..news.len().min(5)]);
     }
@@ -142,8 +167,12 @@ fn debug_full_turn_sector_trace() {
             for y in 0..map_y {
                 let was_mine = initial.sectors[x][y].owner == n as u8;
                 let is_mine = gs.sectors[x][y].owner == n as u8;
-                if !was_mine && is_mine { gained += 1; }
-                if was_mine && !is_mine { lost += 1; }
+                if !was_mine && is_mine {
+                    gained += 1;
+                }
+                if was_mine && !is_mine {
+                    lost += 1;
+                }
             }
         }
         if gained > 0 || lost > 0 {
@@ -151,26 +180,36 @@ fn debug_full_turn_sector_trace() {
                 .flat_map(|x| (0..map_y).map(move |y| (x, y)))
                 .filter(|&(x, y)| gs.sectors[x][y].owner == n as u8)
                 .count();
-            eprintln!("  Nation {:2} ({:12}): gained={:2} lost={:2} total={}",
-                n, gs.nations[n].name, gained, lost, total);
+            eprintln!(
+                "  Nation {:2} ({:12}): gained={:2} lost={:2} total={}",
+                n, gs.nations[n].name, gained, lost, total
+            );
         }
     }
     // Also check monsters
     for n in 31..35 {
-        if n >= gs.nations.len() { continue; }
+        if n >= gs.nations.len() {
+            continue;
+        }
         let mut gained = 0;
         let mut lost = 0;
         for x in 0..map_x {
             for y in 0..map_y {
                 let was_mine = initial.sectors[x][y].owner == n as u8;
                 let is_mine = gs.sectors[x][y].owner == n as u8;
-                if !was_mine && is_mine { gained += 1; }
-                if was_mine && !is_mine { lost += 1; }
+                if !was_mine && is_mine {
+                    gained += 1;
+                }
+                if was_mine && !is_mine {
+                    lost += 1;
+                }
             }
         }
         if gained > 0 || lost > 0 {
-            eprintln!("  Nation {:2} ({:12}): gained={:2} lost={:2}",
-                n, gs.nations[n].name, gained, lost);
+            eprintln!(
+                "  Nation {:2} ({:12}): gained={:2} lost={:2}",
+                n, gs.nations[n].name, gained, lost
+            );
         }
     }
 }
@@ -188,8 +227,11 @@ fn debug_move_costs() {
 
     let cx = gs.nations[1].cap_x as i32;
     let cy = gs.nations[1].cap_y as i32;
-    eprintln!("\n=== MOVE COSTS FOR NATION 1 (argos, cap={},{}) ===", cx, cy);
-    
+    eprintln!(
+        "\n=== MOVE COSTS FOR NATION 1 (argos, cap={},{}) ===",
+        cx, cy
+    );
+
     let mut passable = 0;
     let mut impassable = 0;
     let mut zero = 0;
@@ -198,13 +240,20 @@ fn debug_move_costs() {
     for x in 0..map_x {
         for y in 0..map_y {
             let cost = gs.move_cost[x][y];
-            if cost > 0 { passable += 1; }
-            else if cost < 0 { impassable += 1; }
-            else { zero += 1; }
+            if cost > 0 {
+                passable += 1;
+            } else if cost < 0 {
+                impassable += 1;
+            } else {
+                zero += 1;
+            }
         }
     }
-    eprintln!("Passable: {}, Impassable: {}, Zero(water?): {}", passable, impassable, zero);
-    
+    eprintln!(
+        "Passable: {}, Impassable: {}, Zero(water?): {}",
+        passable, impassable, zero
+    );
+
     // Show costs near capitol
     for dx in -4..=4i32 {
         let mut row = String::new();

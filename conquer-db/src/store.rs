@@ -5,17 +5,17 @@
 // When a PgPool is provided, all writes are persisted to Postgres.
 // On startup with Postgres, hydrate() loads all data into memory.
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use conquer_core::*;
 use conquer_core::actions::Action;
-use conquer_engine::worldgen;
+use conquer_core::*;
 use conquer_engine::rng::ConquerRng;
+use conquer_engine::worldgen;
 
 use crate::auth::AuthManager;
 use crate::error::DbError;
@@ -195,13 +195,19 @@ impl GameStore {
         {
             let idx = self.username_index.read().await;
             if idx.contains_key(&username_lower) {
-                return Err(DbError::AlreadyExists(format!("Username '{}' taken", username)));
+                return Err(DbError::AlreadyExists(format!(
+                    "Username '{}' taken",
+                    username
+                )));
             }
         }
         {
             let idx = self.email_index.read().await;
             if idx.contains_key(&email_lower) {
-                return Err(DbError::AlreadyExists(format!("Email '{}' already registered", email)));
+                return Err(DbError::AlreadyExists(format!(
+                    "Email '{}' already registered",
+                    email
+                )));
             }
         }
 
@@ -227,18 +233,15 @@ impl GameStore {
             let user_clone = user.clone();
             self.persist("create_user", |pool| async move {
                 crate::pg::save_user(&pool, &user_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(user)
     }
 
     /// Authenticate user by username + password, return user
-    pub async fn authenticate_user(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<User, DbError> {
+    pub async fn authenticate_user(&self, username: &str, password: &str) -> Result<User, DbError> {
         let username_lower = username.to_lowercase();
         let user_id = {
             let idx = self.username_index.read().await;
@@ -331,8 +334,15 @@ impl GameStore {
             let info_clone = info.clone();
             self.persist("create_game", |pool| async move {
                 crate::pg::save_game_info(&pool, &info_clone).await?;
-                crate::pg::save_game_state(&pool, info_clone.id, info_clone.current_turn, &state_for_persist).await
-            }).await;
+                crate::pg::save_game_state(
+                    &pool,
+                    info_clone.id,
+                    info_clone.current_turn,
+                    &state_for_persist,
+                )
+                .await
+            })
+            .await;
         }
 
         Ok(info)
@@ -374,7 +384,8 @@ impl GameStore {
     /// Delete (archive) a game
     pub async fn delete_game(&self, game_id: Uuid) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.info.status = GameStatus::Completed;
         game.info.updated_at = Utc::now();
@@ -383,7 +394,8 @@ impl GameStore {
         #[cfg(feature = "postgres")]
         self.persist("delete_game", |pool| async move {
             crate::pg::delete_game_row(&pool, game_id).await
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -405,12 +417,15 @@ impl GameStore {
         mark: char,
     ) -> Result<Player, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         // If user already in this game, reject
         if game.players.iter().any(|p| p.user_id == user_id) {
-            return Err(DbError::InvalidState("Already joined this game".to_string()));
+            return Err(DbError::InvalidState(
+                "Already joined this game".to_string(),
+            ));
         }
 
         // Find first available nation slot (skip 0 = God)
@@ -434,8 +449,12 @@ impl GameStore {
             for y in 1..map_y.saturating_sub(1) {
                 let s = &game.state.sectors[x][y];
                 // Must be habitable land (not water, not peak, has food potential)
-                if s.altitude == 0 || s.altitude == 1 { continue; } // water or peak
-                if s.owner != 0 { continue; } // already owned
+                if s.altitude == 0 || s.altitude == 1 {
+                    continue;
+                } // water or peak
+                if s.owner != 0 {
+                    continue;
+                } // already owned
 
                 // Check not too close to existing nations (min 2 sectors away)
                 let mut too_close = false;
@@ -450,9 +469,13 @@ impl GameStore {
                             }
                         }
                     }
-                    if too_close { break; }
+                    if too_close {
+                        break;
+                    }
                 }
-                if too_close { continue; }
+                if too_close {
+                    continue;
+                }
 
                 // Score: prefer good vegetation, clear altitude, food
                 let veg_score = match s.vegetation {
@@ -521,7 +544,9 @@ impl GameStore {
         // Also claim surrounding habitable sectors
         for dx in -1i32..=1 {
             for dy in -1i32..=1 {
-                if dx == 0 && dy == 0 { continue; }
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
                 let nx = start_x as i32 + dx;
                 let ny = start_y as i32 + dy;
                 if nx >= 0 && nx < map_x as i32 && ny >= 0 && ny < map_y as i32 {
@@ -557,13 +582,25 @@ impl GameStore {
 
         // System message: nation joined (T395)
         let race_name = match race {
-            'H' => "Human", 'E' => "Elf", 'D' => "Dwarf", 'O' => "Orc",
-            'L' => "Lizard", 'P' => "Pirate", 'S' => "Savage", 'N' => "Nomad",
+            'H' => "Human",
+            'E' => "Elf",
+            'D' => "Dwarf",
+            'O' => "Orc",
+            'L' => "Lizard",
+            'P' => "Pirate",
+            'S' => "Savage",
+            'N' => "Nomad",
             _ => "Unknown",
         };
         let class_name = match class {
-            0 => "Monster", 1 => "King", 2 => "Emperor", 3 => "Wizard",
-            4 => "Priest", 5 => "Pirate", 6 => "Trader", 7 => "Warlord",
+            0 => "Monster",
+            1 => "King",
+            2 => "Emperor",
+            3 => "Wizard",
+            4 => "Priest",
+            5 => "Pirate",
+            6 => "Trader",
+            7 => "Warlord",
             _ => "Adventurer",
         };
         let sys_msg = ChatMessage {
@@ -572,7 +609,10 @@ impl GameStore {
             sender_nation_id: None,
             sender_name: "SYSTEM".to_string(),
             channel: "public".to_string(),
-            content: format!("⚔ The nation of {} ({} {}) has entered the world!", nation_name, race_name, class_name),
+            content: format!(
+                "⚔ The nation of {} ({} {}) has entered the world!",
+                nation_name, race_name, class_name
+            ),
             created_at: Utc::now(),
             is_system: true,
         };
@@ -591,20 +631,18 @@ impl GameStore {
                 crate::pg::save_game_info(&pool, &info_clone).await?;
                 crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await?;
                 crate::pg::save_chat_message(&pool, &sys_msg).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(player)
     }
 
     /// Get player info for a user in a game
-    pub async fn get_player(
-        &self,
-        game_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<Player, DbError> {
+    pub async fn get_player(&self, game_id: Uuid, user_id: Uuid) -> Result<Player, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.players
             .iter()
@@ -616,7 +654,8 @@ impl GameStore {
     /// List players in a game
     pub async fn list_players(&self, game_id: Uuid) -> Result<Vec<Player>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(game.players.clone())
     }
@@ -629,9 +668,11 @@ impl GameStore {
         done: bool,
     ) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
-        let player = game.players
+        let player = game
+            .players
             .iter_mut()
             .find(|p| p.user_id == user_id)
             .ok_or_else(|| DbError::NotFound("Player not in game".to_string()))?;
@@ -641,7 +682,8 @@ impl GameStore {
         #[cfg(feature = "postgres")]
         self.persist("set_player_done", |pool| async move {
             crate::pg::update_player_done(&pool, game_id, user_id, done).await
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -649,7 +691,8 @@ impl GameStore {
     /// Check if all players are done
     pub async fn all_players_done(&self, game_id: Uuid) -> Result<bool, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(!game.players.is_empty() && game.players.iter().all(|p| p.is_done_this_turn))
     }
@@ -666,11 +709,14 @@ impl GameStore {
         action: Action,
     ) -> Result<SubmittedAction, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let turn = game.state.world.turn;
-        let order = game.actions.iter()
+        let order = game
+            .actions
+            .iter()
             .filter(|a| a.turn == turn && a.nation_id == nation_id)
             .count() as u32;
 
@@ -693,7 +739,8 @@ impl GameStore {
             drop(games);
             self.persist("submit_action", |pool| async move {
                 crate::pg::save_action(&pool, &submitted_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(submitted)
@@ -706,10 +753,13 @@ impl GameStore {
         nation_id: u8,
     ) -> Result<Vec<SubmittedAction>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         let turn = game.state.world.turn;
-        Ok(game.actions.iter()
+        Ok(game
+            .actions
+            .iter()
             .filter(|a| a.turn == turn && a.nation_id == nation_id)
             .cloned()
             .collect())
@@ -723,12 +773,14 @@ impl GameStore {
         nation_id: u8,
     ) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         let turn = game.state.world.turn;
-        let idx = game.actions.iter().position(|a| {
-            a.id == action_id && a.nation_id == nation_id && a.turn == turn
-        });
+        let idx = game
+            .actions
+            .iter()
+            .position(|a| a.id == action_id && a.nation_id == nation_id && a.turn == turn);
         match idx {
             Some(i) => {
                 game.actions.remove(i);
@@ -737,7 +789,8 @@ impl GameStore {
                 #[cfg(feature = "postgres")]
                 self.persist("retract_action", |pool| async move {
                     crate::pg::delete_action(&pool, action_id).await
-                }).await;
+                })
+                .await;
 
                 Ok(())
             }
@@ -753,12 +806,16 @@ impl GameStore {
     /// Returns the new turn number.
     pub async fn run_turn(&self, game_id: Uuid) -> Result<i16, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        if game.info.status != GameStatus::Active && game.info.status != GameStatus::WaitingForPlayers {
+        if game.info.status != GameStatus::Active
+            && game.info.status != GameStatus::WaitingForPlayers
+        {
             return Err(DbError::InvalidState(format!(
-                "Cannot advance turn: game is {}", game.info.status
+                "Cannot advance turn: game is {}",
+                game.info.status
             )));
         }
 
@@ -779,16 +836,17 @@ impl GameStore {
         }
 
         // Collect actions for this turn, sorted by nation then order
-        let mut turn_actions: Vec<_> = game.actions.iter()
+        let mut turn_actions: Vec<_> = game
+            .actions
+            .iter()
             .filter(|a| a.turn == current_turn)
             .cloned()
             .collect();
         turn_actions.sort_by_key(|a| (a.nation_id, a.order));
 
         // Track which PC nations submitted actions this turn (for CMOVE logic)
-        let nations_with_actions: std::collections::HashSet<u8> = turn_actions.iter()
-            .map(|a| a.nation_id)
-            .collect();
+        let nations_with_actions: std::collections::HashSet<u8> =
+            turn_actions.iter().map(|a| a.nation_id).collect();
 
         // Apply player actions to game state
         for sa in &turn_actions {
@@ -797,7 +855,7 @@ impl GameStore {
 
         // Seed RNG from turn number for determinism
         let mut rng = conquer_core::rng::ConquerRng::new(
-            (game.state.world.turn as u32).wrapping_mul(42) + 12345
+            (game.state.world.turn as u32).wrapping_mul(42) + 12345,
         );
 
         // ── T11: Verified turn order matches C original/update.c update() ──
@@ -829,14 +887,18 @@ impl GameStore {
             }
             for &nation_idx in &nation_order {
                 let active = game.state.nations[nation_idx].active;
-                if active == 0 { continue; }
+                if active == 0 {
+                    continue;
+                }
                 let strat = conquer_core::NationStrategy::from_value(active);
                 let is_npc = strat.map_or(false, |s| s.is_npc());
                 let is_pc = strat.map_or(false, |s| s.is_pc());
                 // Run NPC AI for NPC nations, and for PC nations that didn't move (CMOVE)
-                let should_run_npc = is_npc || (is_pc && !nations_with_actions.contains(&(nation_idx as u8)));
+                let should_run_npc =
+                    is_npc || (is_pc && !nations_with_actions.contains(&(nation_idx as u8)));
                 if should_run_npc {
-                    let _news = conquer_engine::npc::nation_run(&mut game.state, nation_idx, &mut rng);
+                    let _news =
+                        conquer_engine::npc::nation_run(&mut game.state, nation_idx, &mut rng);
                     // Could push news items to game.news here
                 }
             }
@@ -946,7 +1008,10 @@ impl GameStore {
             sender_nation_id: None,
             sender_name: "SYSTEM".to_string(),
             channel: "public".to_string(),
-            content: format!("━━━ Turn {} ({}, Year {}) has begun ━━━", new_turn, season, year),
+            content: format!(
+                "━━━ Turn {} ({}, Year {}) has begun ━━━",
+                new_turn, season, year
+            ),
             created_at: Utc::now(),
             is_system: true,
         };
@@ -963,7 +1028,8 @@ impl GameStore {
                 crate::pg::save_game_info(&pool, &info_clone).await?;
                 crate::pg::reset_players_done(&pool, game_id).await?;
                 crate::pg::save_chat_message(&pool, &sys_msg).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(new_turn)
@@ -980,7 +1046,8 @@ impl GameStore {
         turn: Option<i16>,
     ) -> Result<Vec<NewsEntry>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(match turn {
             Some(t) => game.news.iter().filter(|n| n.turn == t).cloned().collect(),
@@ -1002,19 +1069,24 @@ impl GameStore {
         content: &str,
     ) -> Result<ChatMessage, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         // Rate limiting: max 5 messages in 10 seconds per nation (T393)
         if let Some(nid) = sender_nation_id {
             let now = Utc::now();
             let window = chrono::Duration::seconds(10);
-            let recent_count = game.chat_messages.iter()
+            let recent_count = game
+                .chat_messages
+                .iter()
                 .filter(|m| m.sender_nation_id == Some(nid) && !m.is_system)
                 .filter(|m| now.signed_duration_since(m.created_at) < window)
                 .count();
             if recent_count >= 5 {
-                return Err(DbError::InvalidState("Rate limited: too many messages".to_string()));
+                return Err(DbError::InvalidState(
+                    "Rate limited: too many messages".to_string(),
+                ));
             }
         }
 
@@ -1056,7 +1128,8 @@ impl GameStore {
             drop(games);
             self.persist("send_chat", |pool| async move {
                 crate::pg::save_chat_message(&pool, &msg_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(msg)
@@ -1070,7 +1143,8 @@ impl GameStore {
         content: &str,
     ) -> Result<ChatMessage, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let msg = ChatMessage {
@@ -1097,7 +1171,8 @@ impl GameStore {
             drop(games);
             self.persist("send_system_message", |pool| async move {
                 crate::pg::save_chat_message(&pool, &msg_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(msg)
@@ -1112,10 +1187,13 @@ impl GameStore {
         before: Option<DateTime<Utc>>,
     ) -> Result<Vec<ChatMessage>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        let mut msgs: Vec<_> = game.chat_messages.iter()
+        let mut msgs: Vec<_> = game
+            .chat_messages
+            .iter()
             .filter(|m| m.channel == channel)
             .filter(|m| before.map_or(true, |b| m.created_at < b))
             .cloned()
@@ -1137,7 +1215,9 @@ impl GameStore {
     ) -> Result<Vec<ChatMessage>, DbError> {
         // Validate the nation can see this channel
         if channel != "public" && !Self::nation_can_see_channel(nation_id, channel) {
-            return Err(DbError::Unauthorized("Cannot access this channel".to_string()));
+            return Err(DbError::Unauthorized(
+                "Cannot access this channel".to_string(),
+            ));
         }
         self.get_chat(game_id, channel, limit, before).await
     }
@@ -1167,7 +1247,11 @@ impl GameStore {
     /// Get the canonical channel name for a private nation-to-nation channel
     /// Always orders nation IDs so smaller is first: "nation_1_3" not "nation_3_1"
     pub fn private_channel_name(nation_a: u8, nation_b: u8) -> String {
-        let (lo, hi) = if nation_a < nation_b { (nation_a, nation_b) } else { (nation_b, nation_a) };
+        let (lo, hi) = if nation_a < nation_b {
+            (nation_a, nation_b)
+        } else {
+            (nation_b, nation_a)
+        };
         format!("nation_{}_{}", lo, hi)
     }
 
@@ -1178,7 +1262,8 @@ impl GameStore {
         nation_id: u8,
     ) -> Result<Vec<String>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let mut channels = vec!["public".to_string()];
@@ -1197,26 +1282,22 @@ impl GameStore {
     /// Get connected nation IDs for a game (for presence tracking) (T405)
     /// Note: actual presence is tracked via WebSocket connections;
     /// this returns player nation_ids for the game
-    pub async fn get_player_nation_ids(
-        &self,
-        game_id: Uuid,
-    ) -> Result<Vec<u8>, DbError> {
+    pub async fn get_player_nation_ids(&self, game_id: Uuid) -> Result<Vec<u8>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(game.players.iter().map(|p| p.nation_id).collect())
     }
 
     /// Get a specific user's nation_id in a game (if they're a player)
-    pub async fn get_player_nation_id(
-        &self,
-        game_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<u8, DbError> {
+    pub async fn get_player_nation_id(&self, game_id: Uuid, user_id: Uuid) -> Result<u8, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
-        game.players.iter()
+        game.players
+            .iter()
             .find(|p| p.user_id == user_id)
             .map(|p| p.nation_id)
             .ok_or_else(|| DbError::NotFound(format!("Player {} not in game {}", user_id, game_id)))
@@ -1235,7 +1316,8 @@ impl GameStore {
         expires_hours: Option<f64>,
     ) -> Result<GameInvite, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let code = format!("{}", Uuid::new_v4().as_simple());
@@ -1246,9 +1328,8 @@ impl GameStore {
             game_id,
             invite_code: code_short.clone(),
             created_by,
-            expires_at: expires_hours.map(|h| {
-                Utc::now() + chrono::Duration::seconds((h * 3600.0) as i64)
-            }),
+            expires_at: expires_hours
+                .map(|h| Utc::now() + chrono::Duration::seconds((h * 3600.0) as i64)),
             max_uses,
             uses: 0,
         };
@@ -1261,7 +1342,8 @@ impl GameStore {
             let invite_clone = invite.clone();
             self.persist("create_invite", |pool| async move {
                 crate::pg::save_invite(&pool, &invite_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(invite)
@@ -1277,10 +1359,13 @@ impl GameStore {
         };
 
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        let invite = game.invites.iter()
+        let invite = game
+            .invites
+            .iter()
             .find(|i| i.invite_code == code)
             .cloned()
             .ok_or_else(|| DbError::NotFound(format!("Invite code '{}'", code)))?;
@@ -1312,10 +1397,13 @@ impl GameStore {
         };
 
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        let invite = game.invites.iter_mut()
+        let invite = game
+            .invites
+            .iter_mut()
             .find(|i| i.invite_code == code)
             .ok_or_else(|| DbError::NotFound(format!("Invite code '{}'", code)))?;
 
@@ -1328,7 +1416,8 @@ impl GameStore {
             drop(games);
             self.persist("use_invite", |pool| async move {
                 crate::pg::save_invite(&pool, &invite_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(())
@@ -1346,7 +1435,8 @@ impl GameStore {
         nation_id: u8,
     ) -> Result<Vec<Vec<Option<Sector>>>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let state = &game.state;
@@ -1427,13 +1517,10 @@ impl GameStore {
     }
 
     /// Get nation data (without password) for a specific nation
-    pub async fn get_nation(
-        &self,
-        game_id: Uuid,
-        nation_id: u8,
-    ) -> Result<Nation, DbError> {
+    pub async fn get_nation(&self, game_id: Uuid, nation_id: u8) -> Result<Nation, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         if nation_id as usize >= NTOTAL {
             return Err(DbError::NotFound(format!("Nation {}", nation_id)));
@@ -1449,7 +1536,8 @@ impl GameStore {
         game_id: Uuid,
     ) -> Result<Vec<PublicNationInfo>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let mut nations = Vec::new();
@@ -1471,32 +1559,31 @@ impl GameStore {
     }
 
     /// Get budget/spreadsheet for a nation
-    pub async fn get_budget(
-        &self,
-        game_id: Uuid,
-        nation_id: u8,
-    ) -> Result<Spreadsheet, DbError> {
+    pub async fn get_budget(&self, game_id: Uuid, nation_id: u8) -> Result<Spreadsheet, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         if nation_id as usize >= NTOTAL {
             return Err(DbError::NotFound(format!("Nation {}", nation_id)));
         }
         // Calculate spreadsheet from current state
-        let sprd = conquer_engine::economy::spreadsheet(
-            &game.state,
-            nation_id as usize,
-        );
+        let sprd = conquer_engine::economy::spreadsheet(&game.state, nation_id as usize);
         Ok(sprd)
     }
 
     /// Get scores for all active nations
     pub async fn get_scores(&self, game_id: Uuid) -> Result<Vec<ScoreEntry>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        let mut scores: Vec<ScoreEntry> = game.state.nations.iter().enumerate()
+        let mut scores: Vec<ScoreEntry> = game
+            .state
+            .nations
+            .iter()
+            .enumerate()
             .filter(|(_, n)| n.is_active())
             .map(|(i, n)| ScoreEntry {
                 nation_id: i as u8,
@@ -1516,7 +1603,8 @@ impl GameStore {
     /// Get user profile with game history
     pub async fn get_user_profile(&self, user_id: Uuid) -> Result<UserProfile, DbError> {
         let users = self.users.read().await;
-        let user = users.get(&user_id)
+        let user = users
+            .get(&user_id)
             .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
 
         let games = self.games.read().await;
@@ -1529,7 +1617,10 @@ impl GameStore {
                 let nation = &game.state.nations[player.nation_id as usize];
                 let outcome = if game.info.status == GameStatus::Completed {
                     // Simple heuristic: highest score wins
-                    let max_score = game.state.nations.iter()
+                    let max_score = game
+                        .state
+                        .nations
+                        .iter()
                         .filter(|n| n.is_active())
                         .map(|n| n.score)
                         .max()
@@ -1581,7 +1672,8 @@ impl GameStore {
         email: Option<&str>,
     ) -> Result<User, DbError> {
         let mut users = self.users.write().await;
-        let user = users.get_mut(&user_id)
+        let user = users
+            .get_mut(&user_id)
             .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
 
         if let Some(name) = display_name {
@@ -1593,7 +1685,9 @@ impl GameStore {
                 // Check uniqueness
                 let idx = self.email_index.read().await;
                 if idx.contains_key(&email_lower) {
-                    return Err(DbError::AlreadyExists("Email already registered".to_string()));
+                    return Err(DbError::AlreadyExists(
+                        "Email already registered".to_string(),
+                    ));
                 }
                 drop(idx);
                 let mut idx = self.email_index.write().await;
@@ -1611,7 +1705,8 @@ impl GameStore {
             drop(users);
             self.persist("update_user_profile", |pool| async move {
                 crate::pg::save_user(&pool, &user_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(result)
@@ -1625,7 +1720,8 @@ impl GameStore {
         new_password: &str,
     ) -> Result<(), DbError> {
         let mut users = self.users.write().await;
-        let user = users.get_mut(&user_id)
+        let user = users
+            .get_mut(&user_id)
             .ok_or_else(|| DbError::NotFound(format!("User {}", user_id)))?;
 
         if !AuthManager::verify_password(old_password, &user.password_hash)? {
@@ -1641,7 +1737,8 @@ impl GameStore {
             drop(users);
             self.persist("change_password", |pool| async move {
                 crate::pg::save_user(&pool, &user_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(())
@@ -1659,17 +1756,22 @@ impl GameStore {
         settings: GameSettings,
     ) -> Result<GameInfo, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         // Only creator can update settings
         if game.info.settings.creator_id != Some(user_id) {
-            return Err(DbError::Unauthorized("Only game creator can modify settings".to_string()));
+            return Err(DbError::Unauthorized(
+                "Only game creator can modify settings".to_string(),
+            ));
         }
 
         // Can only change settings before game starts
         if game.info.status != GameStatus::WaitingForPlayers {
-            return Err(DbError::InvalidState("Cannot change settings after game starts".to_string()));
+            return Err(DbError::InvalidState(
+                "Cannot change settings after game starts".to_string(),
+            ));
         }
 
         game.info.settings = settings;
@@ -1682,7 +1784,8 @@ impl GameStore {
             drop(games);
             self.persist("update_game_settings", |pool| async move {
                 crate::pg::save_game_info(&pool, &info_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(result)
@@ -1691,7 +1794,8 @@ impl GameStore {
     /// Check if a user is the game creator/admin
     pub async fn is_game_admin(&self, game_id: Uuid, user_id: Uuid) -> Result<bool, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(game.info.settings.creator_id == Some(user_id))
     }
@@ -1703,7 +1807,8 @@ impl GameStore {
     /// List invites for a game
     pub async fn list_invites(&self, game_id: Uuid) -> Result<Vec<GameInvite>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         Ok(game.invites.clone())
     }
@@ -1711,9 +1816,13 @@ impl GameStore {
     /// Revoke an invite
     pub async fn revoke_invite(&self, game_id: Uuid, invite_id: Uuid) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
-        let idx = game.invites.iter().position(|i| i.id == invite_id)
+        let idx = game
+            .invites
+            .iter()
+            .position(|i| i.id == invite_id)
             .ok_or_else(|| DbError::NotFound(format!("Invite {}", invite_id)))?;
         let code = game.invites[idx].invite_code.clone();
         game.invites.remove(idx);
@@ -1722,7 +1831,8 @@ impl GameStore {
         #[cfg(feature = "postgres")]
         self.persist("revoke_invite", |pool| async move {
             crate::pg::delete_invite(&pool, invite_id).await
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -1730,7 +1840,8 @@ impl GameStore {
     /// List public games for the game browser (T422)
     pub async fn list_public_games(&self) -> Vec<GameInfo> {
         let games = self.games.read().await;
-        games.values()
+        games
+            .values()
             .filter(|g| g.info.settings.public_game && g.info.status != GameStatus::Completed)
             .map(|g| g.info.clone())
             .collect()
@@ -1747,7 +1858,8 @@ impl GameStore {
         status: GameStatus,
     ) -> Result<GameInfo, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.info.status = status;
         game.info.updated_at = Utc::now();
@@ -1759,20 +1871,18 @@ impl GameStore {
             drop(games);
             self.persist("set_game_status", |pool| async move {
                 crate::pg::save_game_info(&pool, &info_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(result)
     }
 
     /// Kick a player from a game
-    pub async fn kick_player(
-        &self,
-        game_id: Uuid,
-        nation_id: u8,
-    ) -> Result<(), DbError> {
+    pub async fn kick_player(&self, game_id: Uuid, nation_id: u8) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         game.players.retain(|p| p.nation_id != nation_id);
@@ -1793,7 +1903,8 @@ impl GameStore {
                 crate::pg::delete_player(&pool, game_id, nation_id).await?;
                 crate::pg::save_game_info(&pool, &info_clone).await?;
                 crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(())
@@ -1802,7 +1913,8 @@ impl GameStore {
     /// Save a turn snapshot for rollback (T426)
     pub async fn save_turn_snapshot(&self, game_id: Uuid) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let state_json = serde_json::to_string(&game.state)
@@ -1829,23 +1941,23 @@ impl GameStore {
             drop(games);
             self.persist("save_turn_snapshot", |pool| async move {
                 crate::pg::save_game_state(&pool, game_id, turn, &state_clone).await
-            }).await;
+            })
+            .await;
         }
 
         Ok(())
     }
 
     /// Rollback to a previous turn (T426)
-    pub async fn rollback_turn(
-        &self,
-        game_id: Uuid,
-        target_turn: i16,
-    ) -> Result<i16, DbError> {
+    pub async fn rollback_turn(&self, game_id: Uuid, target_turn: i16) -> Result<i16, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
-        let snapshot = game.turn_snapshots.iter()
+        let snapshot = game
+            .turn_snapshots
+            .iter()
             .find(|s| s.turn == target_turn)
             .cloned()
             .ok_or_else(|| DbError::NotFound(format!("No snapshot for turn {}", target_turn)))?;
@@ -1869,11 +1981,17 @@ impl GameStore {
     }
 
     /// List available turn snapshots for rollback
-    pub async fn list_turn_snapshots(&self, game_id: Uuid) -> Result<Vec<(i16, DateTime<Utc>)>, DbError> {
+    pub async fn list_turn_snapshots(
+        &self,
+        game_id: Uuid,
+    ) -> Result<Vec<(i16, DateTime<Utc>)>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
-        Ok(game.turn_snapshots.iter()
+        Ok(game
+            .turn_snapshots
+            .iter()
             .map(|s| (s.turn, s.created_at))
             .collect())
     }
@@ -1889,12 +2007,15 @@ impl GameStore {
         user_id: Uuid,
     ) -> Result<Spectator, DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         // Check not already a player
         if game.players.iter().any(|p| p.user_id == user_id) {
-            return Err(DbError::InvalidState("Already a player in this game".to_string()));
+            return Err(DbError::InvalidState(
+                "Already a player in this game".to_string(),
+            ));
         }
         // Check not already a spectator
         if game.spectators.iter().any(|s| s.user_id == user_id) {
@@ -1911,13 +2032,10 @@ impl GameStore {
     }
 
     /// Leave spectator mode
-    pub async fn leave_spectator(
-        &self,
-        game_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<(), DbError> {
+    pub async fn leave_spectator(&self, game_id: Uuid, user_id: Uuid) -> Result<(), DbError> {
         let mut games = self.games.write().await;
-        let game = games.get_mut(&game_id)
+        let game = games
+            .get_mut(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
         game.spectators.retain(|s| s.user_id != user_id);
         Ok(())
@@ -1926,7 +2044,8 @@ impl GameStore {
     /// Check if user is a spectator
     pub async fn is_spectator(&self, game_id: Uuid, user_id: Uuid) -> bool {
         let games = self.games.read().await;
-        games.get(&game_id)
+        games
+            .get(&game_id)
             .map(|g| g.spectators.iter().any(|s| s.user_id == user_id))
             .unwrap_or(false)
     }
@@ -1937,7 +2056,8 @@ impl GameStore {
         game_id: Uuid,
     ) -> Result<Vec<Vec<Option<Sector>>>, DbError> {
         let games = self.games.read().await;
-        let game = games.get(&game_id)
+        let game = games
+            .get(&game_id)
             .ok_or_else(|| DbError::NotFound(format!("Game {}", game_id)))?;
 
         let state = &game.state;
@@ -1949,8 +2069,10 @@ impl GameStore {
         for x in 0..map_x {
             for y in 0..map_y {
                 let sector = &state.sectors[x][y];
-                if sector.owner > 0 && (sector.owner as usize) < NTOTAL
-                    && state.nations[sector.owner as usize].is_active() {
+                if sector.owner > 0
+                    && (sector.owner as usize) < NTOTAL
+                    && state.nations[sector.owner as usize].is_active()
+                {
                     visible[x][y] = Some(sector.clone());
                 }
             }
@@ -1985,7 +2107,9 @@ impl GameStore {
         drop(prefs);
 
         if !enabled {
-            return Err(DbError::InvalidState("Notification disabled by user preferences".to_string()));
+            return Err(DbError::InvalidState(
+                "Notification disabled by user preferences".to_string(),
+            ));
         }
 
         let notif = Notification {
@@ -1999,7 +2123,10 @@ impl GameStore {
         };
 
         let mut notifications = self.notifications.write().await;
-        notifications.entry(user_id).or_insert_with(Vec::new).push(notif.clone());
+        notifications
+            .entry(user_id)
+            .or_insert_with(Vec::new)
+            .push(notif.clone());
 
         // Cap at 100 per user
         if let Some(list) = notifications.get_mut(&user_id) {
@@ -2012,13 +2139,10 @@ impl GameStore {
     }
 
     /// Get notifications for a user
-    pub async fn get_notifications(
-        &self,
-        user_id: Uuid,
-        unread_only: bool,
-    ) -> Vec<Notification> {
+    pub async fn get_notifications(&self, user_id: Uuid, unread_only: bool) -> Vec<Notification> {
         let notifications = self.notifications.read().await;
-        notifications.get(&user_id)
+        notifications
+            .get(&user_id)
             .map(|list| {
                 if unread_only {
                     list.iter().filter(|n| !n.read).cloned().collect()
@@ -2062,11 +2186,7 @@ impl GameStore {
     }
 
     /// Update notification preferences
-    pub async fn set_notification_prefs(
-        &self,
-        user_id: Uuid,
-        prefs: NotificationPreferences,
-    ) {
+    pub async fn set_notification_prefs(&self, user_id: Uuid, prefs: NotificationPreferences) {
         let mut all_prefs = self.notification_prefs.write().await;
         all_prefs.insert(user_id, prefs);
     }
@@ -2082,7 +2202,9 @@ impl GameStore {
         let player_user_ids: Vec<Uuid> = {
             let games = self.games.read().await;
             match games.get(&game_id) {
-                Some(g) => g.players.iter()
+                Some(g) => g
+                    .players
+                    .iter()
                     .filter(|p| exclude_user.map_or(true, |ex| p.user_id != ex))
                     .map(|p| p.user_id)
                     .collect(),
@@ -2091,7 +2213,9 @@ impl GameStore {
         };
 
         for uid in player_user_ids {
-            let _ = self.add_notification(uid, event_type, Some(game_id), message).await;
+            let _ = self
+                .add_notification(uid, event_type, Some(game_id), message)
+                .await;
         }
     }
 
@@ -2103,8 +2227,12 @@ impl GameStore {
     pub async fn server_stats(&self) -> ServerStats {
         let games = self.games.read().await;
         let users = self.users.read().await;
-        let active_games = games.values()
-            .filter(|g| g.info.status == GameStatus::Active || g.info.status == GameStatus::WaitingForPlayers)
+        let active_games = games
+            .values()
+            .filter(|g| {
+                g.info.status == GameStatus::Active
+                    || g.info.status == GameStatus::WaitingForPlayers
+            })
             .count();
         let total_players: usize = games.values().map(|g| g.players.len()).sum();
         ServerStats {
@@ -2154,7 +2282,11 @@ pub struct ScoreEntry {
 
 fn apply_action_to_state(state: &mut GameState, action: &Action) {
     match action {
-        Action::AdjustArmyStat { nation, army, status } => {
+        Action::AdjustArmyStat {
+            nation,
+            army,
+            status,
+        } => {
             let n = *nation as usize;
             let a = *army as usize;
             if n < NTOTAL && a < MAXARM && state.nations[n].armies[a].soldiers > 0 {
@@ -2192,7 +2324,12 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 }
             }
         }
-        Action::AdjustArmyMen { nation, army, soldiers, unit_type } => {
+        Action::AdjustArmyMen {
+            nation,
+            army,
+            soldiers,
+            unit_type,
+        } => {
             let n = *nation as usize;
             let a = *army as usize;
             if n < NTOTAL && a < MAXARM {
@@ -2210,10 +2347,14 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 let new_x = *x;
                 let new_y = *y;
 
-                if !state.on_map(new_x, new_y) { return; }
+                if !state.on_map(new_x, new_y) {
+                    return;
+                }
 
                 // Must be adjacent (no teleporting)
-                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 { return; }
+                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 {
+                    return;
+                }
 
                 let status = state.nations[n].armies[a].status;
                 let movement = state.nations[n].armies[a].movement;
@@ -2229,7 +2370,9 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 }
 
                 // Must have movement points
-                if movement == 0 { return; }
+                if movement == 0 {
+                    return;
+                }
 
                 let is_flight = status == ArmyStatus::Flight.to_value();
                 let is_scout = status == ArmyStatus::Scout.to_value();
@@ -2239,20 +2382,32 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     let sct = &state.sectors[new_x as usize][new_y as usize];
                     let fcost = conquer_engine::utils::flightcost(sct);
                     let mcost = state.move_cost[new_x as usize][new_y as usize];
-                    let effective = if mcost > 0 && (mcost as i32) < fcost { mcost as i32 } else { fcost };
-                    if effective < 0 || effective > movement as i32 { return; }
+                    let effective = if mcost > 0 && (mcost as i32) < fcost {
+                        mcost as i32
+                    } else {
+                        fcost
+                    };
+                    if effective < 0 || effective > movement as i32 {
+                        return;
+                    }
                     state.nations[n].armies[a].movement -= effective as u8;
                 } else {
                     // Land movement: check terrain cost
                     let alt = state.sectors[new_x as usize][new_y as usize].altitude;
-                    if alt == Altitude::Water as u8 || alt == Altitude::Peak as u8 { return; }
+                    if alt == Altitude::Water as u8 || alt == Altitude::Peak as u8 {
+                        return;
+                    }
 
                     let cost = state.move_cost[new_x as usize][new_y as usize];
-                    if cost < 0 { return; } // impassable
+                    if cost < 0 {
+                        return;
+                    } // impassable
 
                     // Scout moves freely (cost 1 always) but can't fight
                     let effective_cost = if is_scout { 1.min(cost) } else { cost };
-                    if effective_cost > movement as i16 { return; }
+                    if effective_cost > movement as i16 {
+                        return;
+                    }
                     state.nations[n].armies[a].movement -= effective_cost as u8;
                 }
 
@@ -2261,50 +2416,76 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].armies[a].y = *y as u8;
             }
         }
-        Action::MoveNavy { nation, fleet, x, y } => {
+        Action::MoveNavy {
+            nation,
+            fleet,
+            x,
+            y,
+        } => {
             // VAL-T3: Water validation + movement deduction
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
                 let nvy = &state.nations[n].navies[f];
                 // Fleet must have ships
-                if conquer_engine::navy::fleet_ships(nvy) == 0 { return; }
+                if conquer_engine::navy::fleet_ships(nvy) == 0 {
+                    return;
+                }
 
                 let new_x = *x;
                 let new_y = *y;
-                if !state.on_map(new_x, new_y) { return; }
+                if !state.on_map(new_x, new_y) {
+                    return;
+                }
 
                 // Must be adjacent (no teleporting)
                 let old_x = nvy.x as i32;
                 let old_y = nvy.y as i32;
-                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 { return; }
+                if (new_x - old_x).abs() > 1 || (new_y - old_y).abs() > 1 {
+                    return;
+                }
 
                 // Destination must be water
                 let alt = state.sectors[new_x as usize][new_y as usize].altitude;
-                if alt != Altitude::Water as u8 { return; }
+                if alt != Altitude::Water as u8 {
+                    return;
+                }
 
                 // Must have movement points
                 let movement = nvy.movement;
-                if movement == 0 { return; }
+                if movement == 0 {
+                    return;
+                }
 
                 // Navy movement cost is 1 per tile (C: water_reachp uses 1 per step)
                 let cost: u8 = 1;
-                if cost > movement { return; }
+                if cost > movement {
+                    return;
+                }
 
                 state.nations[n].navies[f].movement -= cost;
                 state.nations[n].navies[f].x = *x as u8;
                 state.nations[n].navies[f].y = *y as u8;
             }
         }
-        Action::DesignateSector { nation, x, y, designation } => {
+        Action::DesignateSector {
+            nation,
+            x,
+            y,
+            designation,
+        } => {
             // VAL-T4: Ownership + cost + rules matching C redesignate()
             let n = *nation as usize;
             let sx = *x as usize;
             let sy = *y as usize;
-            if n >= NTOTAL || sx >= state.sectors.len() || sy >= state.sectors[0].len() { return; }
+            if n >= NTOTAL || sx >= state.sectors.len() || sy >= state.sectors[0].len() {
+                return;
+            }
 
             // Must own the sector (C: "Hey! You don't own that sector!")
-            if state.sectors[sx][sy].owner != n as u8 && n != 0 { return; }
+            if state.sectors[sx][sy].owner != n as u8 && n != 0 {
+                return;
+            }
 
             let new_des = match Designation::from_char(*designation) {
                 Some(d) => d,
@@ -2314,14 +2495,20 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             let old_des = state.sectors[sx][sy].designation;
 
             // Can't redesignate to same thing
-            if new_des_u8 == old_des { return; }
+            if new_des_u8 == old_des {
+                return;
+            }
 
             // Can't redesignate ROAD here — use BuildRoad action
-            if new_des == Designation::Road { return; }
+            if new_des == Designation::Road {
+                return;
+            }
 
             // Population check for city/town/capitol
             let people = state.sectors[sx][sy].people;
-            if (new_des == Designation::Capitol || new_des == Designation::City || new_des == Designation::Town)
+            if (new_des == Designation::Capitol
+                || new_des == Designation::City
+                || new_des == Designation::Town)
                 && people < 500
             {
                 return;
@@ -2330,7 +2517,8 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             // City/Capitol: must burn down first (redesignate to Ruin)
             if new_des_u8 != Designation::Ruin as u8
                 && (old_des == Designation::City as u8 || old_des == Designation::Capitol as u8)
-                && new_des != Designation::Capitol  // can upgrade city -> capitol
+                && new_des != Designation::Capitol
+            // can upgrade city -> capitol
             {
                 return;
             }
@@ -2355,30 +2543,46 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             // Charge cost
             let cost = if new_des == Designation::Town || new_des == Designation::Fort {
                 // Town/Fort: DESCOST metal + 10*DESCOST gold
-                if state.nations[n].metals < DESCOST { return; }
+                if state.nations[n].metals < DESCOST {
+                    return;
+                }
                 state.nations[n].metals -= DESCOST;
                 10 * DESCOST
             } else if new_des == Designation::City || new_des == Designation::Capitol {
-                let metal_cost = if new_des == Designation::Capitol && old_des == Designation::City as u8 {
-                    0 // upgrading city -> capitol has no extra metal cost
-                } else { 5 * DESCOST };
-                if state.nations[n].metals < metal_cost { return; }
+                let metal_cost =
+                    if new_des == Designation::Capitol && old_des == Designation::City as u8 {
+                        0 // upgrading city -> capitol has no extra metal cost
+                    } else {
+                        5 * DESCOST
+                    };
+                if state.nations[n].metals < metal_cost {
+                    return;
+                }
                 state.nations[n].metals -= metal_cost;
-                if old_des == Designation::Ruin as u8 { 10 * DESCOST } else { 20 * DESCOST }
+                if old_des == Designation::Ruin as u8 {
+                    10 * DESCOST
+                } else {
+                    20 * DESCOST
+                }
             } else if new_des == Designation::Ruin {
                 0 // burning down is free
             } else {
                 DESCOST // normal redesignation
             };
 
-            if cost > 0 && state.nations[n].treasury_gold < cost { return; }
-            if cost > 0 { state.nations[n].treasury_gold -= cost; }
+            if cost > 0 && state.nations[n].treasury_gold < cost {
+                return;
+            }
+            if cost > 0 {
+                state.nations[n].treasury_gold -= cost;
+            }
 
             // If setting to CAPITOL, update old capitol to city and set new cap
             if new_des == Designation::Capitol {
                 let old_cx = state.nations[n].cap_x as usize;
                 let old_cy = state.nations[n].cap_y as usize;
-                if old_cx < state.sectors.len() && old_cy < state.sectors[0].len()
+                if old_cx < state.sectors.len()
+                    && old_cy < state.sectors[0].len()
                     && state.sectors[old_cx][old_cy].owner == n as u8
                 {
                     state.sectors[old_cx][old_cy].designation = Designation::City as u8;
@@ -2396,7 +2600,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.sectors[sx][sy].owner = *nation as u8;
             }
         }
-        Action::AdjustDiplomacy { nation_a, nation_b, status } => {
+        Action::AdjustDiplomacy {
+            nation_a,
+            nation_b,
+            status,
+        } => {
             // T13: Diplomacy with validation rules from C diploscrn()
             let a = *nation_a as usize;
             let b = *nation_b as usize;
@@ -2409,17 +2617,22 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 // Can't change if both sides are UNMET
                 let old_a_to_b = state.nations[a].diplomacy[b];
                 let old_b_to_a = state.nations[b].diplomacy[a];
-                if old_a_to_b == DiplomaticStatus::Unmet as u8 
-                    && old_b_to_a == DiplomaticStatus::Unmet as u8 {
+                if old_a_to_b == DiplomaticStatus::Unmet as u8
+                    && old_b_to_a == DiplomaticStatus::Unmet as u8
+                {
                     return;
                 }
                 // Breaking JIHAD or TREATY costs BREAKJIHAD gold
-                if old_a_to_b == DiplomaticStatus::Jihad as u8 && new_status != DiplomaticStatus::Jihad as u8 {
+                if old_a_to_b == DiplomaticStatus::Jihad as u8
+                    && new_status != DiplomaticStatus::Jihad as u8
+                {
                     if state.nations[a].treasury_gold < BREAKJIHAD {
                         return;
                     }
                     state.nations[a].treasury_gold -= BREAKJIHAD;
-                } else if old_a_to_b == DiplomaticStatus::Treaty as u8 && new_status != DiplomaticStatus::Treaty as u8 {
+                } else if old_a_to_b == DiplomaticStatus::Treaty as u8
+                    && new_status != DiplomaticStatus::Treaty as u8
+                {
                     // Only costs if the other side also has treaty
                     if old_b_to_a == DiplomaticStatus::Treaty as u8 {
                         if state.nations[a].treasury_gold < BREAKJIHAD {
@@ -2430,7 +2643,7 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 }
                 state.nations[a].diplomacy[b] = new_status;
                 // If declaring war, auto-set target to WAR if they're below WAR
-                if new_status > DiplomaticStatus::Hostile as u8 
+                if new_status > DiplomaticStatus::Hostile as u8
                     && old_b_to_a < DiplomaticStatus::War as u8
                     && state.nations[b].is_active()
                 {
@@ -2451,7 +2664,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.sectors[sx][sy].fortress = state.sectors[sx][sy].fortress.saturating_add(1);
             }
         }
-        Action::ChangeMagic { nation, powers, new_power: _ } => {
+        Action::ChangeMagic {
+            nation,
+            powers,
+            new_power: _,
+        } => {
             let n = *nation as usize;
             if n < NTOTAL {
                 state.nations[n].powers = *powers;
@@ -2463,28 +2680,46 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].spell_points -= *cost as i16;
             }
         }
-        Action::AdjustSectorCiv { nation: _, people, x, y } => {
+        Action::AdjustSectorCiv {
+            nation: _,
+            people,
+            x,
+            y,
+        } => {
             let sx = *x as usize;
             let sy = *y as usize;
             if sx < state.sectors.len() && sy < state.sectors[0].len() {
                 state.sectors[sx][sy].people = *people;
             }
         }
-        Action::AddSectorCiv { nation: _, people, x, y } => {
+        Action::AddSectorCiv {
+            nation: _,
+            people,
+            x,
+            y,
+        } => {
             let sx = *x as usize;
             let sy = *y as usize;
             if sx < state.sectors.len() && sy < state.sectors[0].len() {
                 state.sectors[sx][sy].people += people;
             }
         }
-        Action::AdjustArmyMove { nation, army, movement } => {
+        Action::AdjustArmyMove {
+            nation,
+            army,
+            movement,
+        } => {
             let n = *nation as usize;
             let a = *army as usize;
             if n < NTOTAL && a < MAXARM {
                 state.nations[n].armies[a].movement = *movement as u8;
             }
         }
-        Action::AdjustNavyMove { nation, fleet, movement } => {
+        Action::AdjustNavyMove {
+            nation,
+            fleet,
+            movement,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
@@ -2497,11 +2732,19 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             // Vampires can't add combat bonus
             let n = *nation as usize;
             if n < NTOTAL {
-                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) { return; }
-                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD) { 30 }
-                    else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) { 20 }
-                    else if Power::has_power(state.nations[n].powers, Power::WARRIOR) { 10 }
-                    else { 0 };
+                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) {
+                    return;
+                }
+                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD)
+                {
+                    30
+                } else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) {
+                    20
+                } else if Power::has_power(state.nations[n].powers, Power::WARRIOR) {
+                    10
+                } else {
+                    0
+                };
                 let men = std::cmp::max(state.nations[n].total_mil, 1500);
                 let level = std::cmp::max(state.nations[n].attack_plus - power_bonus, 10) / 10;
                 let cost = METALORE * men as i64 * level as i64 * level as i64;
@@ -2517,11 +2760,19 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             // VAL-T6: Add metal cost matching C forms.c case '6'
             let n = *nation as usize;
             if n < NTOTAL {
-                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) { return; }
-                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD) { 30 }
-                    else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) { 20 }
-                    else if Power::has_power(state.nations[n].powers, Power::WARRIOR) { 10 }
-                    else { 0 };
+                if Power::has_power(state.nations[n].powers, Power::VAMPIRE) {
+                    return;
+                }
+                let power_bonus: i16 = if Power::has_power(state.nations[n].powers, Power::WARLORD)
+                {
+                    30
+                } else if Power::has_power(state.nations[n].powers, Power::CAPTAIN) {
+                    20
+                } else if Power::has_power(state.nations[n].powers, Power::WARRIOR) {
+                    10
+                } else {
+                    0
+                };
                 let men = std::cmp::max(state.nations[n].total_mil, 1500);
                 let level = std::cmp::max(state.nations[n].defense_plus - power_bonus, 10) / 10;
                 let cost = METALORE * men as i64 * level as i64 * level as i64;
@@ -2655,14 +2906,23 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].password = password.clone();
             }
         }
-        Action::AdjustNavyMerchant { nation, fleet, merchant } => {
+        Action::AdjustNavyMerchant {
+            nation,
+            fleet,
+            merchant,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
                 state.nations[n].navies[f].merchant = *merchant as u16;
             }
         }
-        Action::AdjustNavyCrew { nation, fleet, crew, army_num } => {
+        Action::AdjustNavyCrew {
+            nation,
+            fleet,
+            crew,
+            army_num,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
@@ -2670,21 +2930,34 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].navies[f].army_num = *army_num as u8;
             }
         }
-        Action::AdjustNavyWarships { nation, fleet, warships } => {
+        Action::AdjustNavyWarships {
+            nation,
+            fleet,
+            warships,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
                 state.nations[n].navies[f].warships = *warships as u16;
             }
         }
-        Action::AdjustNavyGalleys { nation, fleet, galleys } => {
+        Action::AdjustNavyGalleys {
+            nation,
+            fleet,
+            galleys,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
                 state.nations[n].navies[f].galleys = *galleys as u16;
             }
         }
-        Action::AdjustNavyHold { nation, fleet, army_num, people } => {
+        Action::AdjustNavyHold {
+            nation,
+            fleet,
+            army_num,
+            people,
+        } => {
             let n = *nation as usize;
             let f = *fleet as usize;
             if n < NTOTAL && f < MAXNAVY {
@@ -2692,7 +2965,12 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].navies[f].people = *people as u8;
             }
         }
-        Action::AdjustPopulation { nation, popularity: _, terror, reputation: _ } => {
+        Action::AdjustPopulation {
+            nation,
+            popularity: _,
+            terror,
+            reputation: _,
+        } => {
             // VAL-T8: Players can only adjust terror (propaganda) — matching C case '5'
             // The 'terror' field here is the INCREASE amount (1-5), not absolute value.
             // Costs: popularity -= increase, reputation -= (increase+1)/2
@@ -2701,20 +2979,31 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             if n < NTOTAL {
                 let increase = *terror;
                 // Must be 1-5 (C: "That is over the allowed 5%")
-                if increase < 1 || increase > 5 { return; }
+                if increase < 1 || increase > 5 {
+                    return;
+                }
                 let cur_terror = state.nations[n].terror as i32;
                 let cur_pop = state.nations[n].popularity as i32;
                 let cur_rep = state.nations[n].reputation as i32;
                 // Can't go over 100 terror
-                if cur_terror + increase > 100 { return; }
+                if cur_terror + increase > 100 {
+                    return;
+                }
                 // Would cause underflow (C: "Sorry - this would cause underflow")
-                if increase > cur_pop || increase > cur_rep { return; }
+                if increase > cur_pop || increase > cur_rep {
+                    return;
+                }
                 state.nations[n].terror = (cur_terror + increase) as u8;
                 state.nations[n].popularity = (cur_pop - increase) as u8;
                 state.nations[n].reputation = (cur_rep - (increase + 1) / 2) as u8;
             }
         }
-        Action::AdjustTax { nation, tax_rate, active: _, charity } => {
+        Action::AdjustTax {
+            nation,
+            tax_rate,
+            active: _,
+            charity,
+        } => {
             // VAL-T7: Players can only change tax_rate (0-20) and charity (0-10).
             // The 'active' field is ignored — players cannot change NPC/PC status.
             // Engine changes active via direct state manipulation, not through actions.
@@ -2726,7 +3015,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 state.nations[n].charity = (*charity).clamp(0, 10) as u8;
             }
         }
-        Action::BribeNation { nation, cost, target } => {
+        Action::BribeNation {
+            nation,
+            cost,
+            target,
+        } => {
             // T16: Bribe a nation to improve diplomacy
             let n = *nation as usize;
             let t = *target as usize;
@@ -2757,7 +3050,9 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                             (_, Some(ts)) if ts.npc_type() == 4 => 15, // ISOLATIONIST type
                             _ => 20,
                         };
-                        if state.nations[n].race == state.nations[t].race { chance += 20; }
+                        if state.nations[n].race == state.nations[t].race {
+                            chance += 20;
+                        }
                         // Deterministic RNG seeded from turn + nation for reproducibility
                         let seed = (state.world.turn as u32 * 1000 + n as u32) ^ (t as u32 * 7919);
                         let mut rng = conquer_engine::rng::ConquerRng::new(seed);
@@ -2804,7 +3099,12 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 }
             }
         }
-        Action::DisbandToMerc { nation, men, attack, defense } => {
+        Action::DisbandToMerc {
+            nation,
+            men,
+            attack,
+            defense,
+        } => {
             // T15: Disband army soldiers to mercenary pool
             let n = *nation as usize;
             if n < NTOTAL {
@@ -2812,8 +3112,12 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 // Weighted average for merc stats
                 let total = state.world.merc_mil;
                 if total > 0 {
-                    state.world.merc_aplus = ((state.world.merc_aplus as i64 * (total - men) + *attack as i64 * men) / total) as i16;
-                    state.world.merc_dplus = ((state.world.merc_dplus as i64 * (total - men) + *defense as i64 * men) / total) as i16;
+                    state.world.merc_aplus = ((state.world.merc_aplus as i64 * (total - men)
+                        + *attack as i64 * men)
+                        / total) as i16;
+                    state.world.merc_dplus = ((state.world.merc_dplus as i64 * (total - men)
+                        + *defense as i64 * men)
+                        / total) as i16;
                 }
             }
         }
@@ -2821,14 +3125,18 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
         // ============================================================
         // Sprint: Commands Parity — new action handling
         // ============================================================
-
-        Action::SplitArmy { nation, army, soldiers } => {
+        Action::SplitArmy {
+            nation,
+            army,
+            soldiers,
+        } => {
             // T1: Split soldiers from army into new army at same location
             let n = *nation as usize;
             let a = *army as usize;
             if n < NTOTAL && a < MAXARM {
                 let src = &state.nations[n].armies[a];
-                if src.soldiers >= *soldiers + 25 && *soldiers >= 25
+                if src.soldiers >= *soldiers + 25
+                    && *soldiers >= 25
                     && !UnitType(src.unit_type).is_monster()
                     && !UnitType(src.unit_type).is_leader()
                     && src.status != ArmyStatus::OnBoard.to_value()
@@ -2860,7 +3168,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::CombineArmies { nation, army1, army2 } => {
+        Action::CombineArmies {
+            nation,
+            army1,
+            army2,
+        } => {
             // T2: Merge army2 into army1
             let n = *nation as usize;
             let a1 = *army1 as usize;
@@ -2881,13 +3193,19 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     if x1 == x2 && y1 == y2 {
                         // Validate combinability
                         let nocomb = |s: u8| -> bool {
-                            matches!(ArmyStatus::from_value(s),
-                                ArmyStatus::Traded | ArmyStatus::Flight |
-                                ArmyStatus::MagAtt | ArmyStatus::MagDef |
-                                ArmyStatus::Scout | ArmyStatus::OnBoard)
+                            matches!(
+                                ArmyStatus::from_value(s),
+                                ArmyStatus::Traded
+                                    | ArmyStatus::Flight
+                                    | ArmyStatus::MagAtt
+                                    | ArmyStatus::MagDef
+                                    | ArmyStatus::Scout
+                                    | ArmyStatus::OnBoard
+                            )
                         };
                         let types_ok = t1 == t2 && !UnitType(t1).is_leader();
-                        let stats_ok = !nocomb(st1) && !nocomb(st2)
+                        let stats_ok = !nocomb(st1)
+                            && !nocomb(st2)
                             && st2 != ArmyStatus::March.to_value()
                             && st2 != ArmyStatus::Siege.to_value()
                             && st2 != ArmyStatus::Sortie.to_value();
@@ -2942,7 +3260,13 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::DraftUnit { nation, x, y, unit_type, count } => {
+        Action::DraftUnit {
+            nation,
+            x,
+            y,
+            unit_type,
+            count,
+        } => {
             // T5: Draft soldiers
             let n = *nation as usize;
             let sx = *x as usize;
@@ -2972,7 +3296,8 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                             state.nations[n].armies[idx].movement = 0;
                             state.nations[n].treasury_gold -= cost;
                             // Take civilians from sector
-                            state.sectors[sx][sy].people = state.sectors[sx][sy].people.saturating_sub(*count);
+                            state.sectors[sx][sy].people =
+                                state.sectors[sx][sy].people.saturating_sub(*count);
                         }
                     }
                 }
@@ -2991,7 +3316,8 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     || des == Designation::Fort as u8
                     || des == Designation::Capitol as u8;
                 // VAL-T5: Verify ConstructFort — need >500 people (C: "You need over 500 people")
-                if valid && state.sectors[sx][sy].owner == n as u8
+                if valid
+                    && state.sectors[sx][sy].owner == n as u8
                     && state.sectors[sx][sy].fortress < 12
                     && state.sectors[sx][sy].people > 500
                 {
@@ -3002,7 +3328,8 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     let max_debt = state.nations[n].jewels * 10;
                     if state.nations[n].treasury_gold - cost >= -max_debt {
                         state.nations[n].treasury_gold -= cost;
-                        state.sectors[sx][sy].fortress = state.sectors[sx][sy].fortress.saturating_add(1);
+                        state.sectors[sx][sy].fortress =
+                            state.sectors[sx][sy].fortress.saturating_add(1);
                     }
                 }
             }
@@ -3024,7 +3351,14 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::ConstructShip { nation, x, y, ship_type, ship_size, count } => {
+        Action::ConstructShip {
+            nation,
+            x,
+            y,
+            ship_type,
+            ship_size,
+            count,
+        } => {
             // T8: Build ships at coastal sector
             let n = *nation as usize;
             let sx = *x as usize;
@@ -3035,9 +3369,9 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                     && state.sectors[sx][sy].owner == n as u8;
                 if valid {
                     let base_cost = match *ship_type {
-                        0 => WARSHPCOST,  // warship
-                        1 => MERSHPCOST,  // merchant
-                        _ => GALSHPCOST,  // galley
+                        0 => WARSHPCOST, // warship
+                        1 => MERSHPCOST, // merchant
+                        _ => GALSHPCOST, // galley
                     };
                     let size_mult = (*ship_size as i64 + 1);
                     let mut cost = *count as i64 * size_mult * base_cost;
@@ -3045,21 +3379,28 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                         cost /= 2;
                     }
                     let crew_needed = *count as i64 * size_mult * SHIPCREW as i64;
-                    if state.nations[n].treasury_gold >= cost && state.sectors[sx][sy].people >= crew_needed {
+                    if state.nations[n].treasury_gold >= cost
+                        && state.sectors[sx][sy].people >= crew_needed
+                    {
                         state.nations[n].treasury_gold -= cost;
                         state.sectors[sx][sy].people -= crew_needed;
                         // Find or create fleet at this location
                         let mut fleet_idx = None;
                         for f in 0..state.nations[n].navies.len() {
                             let nvy = &state.nations[n].navies[f];
-                            if nvy.x == *x as u8 && nvy.y == *y as u8 && conquer_engine::navy::fleet_ships(nvy) > 0 {
+                            if nvy.x == *x as u8
+                                && nvy.y == *y as u8
+                                && conquer_engine::navy::fleet_ships(nvy) > 0
+                            {
                                 fleet_idx = Some(f);
                                 break;
                             }
                         }
                         if fleet_idx.is_none() {
                             for f in 0..state.nations[n].navies.len() {
-                                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f]) == 0 {
+                                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f])
+                                    == 0
+                                {
                                     state.nations[n].navies[f].x = *x as u8;
                                     state.nations[n].navies[f].y = *y as u8;
                                     fleet_idx = Some(f);
@@ -3075,9 +3416,27 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                             };
                             for _ in 0..*count {
                                 match *ship_type {
-                                    0 => { conquer_engine::navy::add_warships(&mut state.nations[n].navies[fi], size, 1); }
-                                    1 => { conquer_engine::navy::add_merchants(&mut state.nations[n].navies[fi], size, 1); }
-                                    _ => { conquer_engine::navy::add_galleys(&mut state.nations[n].navies[fi], size, 1); }
+                                    0 => {
+                                        conquer_engine::navy::add_warships(
+                                            &mut state.nations[n].navies[fi],
+                                            size,
+                                            1,
+                                        );
+                                    }
+                                    1 => {
+                                        conquer_engine::navy::add_merchants(
+                                            &mut state.nations[n].navies[fi],
+                                            size,
+                                            1,
+                                        );
+                                    }
+                                    _ => {
+                                        conquer_engine::navy::add_galleys(
+                                            &mut state.nations[n].navies[fi],
+                                            size,
+                                            1,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -3086,7 +3445,11 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::LoadArmyOnFleet { nation, army, fleet } => {
+        Action::LoadArmyOnFleet {
+            nation,
+            army,
+            fleet,
+        } => {
             // VAL-T10: Load army onto fleet with capacity check
             // C navy.c loadfleet(): checks ghold (galley hold) for army capacity
             let n = *nation as usize;
@@ -3094,19 +3457,29 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             let f = *fleet as usize;
             if n < NTOTAL && a < MAXARM && f < MAXNAVY {
                 // Army must have soldiers and be loadable
-                if state.nations[n].armies[a].soldiers <= 0 { return; }
-                if !conquer_engine::navy::can_load_army(state.nations[n].armies[a].status) { return; }
+                if state.nations[n].armies[a].soldiers <= 0 {
+                    return;
+                }
+                if !conquer_engine::navy::can_load_army(state.nations[n].armies[a].status) {
+                    return;
+                }
 
                 // Fleet must not already have an army loaded (army_num == MAXARM means empty)
-                if (state.nations[n].navies[f].army_num as usize) < MAXARM { return; }
+                if (state.nations[n].navies[f].army_num as usize) < MAXARM {
+                    return;
+                }
 
                 // Fleet must have ships
-                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f]) == 0 { return; }
+                if conquer_engine::navy::fleet_ships(&state.nations[n].navies[f]) == 0 {
+                    return;
+                }
 
                 // Fleet must have hold capacity (galley hold for armies)
                 let ghold = conquer_engine::navy::fleet_galley_hold(&state.nations[n].navies[f]);
                 let whold = conquer_engine::navy::fleet_warship_hold(&state.nations[n].navies[f]);
-                if ghold == 0 && whold == 0 { return; }
+                if ghold == 0 && whold == 0 {
+                    return;
+                }
 
                 // Army must be adjacent to fleet (coastal loading) or at same loc
                 let ax = state.nations[n].armies[a].x as i32;
@@ -3114,7 +3487,9 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 let fx = state.nations[n].navies[f].x as i32;
                 let fy = state.nations[n].navies[f].y as i32;
                 let adjacent = (ax - fx).abs() <= 1 && (ay - fy).abs() <= 1;
-                if !adjacent { return; }
+                if !adjacent {
+                    return;
+                }
 
                 state.nations[n].armies[a].status = ArmyStatus::OnBoard.to_value();
                 state.nations[n].armies[a].movement = 0;
@@ -3137,15 +3512,26 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::LoadPeopleOnFleet { nation, fleet, x, y, amount } => {
+        Action::LoadPeopleOnFleet {
+            nation,
+            fleet,
+            x,
+            y,
+            amount,
+        } => {
             // T9: Load civilians onto fleet
             let n = *nation as usize;
             let f = *fleet as usize;
             let sx = *x as usize;
             let sy = *y as usize;
-            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len() {
-                if state.sectors[sx][sy].owner == n as u8 && state.sectors[sx][sy].people >= *amount && *amount > 0 {
-                    let mhold = conquer_engine::navy::fleet_merchant_hold(&state.nations[n].navies[f]);
+            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len()
+            {
+                if state.sectors[sx][sy].owner == n as u8
+                    && state.sectors[sx][sy].people >= *amount
+                    && *amount > 0
+                {
+                    let mhold =
+                        conquer_engine::navy::fleet_merchant_hold(&state.nations[n].navies[f]);
                     if mhold > 0 {
                         state.sectors[sx][sy].people -= amount;
                         state.nations[n].navies[f].people += (*amount / mhold as i64) as u8;
@@ -3154,13 +3540,20 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::UnloadPeople { nation, fleet, x, y, amount } => {
+        Action::UnloadPeople {
+            nation,
+            fleet,
+            x,
+            y,
+            amount,
+        } => {
             // T9: Unload civilians from fleet
             let n = *nation as usize;
             let f = *fleet as usize;
             let sx = *x as usize;
             let sy = *y as usize;
-            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len() {
+            if n < NTOTAL && f < MAXNAVY && sx < state.sectors.len() && sy < state.sectors[0].len()
+            {
                 let mhold = conquer_engine::navy::fleet_merchant_hold(&state.nations[n].navies[f]);
                 let on_board = state.nations[n].navies[f].people as i64 * mhold as i64;
                 if *amount > 0 && *amount <= on_board && mhold > 0 {
@@ -3170,19 +3563,25 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::CastSpell { nation, spell_type, target_x, target_y, target_nation } => {
+        Action::CastSpell {
+            nation,
+            spell_type,
+            target_x,
+            target_y,
+            target_nation,
+        } => {
             // T10: Cast spell — deduct spell points, apply effect
             let n = *nation as usize;
             if n < NTOTAL {
                 // Spell cost based on type (simplified from C getmgkcost logic)
                 let cost = match *spell_type {
-                    1 => 3,  // summon creature
-                    2 => 2,  // flight
-                    3 => 4,  // attack enhancement
-                    4 => 4,  // defense enhancement
-                    5 => 5,  // destroy
-                    6 => 3,  // wizardry
-                    7 => 4,  // god powers
+                    1 => 3, // summon creature
+                    2 => 2, // flight
+                    3 => 4, // attack enhancement
+                    4 => 4, // defense enhancement
+                    5 => 5, // destroy
+                    6 => 3, // wizardry
+                    7 => 4, // god powers
                     _ => 1,
                 };
                 if state.nations[n].spell_points >= cost {
@@ -3252,9 +3651,15 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
                 let cost = conquer_engine::utils::getmgkcost(*power_type, &state.nations[n]);
                 if cost > 0 && state.nations[n].jewels >= cost {
                     let mut rng = conquer_engine::rng::ConquerRng::new(
-                        ((state.world.turn as u64 * 1000 + n as u64) ^ state.nations[n].jewels as u64) as u32
+                        ((state.world.turn as u64 * 1000 + n as u64)
+                            ^ state.nations[n].jewels as u64) as u32,
                     );
-                    if let Some(power) = conquer_engine::magic::get_magic(*power_type, &state.nations[n], n, &mut rng) {
+                    if let Some(power) = conquer_engine::magic::get_magic(
+                        *power_type,
+                        &state.nations[n],
+                        n,
+                        &mut rng,
+                    ) {
                         state.nations[n].jewels -= cost;
                         state.nations[n].powers |= power.bits();
                         conquer_engine::magic::execute_new_magic(state, n, power);
@@ -3263,21 +3668,41 @@ fn apply_action_to_state(state: &mut GameState, action: &Action) {
             }
         }
 
-        Action::ProposeTrade { nation: _, target_nation: _, offer_type: _, offer_amount: _, request_type: _, request_amount: _ } => {
+        Action::ProposeTrade {
+            nation: _,
+            target_nation: _,
+            offer_type: _,
+            offer_amount: _,
+            request_type: _,
+            request_amount: _,
+        } => {
             // T12: Trade proposals are stored out-of-band (in game store pending_trades)
             // The actual resource transfer happens on AcceptTrade
         }
 
-        Action::AcceptTrade { nation: _, trade_id: _ } => {
+        Action::AcceptTrade {
+            nation: _,
+            trade_id: _,
+        } => {
             // T12: Trade acceptance — would look up trade and execute transfer
             // Handled by game store trade management
         }
 
-        Action::RejectTrade { nation: _, trade_id: _ } => {
+        Action::RejectTrade {
+            nation: _,
+            trade_id: _,
+        } => {
             // T12: Trade rejection — remove pending trade
         }
 
-        Action::SendTribute { nation, target, gold, food, metal, jewels } => {
+        Action::SendTribute {
+            nation,
+            target,
+            gold,
+            food,
+            metal,
+            jewels,
+        } => {
             // T17: Send tribute
             let n = *nation as usize;
             let t = *target as usize;
@@ -3312,8 +3737,10 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_get_user() {
         let store = GameStore::new();
-        let user = store.create_user("testuser", "test@example.com", "password123", None)
-            .await.unwrap();
+        let user = store
+            .create_user("testuser", "test@example.com", "password123", None)
+            .await
+            .unwrap();
         assert_eq!(user.username, "testuser");
 
         let fetched = store.get_user(user.id).await.unwrap();
@@ -3323,10 +3750,15 @@ mod tests {
     #[tokio::test]
     async fn test_authenticate_user() {
         let store = GameStore::new();
-        store.create_user("testuser", "test@example.com", "password123", None)
-            .await.unwrap();
+        store
+            .create_user("testuser", "test@example.com", "password123", None)
+            .await
+            .unwrap();
 
-        let user = store.authenticate_user("testuser", "password123").await.unwrap();
+        let user = store
+            .authenticate_user("testuser", "password123")
+            .await
+            .unwrap();
         assert_eq!(user.username, "testuser");
 
         let err = store.authenticate_user("testuser", "wrong").await;
@@ -3336,8 +3768,13 @@ mod tests {
     #[tokio::test]
     async fn test_duplicate_user() {
         let store = GameStore::new();
-        store.create_user("testuser", "test@example.com", "pass", None).await.unwrap();
-        let err = store.create_user("testuser", "other@example.com", "pass", None).await;
+        store
+            .create_user("testuser", "test@example.com", "pass", None)
+            .await
+            .unwrap();
+        let err = store
+            .create_user("testuser", "other@example.com", "pass", None)
+            .await;
         assert!(err.is_err());
     }
 
@@ -3357,29 +3794,43 @@ mod tests {
     #[tokio::test]
     async fn test_join_game() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
-        let player = store.join_game(
-            game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G'
-        ).await.unwrap();
+        let player = store
+            .join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G')
+            .await
+            .unwrap();
         assert!(player.nation_id >= 1);
 
         // Can't join twice
-        let err = store.join_game(
-            game.id, user.id, "Rohan", "Theoden", 'H', 1, 'R'
-        ).await;
+        let err = store
+            .join_game(game.id, user.id, "Rohan", "Theoden", 'H', 1, 'R')
+            .await;
         assert!(err.is_err());
     }
 
     #[tokio::test]
     async fn test_submit_and_get_actions() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        let player = store.join_game(
-            game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G'
-        ).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        let player = store
+            .join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G')
+            .await
+            .unwrap();
 
         let action = Action::MoveArmy {
             nation: player.nation_id as i16,
@@ -3387,7 +3838,10 @@ mod tests {
             x: 10,
             y: 10,
         };
-        store.submit_action(game.id, player.nation_id, action.clone()).await.unwrap();
+        store
+            .submit_action(game.id, player.nation_id, action.clone())
+            .await
+            .unwrap();
 
         let actions = store.get_actions(game.id, player.nation_id).await.unwrap();
         assert_eq!(actions.len(), 1);
@@ -3396,7 +3850,10 @@ mod tests {
     #[tokio::test]
     async fn test_run_turn() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
         let initial_turn = game.current_turn;
 
         let new_turn = store.run_turn(game.id).await.unwrap();
@@ -3409,65 +3866,109 @@ mod tests {
     #[tokio::test]
     async fn test_chat() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
-        store.send_chat(game.id, Some(1), "public", "Hello world!").await.unwrap();
-        store.send_chat(game.id, Some(2), "public", "Hi there!").await.unwrap();
-        store.send_chat(game.id, Some(1), "nation_1_2", "Secret message").await.unwrap();
+        store
+            .send_chat(game.id, Some(1), "public", "Hello world!")
+            .await
+            .unwrap();
+        store
+            .send_chat(game.id, Some(2), "public", "Hi there!")
+            .await
+            .unwrap();
+        store
+            .send_chat(game.id, Some(1), "nation_1_2", "Secret message")
+            .await
+            .unwrap();
 
         let public = store.get_chat(game.id, "public", 50, None).await.unwrap();
         assert_eq!(public.len(), 2);
 
-        let private = store.get_chat(game.id, "nation_1_2", 50, None).await.unwrap();
+        let private = store
+            .get_chat(game.id, "nation_1_2", 50, None)
+            .await
+            .unwrap();
         assert_eq!(private.len(), 1);
     }
 
     #[tokio::test]
     async fn test_chat_rate_limiting() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
         // Send 5 messages — should all succeed
         for i in 0..5 {
-            store.send_chat(game.id, Some(1), "public", &format!("msg {}", i)).await.unwrap();
+            store
+                .send_chat(game.id, Some(1), "public", &format!("msg {}", i))
+                .await
+                .unwrap();
         }
         // 6th should be rate limited
         let result = store.send_chat(game.id, Some(1), "public", "spam").await;
         assert!(result.is_err());
 
         // System messages bypass rate limiting
-        store.send_system_message(game.id, "public", "System msg").await.unwrap();
+        store
+            .send_system_message(game.id, "public", "System msg")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn test_private_channels() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
         let channel = GameStore::private_channel_name(3, 1);
         assert_eq!(channel, "nation_1_3"); // sorted
 
-        store.send_chat(game.id, Some(1), &channel, "Hello nation 3").await.unwrap();
+        store
+            .send_chat(game.id, Some(1), &channel, "Hello nation 3")
+            .await
+            .unwrap();
 
         // Nation 1 can see it
-        let msgs = store.get_chat_for_nation(game.id, 1, &channel, 50, None).await.unwrap();
+        let msgs = store
+            .get_chat_for_nation(game.id, 1, &channel, 50, None)
+            .await
+            .unwrap();
         assert_eq!(msgs.len(), 1);
 
         // Nation 3 can see it
-        let msgs = store.get_chat_for_nation(game.id, 3, &channel, 50, None).await.unwrap();
+        let msgs = store
+            .get_chat_for_nation(game.id, 3, &channel, 50, None)
+            .await
+            .unwrap();
         assert_eq!(msgs.len(), 1);
 
         // Nation 2 cannot
-        let result = store.get_chat_for_nation(game.id, 2, &channel, 50, None).await;
+        let result = store
+            .get_chat_for_nation(game.id, 2, &channel, 50, None)
+            .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_system_messages() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
-        let msg = store.send_system_message(game.id, "public", "Turn 2 has begun").await.unwrap();
+        let msg = store
+            .send_system_message(game.id, "public", "Turn 2 has begun")
+            .await
+            .unwrap();
         assert!(msg.is_system);
         assert_eq!(msg.sender_name, "SYSTEM");
         assert!(msg.sender_nation_id.is_none());
@@ -3476,14 +3977,26 @@ mod tests {
     #[tokio::test]
     async fn test_chat_sender_name() {
         let store = GameStore::new();
-        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+        let user = store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        store
+            .join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G')
+            .await
+            .unwrap();
 
         // Send from the joined nation (nation_id from join)
         let players = store.list_players(game.id).await.unwrap();
         let nid = players[0].nation_id;
-        let msg = store.send_chat(game.id, Some(nid), "public", "Hello!").await.unwrap();
+        let msg = store
+            .send_chat(game.id, Some(nid), "public", "Hello!")
+            .await
+            .unwrap();
         assert!(msg.sender_name.contains("Gondor"));
         assert!(msg.sender_name.contains("Aragorn"));
     }
@@ -3491,10 +4004,19 @@ mod tests {
     #[tokio::test]
     async fn test_invites() {
         let store = GameStore::new();
-        let user = store.create_user("admin", "admin@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let user = store
+            .create_user("admin", "admin@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
-        let invite = store.create_invite(game.id, user.id, Some(5), Some(24.0)).await.unwrap();
+        let invite = store
+            .create_invite(game.id, user.id, Some(5), Some(24.0))
+            .await
+            .unwrap();
         assert_eq!(invite.uses, 0);
 
         let (found, info) = store.get_invite(&invite.invite_code).await.unwrap();
@@ -3509,17 +4031,28 @@ mod tests {
     #[tokio::test]
     async fn test_visible_map() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        let player = store.join_game(
-            game.id, user.id, "Test", "Leader", 'H', 1, 'T'
-        ).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        let player = store
+            .join_game(game.id, user.id, "Test", "Leader", 'H', 1, 'T')
+            .await
+            .unwrap();
 
-        let map = store.get_visible_map(game.id, player.nation_id).await.unwrap();
+        let map = store
+            .get_visible_map(game.id, player.nation_id)
+            .await
+            .unwrap();
         assert_eq!(map.len(), 32);
         assert_eq!(map[0].len(), 32);
         // Not everything is visible
-        let visible_count: usize = map.iter()
+        let visible_count: usize = map
+            .iter()
             .flat_map(|col| col.iter())
             .filter(|s| s.is_some())
             .count();
@@ -3530,18 +4063,39 @@ mod tests {
     #[tokio::test]
     async fn test_player_done_flags() {
         let store = GameStore::new();
-        let user1 = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
-        let user2 = store.create_user("p2", "p2@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        store.join_game(game.id, user1.id, "Nation1", "L1", 'H', 1, 'A').await.unwrap();
-        store.join_game(game.id, user2.id, "Nation2", "L2", 'E', 1, 'B').await.unwrap();
+        let user1 = store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let user2 = store
+            .create_user("p2", "p2@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        store
+            .join_game(game.id, user1.id, "Nation1", "L1", 'H', 1, 'A')
+            .await
+            .unwrap();
+        store
+            .join_game(game.id, user2.id, "Nation2", "L2", 'E', 1, 'B')
+            .await
+            .unwrap();
 
         assert!(!store.all_players_done(game.id).await.unwrap());
 
-        store.set_player_done(game.id, user1.id, true).await.unwrap();
+        store
+            .set_player_done(game.id, user1.id, true)
+            .await
+            .unwrap();
         assert!(!store.all_players_done(game.id).await.unwrap());
 
-        store.set_player_done(game.id, user2.id, true).await.unwrap();
+        store
+            .set_player_done(game.id, user2.id, true)
+            .await
+            .unwrap();
         assert!(store.all_players_done(game.id).await.unwrap());
     }
 
@@ -3552,15 +4106,24 @@ mod tests {
     #[tokio::test]
     async fn test_user_profile() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "pass", Some("Player One")).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "pass", Some("Player One"))
+            .await
+            .unwrap();
 
         let profile = store.get_user_profile(user.id).await.unwrap();
         assert_eq!(profile.display_name, "Player One");
         assert_eq!(profile.games_played, 0);
 
         // Join a game
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        store
+            .join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G')
+            .await
+            .unwrap();
 
         let profile = store.get_user_profile(user.id).await.unwrap();
         assert_eq!(profile.games_played, 1);
@@ -3570,23 +4133,35 @@ mod tests {
     #[tokio::test]
     async fn test_update_profile() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "pass", None).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
 
-        let updated = store.update_user_profile(user.id, Some("New Name"), None).await.unwrap();
+        let updated = store
+            .update_user_profile(user.id, Some("New Name"), None)
+            .await
+            .unwrap();
         assert_eq!(updated.display_name, "New Name");
     }
 
     #[tokio::test]
     async fn test_change_password() {
         let store = GameStore::new();
-        let user = store.create_user("player1", "p1@test.com", "oldpass", None).await.unwrap();
+        let user = store
+            .create_user("player1", "p1@test.com", "oldpass", None)
+            .await
+            .unwrap();
 
         // Wrong old password fails
         let err = store.change_password(user.id, "wrong", "newpass").await;
         assert!(err.is_err());
 
         // Correct old password succeeds
-        store.change_password(user.id, "oldpass", "newpass").await.unwrap();
+        store
+            .change_password(user.id, "oldpass", "newpass")
+            .await
+            .unwrap();
 
         // New password works
         let authed = store.authenticate_user("player1", "newpass").await.unwrap();
@@ -3596,7 +4171,10 @@ mod tests {
     #[tokio::test]
     async fn test_game_admin() {
         let store = GameStore::new();
-        let user = store.create_user("creator", "c@test.com", "pass", None).await.unwrap();
+        let user = store
+            .create_user("creator", "c@test.com", "pass", None)
+            .await
+            .unwrap();
 
         let mut settings = GameSettings::default();
         settings.creator_id = Some(user.id);
@@ -3604,16 +4182,28 @@ mod tests {
 
         assert!(store.is_game_admin(game.id, user.id).await.unwrap());
 
-        let other = store.create_user("other", "o@test.com", "pass", None).await.unwrap();
+        let other = store
+            .create_user("other", "o@test.com", "pass", None)
+            .await
+            .unwrap();
         assert!(!store.is_game_admin(game.id, other.id).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_kick_player() {
         let store = GameStore::new();
-        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
-        let player = store.join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G').await.unwrap();
+        let user = store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
+        let player = store
+            .join_game(game.id, user.id, "Gondor", "Aragorn", 'H', 1, 'G')
+            .await
+            .unwrap();
 
         store.kick_player(game.id, player.nation_id).await.unwrap();
 
@@ -3624,7 +4214,10 @@ mod tests {
     #[tokio::test]
     async fn test_turn_rollback() {
         let store = GameStore::new();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
         let initial_turn = game.current_turn;
 
         // Advance a couple turns (each saves a snapshot)
@@ -3643,8 +4236,14 @@ mod tests {
     #[tokio::test]
     async fn test_spectator() {
         let store = GameStore::new();
-        let user = store.create_user("spec", "spec@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let user = store
+            .create_user("spec", "spec@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
         store.join_as_spectator(game.id, user.id).await.unwrap();
         assert!(store.is_spectator(game.id, user.id).await);
@@ -3660,18 +4259,25 @@ mod tests {
     #[tokio::test]
     async fn test_notifications() {
         let store = GameStore::new();
-        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+        let user = store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
 
         // Default prefs enable most notifications
-        let notif = store.add_notification(
-            user.id, NotificationType::YourTurn, None, "It's your turn!",
-        ).await.unwrap();
+        let notif = store
+            .add_notification(user.id, NotificationType::YourTurn, None, "It's your turn!")
+            .await
+            .unwrap();
         assert!(!notif.read);
 
         let unread = store.get_notifications(user.id, true).await;
         assert_eq!(unread.len(), 1);
 
-        store.mark_notification_read(user.id, notif.id).await.unwrap();
+        store
+            .mark_notification_read(user.id, notif.id)
+            .await
+            .unwrap();
         let unread = store.get_notifications(user.id, true).await;
         assert_eq!(unread.len(), 0);
 
@@ -3682,7 +4288,10 @@ mod tests {
     #[tokio::test]
     async fn test_notification_preferences() {
         let store = GameStore::new();
-        let user = store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
+        let user = store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
 
         // Disable player_joined (default is false, but let's be explicit)
         let mut prefs = NotificationPreferences::default();
@@ -3690,26 +4299,38 @@ mod tests {
         store.set_notification_prefs(user.id, prefs).await;
 
         // Now your_turn notifications are suppressed
-        let result = store.add_notification(
-            user.id, NotificationType::YourTurn, None, "your turn",
-        ).await;
+        let result = store
+            .add_notification(user.id, NotificationType::YourTurn, None, "your turn")
+            .await;
         assert!(result.is_err()); // should fail because disabled
 
         // But game_started still works
-        let result = store.add_notification(
-            user.id, NotificationType::GameStarted, None, "game started",
-        ).await;
+        let result = store
+            .add_notification(user.id, NotificationType::GameStarted, None, "game started")
+            .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_invite_management() {
         let store = GameStore::new();
-        let user = store.create_user("admin", "a@test.com", "pass", None).await.unwrap();
-        let game = store.create_game("Test", GameSettings::default()).await.unwrap();
+        let user = store
+            .create_user("admin", "a@test.com", "pass", None)
+            .await
+            .unwrap();
+        let game = store
+            .create_game("Test", GameSettings::default())
+            .await
+            .unwrap();
 
-        let inv1 = store.create_invite(game.id, user.id, Some(5), None).await.unwrap();
-        let inv2 = store.create_invite(game.id, user.id, None, None).await.unwrap();
+        let inv1 = store
+            .create_invite(game.id, user.id, Some(5), None)
+            .await
+            .unwrap();
+        let inv2 = store
+            .create_invite(game.id, user.id, None, None)
+            .await
+            .unwrap();
 
         let invites = store.list_invites(game.id).await.unwrap();
         assert_eq!(invites.len(), 2);
@@ -3723,8 +4344,14 @@ mod tests {
     #[tokio::test]
     async fn test_server_stats() {
         let store = GameStore::new();
-        store.create_user("p1", "p1@test.com", "pass", None).await.unwrap();
-        store.create_game("G1", GameSettings::default()).await.unwrap();
+        store
+            .create_user("p1", "p1@test.com", "pass", None)
+            .await
+            .unwrap();
+        store
+            .create_game("G1", GameSettings::default())
+            .await
+            .unwrap();
 
         let stats = store.server_stats().await;
         assert_eq!(stats.total_users, 1);
@@ -3743,18 +4370,26 @@ mod tests {
         settings.npc_cheat = true;
         settings.seed = 12345u64;
 
-        let game = store.create_game("Integration Test", settings).await.unwrap();
+        let game = store
+            .create_game("Integration Test", settings)
+            .await
+            .unwrap();
         let game_id = game.id;
 
         // Verify the world was generated with NPC nations
         {
             let games = store.games.read().await;
             let g = games.get(&game_id).unwrap();
-            let npc_count = (1..NTOTAL).filter(|&i| {
-                let strat = conquer_core::NationStrategy::from_value(g.state.nations[i].active);
-                strat.map_or(false, |s| s.is_npc())
-            }).count();
-            assert!(npc_count > 0, "Should have NPC nations after world generation");
+            let npc_count = (1..NTOTAL)
+                .filter(|&i| {
+                    let strat = conquer_core::NationStrategy::from_value(g.state.nations[i].active);
+                    strat.map_or(false, |s| s.is_npc())
+                })
+                .count();
+            assert!(
+                npc_count > 0,
+                "Should have NPC nations after world generation"
+            );
         }
 
         // Snapshot initial state for comparison
@@ -3795,7 +4430,9 @@ mod tests {
 
         // Run 5 turns
         for turn in 0..5 {
-            let new_turn = store.run_turn(game_id).await
+            let new_turn = store
+                .run_turn(game_id)
+                .await
                 .unwrap_or_else(|e| panic!("Turn {} failed: {:?}", turn, e));
             assert_eq!(new_turn, game.current_turn + turn as i16 + 1);
         }
@@ -3813,21 +4450,26 @@ mod tests {
         for i in 1..NTOTAL {
             let strat = conquer_core::NationStrategy::from_value(g.state.nations[i].active);
             if strat.map_or(false, |s| s.is_npc()) {
-                let active_armies: Vec<_> = g.state.nations[i].armies.iter()
+                let active_armies: Vec<_> = g.state.nations[i]
+                    .armies
+                    .iter()
                     .filter(|a| a.soldiers > 0)
                     .collect();
                 if !active_armies.is_empty() {
                     npc_has_armies = true;
                 }
                 // Check if army count or soldiers changed
-                let initial_count = initial_army_positions.iter()
-                    .filter(|&&(nat, _, _)| nat == i).count();
+                let initial_count = initial_army_positions
+                    .iter()
+                    .filter(|&&(nat, _, _)| nat == i)
+                    .count();
                 if active_armies.len() != initial_count {
                     army_state_changed = true;
                 }
                 // Check if any army moved position or changed size
                 for a in &active_armies {
-                    let was_here_exact = initial_army_positions.iter()
+                    let was_here_exact = initial_army_positions
+                        .iter()
                         .any(|&(nat, x, y)| nat == i && x == a.x && y == a.y);
                     if !was_here_exact {
                         army_state_changed = true;
@@ -3863,22 +4505,31 @@ mod tests {
         let score_changed = (1..NTOTAL).any(|i| {
             g.state.nations[i].active > 0 && g.state.nations[i].score != initial_scores[i]
         });
-        assert!(score_changed, "At least one nation's score should change after 5 turns");
+        assert!(
+            score_changed,
+            "At least one nation's score should change after 5 turns"
+        );
 
         // 5. Monster nations should have acted (check nomad/pirate/savage/lizard)
         let monster_active = (1..NTOTAL).any(|i| {
             let strat = conquer_core::NationStrategy::from_value(g.state.nations[i].active);
-            matches!(strat, Some(
-                conquer_core::NationStrategy::NpcNomad
-                | conquer_core::NationStrategy::NpcPirate
-                | conquer_core::NationStrategy::NpcSavage
-                | conquer_core::NationStrategy::NpcLizard
-            )) && g.state.nations[i].armies.iter().any(|a| a.soldiers > 0)
+            matches!(
+                strat,
+                Some(
+                    conquer_core::NationStrategy::NpcNomad
+                        | conquer_core::NationStrategy::NpcPirate
+                        | conquer_core::NationStrategy::NpcSavage
+                        | conquer_core::NationStrategy::NpcLizard
+                )
+            ) && g.state.nations[i].armies.iter().any(|a| a.soldiers > 0)
         });
         assert!(monster_active, "Monster nations should have active armies");
 
         // 6. News should have been generated
-        assert!(!g.news.is_empty(), "News entries should have been generated over 5 turns");
+        assert!(
+            !g.news.is_empty(),
+            "News entries should have been generated over 5 turns"
+        );
     }
 
     // ================================================================
@@ -3888,24 +4539,99 @@ mod tests {
     #[test]
     fn test_engine_only_actions_blocked() {
         // Engine-only actions must return false for is_player_action()
-        assert!(!Action::AdjustArmyMen { nation: 1, army: 0, soldiers: 100, unit_type: 0 }.is_player_action());
-        assert!(!Action::AdjustArmyMove { nation: 1, army: 0, movement: 10 }.is_player_action());
-        assert!(!Action::AdjustNavyMove { nation: 1, fleet: 0, movement: 10 }.is_player_action());
-        assert!(!Action::AdjustNavyGold { nation: 1, gold: 1000 }.is_player_action());
-        assert!(!Action::TakeSectorOwnership { nation: 1, x: 5, y: 5 }.is_player_action());
-        assert!(!Action::IncreaseFort { nation: 1, x: 5, y: 5 }.is_player_action());
-        assert!(!Action::ChangeMagic { nation: 1, powers: 0, new_power: 1 }.is_player_action());
+        assert!(!Action::AdjustArmyMen {
+            nation: 1,
+            army: 0,
+            soldiers: 100,
+            unit_type: 0
+        }
+        .is_player_action());
+        assert!(!Action::AdjustArmyMove {
+            nation: 1,
+            army: 0,
+            movement: 10
+        }
+        .is_player_action());
+        assert!(!Action::AdjustNavyMove {
+            nation: 1,
+            fleet: 0,
+            movement: 10
+        }
+        .is_player_action());
+        assert!(!Action::AdjustNavyGold {
+            nation: 1,
+            gold: 1000
+        }
+        .is_player_action());
+        assert!(!Action::TakeSectorOwnership {
+            nation: 1,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(!Action::IncreaseFort {
+            nation: 1,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(!Action::ChangeMagic {
+            nation: 1,
+            powers: 0,
+            new_power: 1
+        }
+        .is_player_action());
         assert!(!Action::AdjustSpellPoints { nation: 1, cost: 5 }.is_player_action());
         assert!(!Action::DestroyNation { target: 1, by: 2 }.is_player_action());
-        assert!(!Action::AdjustSectorCiv { nation: 1, people: 100, x: 5, y: 5 }.is_player_action());
-        assert!(!Action::AddSectorCiv { nation: 1, people: 100, x: 5, y: 5 }.is_player_action());
+        assert!(!Action::AdjustSectorCiv {
+            nation: 1,
+            people: 100,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(!Action::AddSectorCiv {
+            nation: 1,
+            people: 100,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
 
         // Player actions must return true
-        assert!(Action::MoveArmy { nation: 1, army: 0, x: 5, y: 5 }.is_player_action());
-        assert!(Action::MoveNavy { nation: 1, fleet: 0, x: 5, y: 5 }.is_player_action());
-        assert!(Action::ConstructFort { nation: 1, x: 5, y: 5 }.is_player_action());
-        assert!(Action::DesignateSector { nation: 1, x: 5, y: 5, designation: 'F' }.is_player_action());
-        assert!(Action::BribeNation { nation: 1, cost: 1000, target: 2 }.is_player_action());
+        assert!(Action::MoveArmy {
+            nation: 1,
+            army: 0,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(Action::MoveNavy {
+            nation: 1,
+            fleet: 0,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(Action::ConstructFort {
+            nation: 1,
+            x: 5,
+            y: 5
+        }
+        .is_player_action());
+        assert!(Action::DesignateSector {
+            nation: 1,
+            x: 5,
+            y: 5,
+            designation: 'F'
+        }
+        .is_player_action());
+        assert!(Action::BribeNation {
+            nation: 1,
+            cost: 1000,
+            target: 2
+        }
+        .is_player_action());
     }
 
     #[test]
@@ -3923,7 +4649,15 @@ mod tests {
         state.sectors[6][5].altitude = Altitude::Clear as u8;
         state.move_cost[6][5] = 2;
 
-        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::MoveArmy {
+                nation: 1,
+                army: 0,
+                x: 6,
+                y: 5,
+            },
+        );
         assert_eq!(state.nations[1].armies[0].x, 6);
         assert_eq!(state.nations[1].armies[0].y, 5);
         assert_eq!(state.nations[1].armies[0].movement, 8); // 10 - 2 cost
@@ -3942,7 +4676,15 @@ mod tests {
         state.sectors[6][5].altitude = Altitude::Water as u8;
         state.move_cost[6][5] = -1;
 
-        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::MoveArmy {
+                nation: 1,
+                army: 0,
+                x: 6,
+                y: 5,
+            },
+        );
         // Should NOT have moved — still at (5,5)
         assert_eq!(state.nations[1].armies[0].x, 5);
         assert_eq!(state.nations[1].armies[0].y, 5);
@@ -3961,7 +4703,15 @@ mod tests {
         state.sectors[6][5].altitude = Altitude::Clear as u8;
         state.move_cost[6][5] = 2;
 
-        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::MoveArmy {
+                nation: 1,
+                army: 0,
+                x: 6,
+                y: 5,
+            },
+        );
         assert_eq!(state.nations[1].armies[0].x, 5); // didn't move
     }
 
@@ -3976,7 +4726,15 @@ mod tests {
         state.sectors[5][5].altitude = Altitude::Water as u8;
         state.sectors[6][5].altitude = Altitude::Clear as u8; // land!
 
-        apply_action_to_state(&mut state, &Action::MoveNavy { nation: 1, fleet: 0, x: 6, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::MoveNavy {
+                nation: 1,
+                fleet: 0,
+                x: 6,
+                y: 5,
+            },
+        );
         assert_eq!(state.nations[1].navies[0].x, 5); // didn't move
     }
 
@@ -3991,9 +4749,15 @@ mod tests {
         state.sectors[5][5].designation = Designation::NoDesig as u8;
         state.sectors[5][5].people = 1000;
 
-        apply_action_to_state(&mut state, &Action::DesignateSector {
-            nation: 1, x: 5, y: 5, designation: 'f' // Fort
-        });
+        apply_action_to_state(
+            &mut state,
+            &Action::DesignateSector {
+                nation: 1,
+                x: 5,
+                y: 5,
+                designation: 'f', // Fort
+            },
+        );
         // Should NOT have changed
         assert_eq!(state.sectors[5][5].designation, Designation::NoDesig as u8);
     }
@@ -4010,7 +4774,14 @@ mod tests {
         state.sectors[5][5].people = 1000;
         let gold_before = state.nations[1].treasury_gold;
 
-        apply_action_to_state(&mut state, &Action::ConstructFort { nation: 1, x: 5, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::ConstructFort {
+                nation: 1,
+                x: 5,
+                y: 5,
+            },
+        );
         assert_eq!(state.sectors[5][5].fortress, 1);
         assert!(state.nations[1].treasury_gold < gold_before); // gold was charged
         assert_eq!(state.nations[1].treasury_gold, gold_before - FORTCOST);
@@ -4032,14 +4803,30 @@ mod tests {
             state.world.turn = seed_offset as i16;
 
             let old_status = state.nations[2].diplomacy[1];
-            apply_action_to_state(&mut state, &Action::BribeNation { nation: 1, cost: 0, target: 2 });
+            apply_action_to_state(
+                &mut state,
+                &Action::BribeNation {
+                    nation: 1,
+                    cost: 0,
+                    target: 2,
+                },
+            );
             if state.nations[2].diplomacy[1] < old_status {
                 successes += 1;
             }
         }
         // Should succeed sometimes but not always (~30% for neutral different race)
-        assert!(successes > 0, "Bribe should succeed at least once in {} trials", trials);
-        assert!(successes < trials, "Bribe should not always succeed ({}/{})", successes, trials);
+        assert!(
+            successes > 0,
+            "Bribe should succeed at least once in {} trials",
+            trials
+        );
+        assert!(
+            successes < trials,
+            "Bribe should not always succeed ({}/{})",
+            successes,
+            trials
+        );
     }
 
     #[test]
@@ -4049,7 +4836,15 @@ mod tests {
         state.nations[1].tax_rate = 10;
 
         // Try to set tax_rate above max (20)
-        apply_action_to_state(&mut state, &Action::AdjustTax { nation: 1, tax_rate: 50, active: 0, charity: 15 });
+        apply_action_to_state(
+            &mut state,
+            &Action::AdjustTax {
+                nation: 1,
+                tax_rate: 50,
+                active: 0,
+                charity: 15,
+            },
+        );
         assert_eq!(state.nations[1].tax_rate, 20); // clamped
         assert_eq!(state.nations[1].charity, 10); // clamped to 10
 
@@ -4069,7 +4864,15 @@ mod tests {
         state.sectors[6][5].altitude = Altitude::Clear as u8;
         state.move_cost[6][5] = 2;
 
-        apply_action_to_state(&mut state, &Action::MoveArmy { nation: 1, army: 0, x: 6, y: 5 });
+        apply_action_to_state(
+            &mut state,
+            &Action::MoveArmy {
+                nation: 1,
+                army: 0,
+                x: 6,
+                y: 5,
+            },
+        );
         assert_eq!(state.nations[1].armies[0].x, 5); // didn't move
     }
 }

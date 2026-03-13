@@ -18,8 +18,7 @@ async fn main() {
     // Initialize tracing with structured logging (T452)
     fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
         )
         .json()
         .with_target(true)
@@ -31,7 +30,11 @@ async fn main() {
     // Create store — with Postgres if DATABASE_URL is set
     let store = if let Some(ref db_url) = config.database_url {
         let safe_url = if let Some(at) = db_url.find('@') {
-            format!("{}...{}", &db_url[..db_url[..at].rfind(':').unwrap_or(0).max(15).min(at)], &db_url[at..])
+            format!(
+                "{}...{}",
+                &db_url[..db_url[..at].rfind(':').unwrap_or(0).max(15).min(at)],
+                &db_url[at..]
+            )
         } else {
             db_url.clone()
         };
@@ -44,7 +47,10 @@ async fn main() {
             .expect("Failed to connect to Postgres");
 
         let store = GameStore::with_pool(pool);
-        store.hydrate().await.expect("Failed to hydrate from Postgres");
+        store
+            .hydrate()
+            .await
+            .expect("Failed to hydrate from Postgres");
         tracing::info!("Postgres persistence active — data will survive restarts");
         store
     } else {

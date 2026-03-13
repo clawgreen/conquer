@@ -4,22 +4,18 @@
 // T200-T210: movement costs, updmove, land_reachp, army movement resolution,
 // zone of control, sector taking, flee mechanics.
 
-use conquer_core::*;
+use crate::combat::takesector;
+use crate::utils::*;
 use conquer_core::powers::Power;
 use conquer_core::rng::ConquerRng;
 use conquer_core::tables::*;
-use crate::utils::*;
-use crate::combat::takesector;
+use conquer_core::*;
 
 /// Update the movement cost grid for a given race and nation.
 /// Matches C updmove() exactly.
 /// Movement cost is sum of altitude cost + vegetation cost.
 /// Negative values = water (impassable for land, passable for navy).
-pub fn update_move_costs(
-    state: &mut GameState,
-    race: char,
-    nation_idx: usize,
-) {
+pub fn update_move_costs(state: &mut GameState, race: char, nation_idx: usize) {
     let map_x = state.world.map_x as usize;
     let map_y = state.world.map_y as usize;
     let nation = &state.nations[nation_idx];
@@ -37,7 +33,9 @@ pub fn update_move_costs(
     let veg_chars = VEG_CHARS.as_bytes();
     let veg_costs = veg_cost_str.as_bytes();
     for (i, &ch) in veg_chars.iter().enumerate() {
-        if ch == b'0' { break; } // sentinel
+        if ch == b'0' {
+            break;
+        } // sentinel
         if i < veg_costs.len() {
             let c = veg_costs[i];
             veg_cost[ch as usize] = if c == b'/' { -1 } else { (c - b'0') as i16 };
@@ -48,7 +46,9 @@ pub fn update_move_costs(
     let ele_chars = ELE_CHARS.as_bytes();
     let ele_costs = ele_cost_str.as_bytes();
     for (i, &ch) in ele_chars.iter().enumerate() {
-        if ch == b'0' { break; } // sentinel
+        if ch == b'0' {
+            break;
+        } // sentinel
         if i < ele_costs.len() {
             let c = ele_costs[i];
             ele_cost[ch as usize] = if c == b'/' { -1 } else { (c - b'0') as i16 };
@@ -151,7 +151,16 @@ pub fn land_reachp(
     let mut history = vec![vec![0u8; map_y]; map_x];
     history[ax as usize][ay as usize] = max_move;
 
-    land_2reachp(state, ax, ay, gx, gy, max_move as i32, nation_idx, &mut history)
+    land_2reachp(
+        state,
+        ax,
+        ay,
+        gx,
+        gy,
+        max_move as i32,
+        nation_idx,
+        &mut history,
+    )
 }
 
 fn land_2reachp(
@@ -189,31 +198,49 @@ fn land_2reachp(
 
     // Direction priority: try moving toward target first (matches C exactly)
     let (dx, dy) = if y_abs == 0 {
-        ([inc_x, inc_x, inc_x, 0, 0, -inc_x, -inc_x, -inc_x],
-         [0, inc_y, -inc_y, inc_y, -inc_y, inc_y, 0, -inc_y])
+        (
+            [inc_x, inc_x, inc_x, 0, 0, -inc_x, -inc_x, -inc_x],
+            [0, inc_y, -inc_y, inc_y, -inc_y, inc_y, 0, -inc_y],
+        )
     } else if x_abs == 0 {
-        ([0, inc_x, -inc_x, inc_x, -inc_x, inc_x, 0, -inc_x],
-         [inc_y, inc_y, inc_y, 0, 0, -inc_y, -inc_y, -inc_y])
+        (
+            [0, inc_x, -inc_x, inc_x, -inc_x, inc_x, 0, -inc_x],
+            [inc_y, inc_y, inc_y, 0, 0, -inc_y, -inc_y, -inc_y],
+        )
     } else {
-        ([inc_x, 0, inc_x, -inc_x, inc_x, -inc_x, 0, -inc_x],
-         [inc_y, inc_y, 0, inc_y, -inc_y, 0, -inc_y, -inc_y])
+        (
+            [inc_x, 0, inc_x, -inc_x, inc_x, -inc_x, 0, -inc_x],
+            [inc_y, inc_y, 0, inc_y, -inc_y, 0, -inc_y, -inc_y],
+        )
     };
 
     for i in 0..8 {
         let x = ax + dx[i];
         let y = ay + dy[i];
-        if x < 0 || x >= state.world.map_x as i32 { continue; }
-        if y < 0 || y >= state.world.map_y as i32 { continue; }
+        if x < 0 || x >= state.world.map_x as i32 {
+            continue;
+        }
+        if y < 0 || y >= state.world.map_y as i32 {
+            continue;
+        }
 
         let xu = x as usize;
         let yu = y as usize;
 
-        if state.move_cost[xu][yu] < 0 { continue; }
-        if state.sectors[xu][yu].altitude == Altitude::Peak as u8 { continue; }
-        if state.sectors[xu][yu].altitude == Altitude::Water as u8 { continue; }
+        if state.move_cost[xu][yu] < 0 {
+            continue;
+        }
+        if state.sectors[xu][yu].altitude == Altitude::Peak as u8 {
+            continue;
+        }
+        if state.sectors[xu][yu].altitude == Altitude::Water as u8 {
+            continue;
+        }
 
         let new_mp = move_points - state.move_cost[xu][yu] as i32;
-        if new_mp < 0 { continue; }
+        if new_mp < 0 {
+            continue;
+        }
 
         // Skip if we've been here before with MORE move points (same = skip to avoid loops)
         // But allow 0-cost arrival at destination
@@ -238,7 +265,9 @@ fn land_2reachp(
                         break;
                     }
                 }
-                if has_soldiers { continue; }
+                if has_soldiers {
+                    continue;
+                }
             }
             // We're not at war but owner is neutral+ hostile — no passing
             if state.nations[nation_idx].diplomacy[own] < DiplomaticStatus::War as u8
@@ -258,12 +287,7 @@ fn land_2reachp(
 
 /// Zone of control calculation.
 /// Returns total enemy soldiers in the sector that would trigger ZoC.
-pub fn zone_of_control(
-    state: &GameState,
-    x: i32,
-    y: i32,
-    moving_nation: usize,
-) -> i64 {
+pub fn zone_of_control(state: &GameState, x: i32, y: i32, moving_nation: usize) -> i64 {
     let mut total: i64 = 0;
     for nation_idx in 0..NTOTAL {
         if nation_idx == moving_nation {
@@ -345,7 +369,9 @@ pub fn move_army_step(
         let s_owner = sct.owner as usize;
         if astat != ArmyStatus::Scout.to_value()
             && atype != UnitType::NINJA.0
-            && (atype < UnitType::MIN_LEADER || atype >= UnitType::MIN_MONSTER || astat == ArmyStatus::General.to_value())
+            && (atype < UnitType::MIN_LEADER
+                || atype >= UnitType::MIN_MONSTER
+                || astat == ArmyStatus::General.to_value())
             && s_owner != 0
             && s_owner != nation_idx
             && sct.people > 100
@@ -487,8 +513,7 @@ pub fn npc_army_move(
     let mut take_sector = 0i32;
 
     // Leader without a group: type >= MINLEADER AND < MINMONSTER AND not GENERAL
-    let is_leader = unit_type >= UnitType::MIN_LEADER
-        && unit_type < UnitType::MIN_MONSTER;
+    let is_leader = unit_type >= UnitType::MIN_LEADER && unit_type < UnitType::MIN_MONSTER;
     let lead_flag = is_leader && astat != ArmyStatus::General.to_value();
 
     if lead_flag {
@@ -514,8 +539,7 @@ pub fn npc_army_move(
             let cy = state.nations[nation_idx].cap_y;
             state.nations[nation_idx].armies[army_idx].x = cx;
             state.nations[nation_idx].armies[army_idx].y = cy;
-            state.nations[nation_idx].armies[army_idx].status =
-                ArmyStatus::Defend.to_value();
+            state.nations[nation_idx].armies[army_idx].status = ArmyStatus::Defend.to_value();
             return 0;
         }
 
@@ -559,8 +583,7 @@ pub fn npc_army_move(
                     && a.x == fx
                     && a.y == fy
                 {
-                    state.nations[nation_idx].armies[i].status =
-                        NUMSTATUS + army_idx as u8;
+                    state.nations[nation_idx].armies[i].status = NUMSTATUS + army_idx as u8;
                     state.nations[nation_idx].armies[army_idx].status =
                         ArmyStatus::General.to_value();
                     break;
@@ -577,9 +600,7 @@ pub fn npc_army_move(
         let mut count: i64 = 0;
         for i in 0..MAXARM {
             let a = &state.nations[nation_idx].armies[i];
-            if a.status == NUMSTATUS + army_idx as u8
-                && a.unit_type < UnitType::MIN_LEADER
-            {
+            if a.status == NUMSTATUS + army_idx as u8 && a.unit_type < UnitType::MIN_LEADER {
                 count += a.soldiers as i64;
             }
         }
@@ -616,8 +637,7 @@ pub fn npc_army_move(
         let cy = state.nations[nation_idx].cap_y;
         state.nations[nation_idx].armies[army_idx].x = cx;
         state.nations[nation_idx].armies[army_idx].y = cy;
-        state.nations[nation_idx].armies[army_idx].status =
-            ArmyStatus::Defend.to_value();
+        state.nations[nation_idx].armies[army_idx].status = ArmyStatus::Defend.to_value();
         return take_sector;
     }
 
@@ -708,8 +728,7 @@ pub fn npc_army_move(
                             && land_reachp(state, ax, ay, x, y, max_move, nation_idx)
                         {
                             if state.sectors[x as usize][y as usize].owner == 0 {
-                                state.sectors[x as usize][y as usize].owner =
-                                    nation_idx as u8;
+                                state.sectors[x as usize][y as usize].owner = nation_idx as u8;
                                 attr[x as usize][y as usize] = 1;
                                 if state.nations[nation_idx].popularity < 127 {
                                     state.nations[nation_idx].popularity += 1;
@@ -761,11 +780,17 @@ fn compute_occupancy(state: &GameState) -> Vec<Vec<usize>> {
         }
         // Armies (C: skip scouts only)
         for army in &state.nations[country].armies {
-            if army.soldiers <= 0 { continue; }
-            if army.status == ArmyStatus::Scout.to_value() { continue; }
+            if army.soldiers <= 0 {
+                continue;
+            }
+            if army.status == ArmyStatus::Scout.to_value() {
+                continue;
+            }
             let x = army.x as usize;
             let y = army.y as usize;
-            if x >= map_x || y >= map_y { continue; }
+            if x >= map_x || y >= map_y {
+                continue;
+            }
             if occ[x][y] == 0 || occ[x][y] == country {
                 occ[x][y] = country;
             } else {
@@ -774,10 +799,14 @@ fn compute_occupancy(state: &GameState) -> Vec<Vec<usize>> {
         }
         // Navies (C: fleets count as occupation)
         for nvy in &state.nations[country].navies {
-            if nvy.warships == 0 && nvy.galleys == 0 && nvy.merchant == 0 { continue; }
+            if nvy.warships == 0 && nvy.galleys == 0 && nvy.merchant == 0 {
+                continue;
+            }
             let x = nvy.x as usize;
             let y = nvy.y as usize;
-            if x >= map_x || y >= map_y { continue; }
+            if x >= map_x || y >= map_y {
+                continue;
+            }
             if occ[x][y] == 0 || occ[x][y] == country {
                 occ[x][y] = country;
             } else {
@@ -823,9 +852,7 @@ pub fn update_capture(state: &mut GameState, rng: &mut ConquerRng) -> Vec<String
             if atype >= UnitType::MIN_LEADER {
                 // But C also has a scout capture branch — handle below
                 // C: else if(P_ASTAT==A_SCOUT && P_ATYPE!=A_SPY && P_ASOLD>0)
-                if astat == ArmyStatus::Scout.to_value()
-                    && atype != UnitType::SPY.0
-                    && soldiers > 0
+                if astat == ArmyStatus::Scout.to_value() && atype != UnitType::SPY.0 && soldiers > 0
                 {
                     // Scout can be captured by enemy in same sector
                     let occval = occ[ax][ay];
@@ -838,8 +865,10 @@ pub fn update_capture(state: &mut GameState, rng: &mut ConquerRng) -> Vec<String
                         {
                             captured = true;
                         } else if sct_owner == occval
-                            && state.nations[occval].diplomacy[country] != DiplomaticStatus::Treaty as u8
-                            && state.nations[occval].diplomacy[country] != DiplomaticStatus::Allied as u8
+                            && state.nations[occval].diplomacy[country]
+                                != DiplomaticStatus::Treaty as u8
+                            && state.nations[occval].diplomacy[country]
+                                != DiplomaticStatus::Allied as u8
                             && (rng.rand() % 100) < PFINDSCOUT / 5
                         {
                             captured = true;
@@ -899,7 +928,10 @@ pub fn update_capture(state: &mut GameState, rng: &mut ConquerRng) -> Vec<String
                     state.nations[country].popularity = pop.saturating_add(1);
                     news.push(format!(
                         "area {},{} captured by {} from {}",
-                        ax, ay, state.nations[country].name, state.nations[sct_owner].name.clone()
+                        ax,
+                        ay,
+                        state.nations[country].name,
+                        state.nations[sct_owner].name.clone()
                     ));
                 }
             }

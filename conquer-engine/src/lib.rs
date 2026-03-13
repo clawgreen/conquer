@@ -18,21 +18,21 @@
 // - turn: Turn processing, end-of-turn updates (Sprint 3)
 // - nation: Nation creation, new nation formation (Sprint 3)
 
+pub mod combat;
+pub mod commands;
+pub mod diplomacy;
+pub mod economy;
+pub mod events;
+pub mod magic;
+pub mod monster;
+pub mod movement;
+pub mod nation;
+pub mod navy;
+pub mod npc;
 pub mod rng;
+pub mod trade;
+pub mod turn;
 pub mod utils;
 pub mod worldgen;
-pub mod economy;
-pub mod combat;
-pub mod movement;
-pub mod magic;
-pub mod npc;
-pub mod monster;
-pub mod navy;
-pub mod trade;
-pub mod diplomacy;
-pub mod events;
-pub mod commands;
-pub mod turn;
-pub mod nation;
 
 pub use conquer_core;

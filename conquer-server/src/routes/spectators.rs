@@ -54,7 +54,9 @@ pub async fn spectator_map(
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
 
     if !state.store.is_spectator(game_id, user_id).await {
-        return Err(ApiError::Forbidden("Not a spectator of this game".to_string()));
+        return Err(ApiError::Forbidden(
+            "Not a spectator of this game".to_string(),
+        ));
     }
 
     let visible = state.store.get_spectator_map(game_id).await?;

@@ -4,26 +4,26 @@
 //
 // Events: storms, plagues, revolts, discoveries, etc.
 
-use conquer_core::*;
-use conquer_core::tables::*;
-use conquer_core::enums::{Season, Altitude, Vegetation};
 use crate::rng::ConquerRng;
 use crate::utils::is_habitable;
+use conquer_core::enums::{Altitude, Season, Vegetation};
+use conquer_core::tables::*;
+use conquer_core::*;
 
 /// Event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventType {
     None,
-    Storm,        // Storm damages fleets
-    Plague,      // Population plague
-    Revolt,      // Tax revolt
-    Discovery,   // Gold/metal discovery
-    Volcano,     // Volcano eruption
-    Flood,       // Flood damages crops
-    Drought,     // Drought reduces food
-    Bounty,      // Unexpected bounty
-    Raid,        // Barbarian raid
-    TradeWind,   // Good trade winds
+    Storm,     // Storm damages fleets
+    Plague,    // Population plague
+    Revolt,    // Tax revolt
+    Discovery, // Gold/metal discovery
+    Volcano,   // Volcano eruption
+    Flood,     // Flood damages crops
+    Drought,   // Drought reduces food
+    Bounty,    // Unexpected bounty
+    Raid,      // Barbarian raid
+    TradeWind, // Good trade winds
 }
 
 /// Event result
@@ -49,9 +49,9 @@ pub struct DisasterReport {
 }
 
 /// Chance constants
-pub const STORM_CHANCE: i32 = 3;      // 3% chance per turn
-pub const VOLCANO_CHANCE: i32 = 20;   // 20% chance (defined in header.h)
-pub const REVOLT_CHANCE: i32 = 25;    // 25% /turn (PREVOLT in header.h)
+pub const STORM_CHANCE: i32 = 3; // 3% chance per turn
+pub const VOLCANO_CHANCE: i32 = 20; // 20% chance (defined in header.h)
+pub const REVOLT_CHANCE: i32 = 25; // 25% /turn (PREVOLT in header.h)
 
 /// Generate random event
 /// Matches C: randomevent() function
@@ -65,7 +65,7 @@ pub fn generate_random_event(
 ) -> Option<EventResult> {
     // Roll for event (RANEVENT must be defined in C)
     let roll = rng.rand() % 100;
-    
+
     // Storm (for navies in water)
     if sector.altitude == Altitude::Water as u8 {
         if rng.rand() % 100 < STORM_CHANCE {
@@ -79,7 +79,7 @@ pub fn generate_random_event(
             });
         }
     }
-    
+
     // Volcano (random sector check)
     if sector.vegetation == Vegetation::Volcano as u8 {
         if rng.rand() % 100 < VOLCANO_CHANCE {
@@ -93,13 +93,13 @@ pub fn generate_random_event(
             });
         }
     }
-    
+
     // Revolt check (based on PREVOLT)
     // This is done at nation level, not per sector
-    
+
     // Tax revolt chance
     // Done in updmil() in C
-    
+
     None
 }
 
@@ -114,23 +114,23 @@ pub fn check_tax_revolt(
     // Check if nation has enough gold for population
     // Revolt happens if gold < needed
     // Base formula: need 10 gold per 100 people per turn
-    
+
     let needed_gold = population * 10 / 100;
-    
+
     // High treasury reduces revolt chance
     let treasury_ratio = if needed_gold > 0 {
         (gold_in_treasury * 100) / needed_gold
     } else {
         100
     };
-    
+
     // If treasury is very low (< 25% of needed), high chance
     // Otherwise roll against PREVOLT (25%)
     if treasury_ratio < 25 {
         // Certain revolt
         return true;
     }
-    
+
     // Roll for revolt
     let revolt_roll = rng.rand() % 100;
     revolt_roll < REVOLT_CHANCE
@@ -138,13 +138,9 @@ pub fn check_tax_revolt(
 
 /// Process revolt damage
 /// Returns amount of gold lost
-pub fn process_revolt(
-    nation: &mut Nation,
-    nation_idx: usize,
-    gold_lost: i64,
-) -> EventResult {
+pub fn process_revolt(nation: &mut Nation, nation_idx: usize, gold_lost: i64) -> EventResult {
     nation.treasury_gold = nation.treasury_gold.saturating_sub(gold_lost);
-    
+
     EventResult {
         event_type: EventType::Revolt,
         affected_nation: Some(nation_idx as u8),
@@ -160,33 +156,27 @@ pub fn process_revolt(
 
 /// Storm damage calculation
 /// Matches C: STORMS logic
-pub fn calculate_storm_damage(
-    navy: &Navy,
-    is_in_harbor: bool,
-) -> i32 {
+pub fn calculate_storm_damage(navy: &Navy, is_in_harbor: bool) -> i32 {
     if is_in_harbor {
         return 0; // Safe in harbor
     }
-    
+
     // Calculate ship losses based on ship type
     let mut damage = 0;
-    
+
     // Warships more susceptible
     damage += navy.warships as i32 * 2;
     damage += navy.galleys as i32 * 2;
     damage += navy.merchant as i32;
-    
+
     // Crew may be lost
     // Would need to update navy.crew
-    
+
     damage
 }
 
 /// Process storm on a fleet
-pub fn process_storm(
-    navy: &mut Navy,
-    is_in_harbor: bool,
-) -> EventResult {
+pub fn process_storm(navy: &mut Navy, is_in_harbor: bool) -> EventResult {
     if is_in_harbor {
         return EventResult {
             event_type: EventType::Storm,
@@ -197,9 +187,9 @@ pub fn process_storm(
             message: "Fleet rides out storm in harbor.".to_string(),
         };
     }
-    
+
     let damage = calculate_storm_damage(navy, false);
-    
+
     EventResult {
         event_type: EventType::Storm,
         affected_nation: None,
@@ -211,99 +201,93 @@ pub fn process_storm(
 }
 
 /// Volcano damage to adjacent sectors
-pub fn volcano_damage(
-    sectors: &mut Vec<Vec<Sector>>,
-    vx: i32,
-    vy: i32,
-) -> Vec<EventResult> {
+pub fn volcano_damage(sectors: &mut Vec<Vec<Sector>>, vx: i32, vy: i32) -> Vec<EventResult> {
     let mut results = Vec::new();
     let map_x = sectors.len() as i32;
-    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
-    
+    let map_y = if map_x > 0 {
+        sectors[0].len() as i32
+    } else {
+        0
+    };
+
     // Check 3x3 area around volcano
     for dx in -1..=1 {
         for dy in -1..=1 {
             let x = vx + dx;
             let y = vy + dy;
-            
+
             if x < 0 || y < 0 || x >= map_x || y >= map_y {
                 continue;
             }
-            
+
             let sector = &mut sectors[x as usize][y as usize];
-            
+
             // Lava destroys everything
             if sector.owner != 0 {
                 let old_owner = sector.owner;
                 sector.owner = 0;
                 sector.people = 0;
-                
+
                 results.push(EventResult {
                     event_type: EventType::Volcano,
                     affected_nation: Some(old_owner),
                     affected_x: Some(x as u8),
                     affected_y: Some(y as u8),
                     damage: 0,
-                    message: format!(
-                        "Volcanic eruption destroys sector ({}, {})!",
-                        x, y
-                    ),
+                    message: format!("Volcanic eruption destroys sector ({}, {})!", x, y),
                 });
             }
-            
+
             // Vegetation destroyed
             if sector.vegetation != Vegetation::Volcano as u8 {
                 sector.vegetation = Vegetation::Desert as u8;
             }
         }
     }
-    
+
     results
 }
 
 /// Population plague effect
 pub fn plague_effect(
     sector: &mut Sector,
-    mortality_rate: i32,  // 0-100 percentage
+    mortality_rate: i32, // 0-100 percentage
 ) -> i64 {
     if sector.people <= 0 {
         return 0;
     }
-    
+
     let deaths = (sector.people as i64 * mortality_rate as i64) / 100;
     sector.people = sector.people.saturating_sub(deaths as i64);
-    
+
     deaths
 }
 
 /// Random gold/metal discovery in a sector
-pub fn random_discovery(
-    rng: &mut ConquerRng,
-    sector: &Sector,
-) -> Option<(i32, i32)> {
+pub fn random_discovery(rng: &mut ConquerRng, sector: &Sector) -> Option<(i32, i32)> {
     // Check for discovery chance (FINDPERCENT = 1%)
     if rng.rand() % 100 >= 1 {
         return None;
     }
-    
+
     // Check if sector has potential for discovery
     // Mountains and hills may have metal
     // Specific veg types may have gold
-    
+
     let mut metal_found = 0;
     let mut gold_found = 0;
-    
+
     // Based on altitude and vegetation
     let alt = sector.altitude;
     if alt == Altitude::Mountain as u8 || alt == Altitude::Hill as u8 {
         metal_found = rng.rand() % 10 + 1;
     }
-    
+
     // Check for gold based on trade good
     if sector.trade_good > 0 {
         gold_found = rng.rand() % 5 + 1;
     }
-    
+
     if metal_found > 0 || gold_found > 0 {
         Some((metal_found, gold_found))
     } else {
@@ -312,23 +296,19 @@ pub fn random_discovery(
 }
 
 /// Calculate food production bonus from good weather
-pub fn weather_bonus(
-    season: Season,
-    vegetation: u8,
-) -> i32 {
+pub fn weather_bonus(season: Season, vegetation: u8) -> i32 {
     // Summer bonus for farms
     if season == Season::Summer {
-        if vegetation == Vegetation::Good as u8 
-            || vegetation == Vegetation::Wood as u8 {
+        if vegetation == Vegetation::Good as u8 || vegetation == Vegetation::Wood as u8 {
             return 20; // 20% bonus
         }
     }
-    
+
     // Spring good for planting
     if season == Season::Spring {
         return 10;
     }
-    
+
     0
 }
 
@@ -344,19 +324,19 @@ pub fn barbarian_raid(
     if sector.people < 100 {
         return None;
     }
-    
+
     // 10% chance of raid per turn for vulnerable sectors
     if rng.rand() % 100 >= 10 {
         return None;
     }
-    
+
     // Calculate raid damage
     let stolen_gold = sector.people / 10;
     let stolen_food = sector.people / 20;
-    
+
     // Reduce sector population
     sector.people = sector.people.saturating_sub(stolen_gold / 10);
-    
+
     Some(EventResult {
         event_type: EventType::Raid,
         affected_nation: Some(nation_idx),
@@ -372,12 +352,12 @@ pub fn barbarian_raid(
 
 /// Report a weather disaster event
 /// Ported from C: wdisaster() in randeven.c
-/// 
+///
 /// This function formats and reports disaster events to:
 /// - Console output
 /// - News file (returned as string)
 /// - Mail message (for PC nations, returned as string)
-/// 
+///
 /// Parameters:
 /// - nation: The affected nation
 /// - nation_idx: Nation index
@@ -398,55 +378,54 @@ pub fn wdisaster(
     season: Season,
     year: i32,
 ) -> DisasterReport {
-    let is_pc = matches!(
-        nation.active,
-        1 | 2 | 3
-    ); // PC_GOOD=1, PC_NEUTRAL=2, PC_EVIL=3
-    
+    let is_pc = matches!(nation.active, 1 | 2 | 3); // PC_GOOD=1, PC_NEUTRAL=2, PC_EVIL=3
+
     let season_name = match season {
         Season::Winter => "Winter",
         Season::Spring => "Spring",
         Season::Summer => "Summer",
         Season::Fall => "Fall",
     };
-    
+
     // Console/news output
     let console_output = format!("\t{} in {}", event_name, nation.name);
-    
+
     // News output
     let news_output = format!("1.\t{} in {}", event_name, nation.name);
-    
+
     // Mail message (only for PC nations)
     let mail_message = if is_pc {
         let mut msg = format!(
             "MESSAGE FROM CONQUER\n\nAn event occurs within your nation ({})\n{} during the {} of Year {},\n",
             nation.name, event_name, season_name, year
         );
-        
+
         if x >= 0 && y >= 0 {
             msg.push_str(&format!(" centered around location {}, {}.\n", x, y));
         }
-        
+
         if damage_percent > 0 {
-            msg.push_str(&format!("Damage was estimated at about {}% in severity.\n", damage_percent));
+            msg.push_str(&format!(
+                "Damage was estimated at about {}% in severity.\n",
+                damage_percent
+            ));
         }
-        
+
         if let Some(details) = event_details {
             if !details.is_empty() {
                 msg.push_str(&format!("\t{}\n", details));
             }
         }
-        
+
         Some(msg)
     } else {
         None
     };
-    
+
     // Event details in news (if provided)
-    let news_details = event_details.map(|details| {
-        format!("1.\tevent in {} -->{}", nation.name, details)
-    });
-    
+    let news_details =
+        event_details.map(|details| format!("1.\tevent in {} -->{}", nation.name, details));
+
     DisasterReport {
         console_output,
         news_output,
@@ -473,29 +452,31 @@ pub fn process_nation_events(
     let mut results = Vec::new();
     let map_x = sectors.len();
     let map_y = if map_x > 0 { sectors[0].len() } else { 0 };
-    
+
     // Check for tax revolt
     if check_tax_revolt(rng, nation, nation.treasury_gold, nation.total_civ) {
         // Calculate gold lost (half of treasury)
         let gold_lost = nation.treasury_gold / 2;
         results.push(process_revolt(nation, nation_idx, gold_lost));
     }
-    
+
     // Process each sector for random events
     for x in 0..map_x {
         for y in 0..map_y {
             let sector = &mut sectors[x as usize][y as usize];
-            
+
             // Skip unowned sectors
             if sector.owner != nation_idx as u8 {
                 continue;
             }
-            
+
             // Check for barbarian raid
-            if let Some(raid_result) = barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8) {
+            if let Some(raid_result) =
+                barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8)
+            {
                 continue;
             }
-            
+
             // Check for random discovery
             if let Some((metal, gold)) = random_discovery(rng, sector) {
                 if metal > 0 {
@@ -504,7 +485,7 @@ pub fn process_nation_events(
                 if gold > 0 {
                     sector.jewels = sector.jewels.saturating_add(gold as u8);
                 }
-                
+
                 results.push(EventResult {
                     event_type: EventType::Discovery,
                     affected_nation: Some(nation_idx as u8),
@@ -517,14 +498,16 @@ pub fn process_nation_events(
                     ),
                 });
             }
-            
+
             // Check for barbarian raid
-            if let Some(raid_result) = barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8) {
+            if let Some(raid_result) =
+                barbarian_raid(rng, sector, nation_idx as u8, x as u8, y as u8)
+            {
                 results.push(raid_result);
             }
         }
     }
-    
+
     // Process navies for storms
     for navy in &mut nation.navies {
         if navy.has_ships() {
@@ -535,20 +518,20 @@ pub fn process_nation_events(
             }
         }
     }
-    
+
     results
 }
 
 /// Check if a sector is a harbor (next to water)
-fn is_sector_harbor(
-    sectors: &Vec<Vec<Sector>>,
-    x: u8,
-    y: u8,
-) -> bool {
+fn is_sector_harbor(sectors: &Vec<Vec<Sector>>, x: u8, y: u8) -> bool {
     let x = x as i32;
     let y = y as i32;
     let map_x = sectors.len() as i32;
-    let map_y = if map_x > 0 { sectors[0].len() as i32 } else { 0 };
+    let map_y = if map_x > 0 {
+        sectors[0].len() as i32
+    } else {
+        0
+    };
 
     for dx in -1..=1 {
         for dy in -1..=1 {
@@ -576,7 +559,9 @@ fn is_sector_harbor_gs(state: &GameState, x: i32, y: i32) -> bool {
         for dy in -1..=1i32 {
             let nx = x + dx;
             let ny = y + dy;
-            if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y { continue; }
+            if nx < 0 || ny < 0 || nx >= map_x || ny >= map_y {
+                continue;
+            }
             if state.sectors[nx as usize][ny as usize].altitude == Altitude::Water as u8 {
                 return true;
             }
@@ -593,7 +578,9 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
 
     for nation_idx in 1..NTOTAL {
         let active = state.nations[nation_idx].active;
-        if active == 0 { continue; }
+        if active == 0 {
+            continue;
+        }
 
         // Tax revolt check
         let gold = state.nations[nation_idx].treasury_gold;
@@ -609,7 +596,9 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
         let map_y = state.world.map_y as usize;
         for x in 0..map_x {
             for y in 0..map_y {
-                if state.sectors[x][y].owner as usize != nation_idx { continue; }
+                if state.sectors[x][y].owner as usize != nation_idx {
+                    continue;
+                }
 
                 // Volcano
                 if state.sectors[x][y].vegetation == Vegetation::Volcano as u8 {
@@ -619,7 +608,9 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
                             for dy in -1i32..=1 {
                                 let nx = x as i32 + dx;
                                 let ny = y as i32 + dy;
-                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
+                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 {
+                                    continue;
+                                }
                                 let p = state.sectors[nx as usize][ny as usize].people;
                                 state.sectors[nx as usize][ny as usize].people = p * 90 / 100;
                             }
@@ -660,7 +651,12 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
         // === Truly random events (C case 9-30) ===
         // Probability: score-weighted like C
         // (rand()%100)*WORLDSCORE < RANEVENT * WORLDNTN * score
-        let world_score = state.nations.iter().map(|n| n.score.max(0) as u64).sum::<u64>().max(1);
+        let world_score = state
+            .nations
+            .iter()
+            .map(|n| n.score.max(0) as u64)
+            .sum::<u64>()
+            .max(1);
         let world_ntn = state.nations.iter().filter(|n| n.active > 0).count() as u64;
         let nation_score = state.nations[nation_idx].score.max(0) as u64;
         let roll = (rng.rand() % 100) as u64 * world_score;
@@ -705,7 +701,9 @@ pub fn process_events_gs(state: &mut GameState, rng: &mut crate::rng::ConquerRng
                             for dy in -1i32..=1 {
                                 let nx = rx + dx;
                                 let ny = ry + dy;
-                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 { continue; }
+                                if nx < 0 || ny < 0 || nx >= map_x as i32 || ny >= map_y as i32 {
+                                    continue;
+                                }
                                 let nu = nx as usize;
                                 let nv = ny as usize;
                                 let p = state.sectors[nu][nv].people;
@@ -795,7 +793,7 @@ mod event_tests {
             galleys: 3,
             ..Default::default()
         };
-        
+
         let damage = calculate_storm_damage(&navy, false);
         assert!(damage > 0);
     }
@@ -806,7 +804,7 @@ mod event_tests {
             warships: 5,
             ..Default::default()
         };
-        
+
         let damage = calculate_storm_damage(&navy, true);
         assert_eq!(damage, 0);
     }
@@ -817,7 +815,7 @@ mod event_tests {
             people: 1000,
             ..Default::default()
         };
-        
+
         let deaths = plague_effect(&mut sector, 50);
         assert_eq!(deaths, 500);
         assert_eq!(sector.people, 500);
@@ -829,7 +827,7 @@ mod event_tests {
             people: 0,
             ..Default::default()
         };
-        
+
         let deaths = plague_effect(&mut sector, 50);
         assert_eq!(deaths, 0);
     }
@@ -840,7 +838,7 @@ mod event_tests {
             people: 1000,
             ..Default::default()
         };
-        
+
         let deaths = plague_effect(&mut sector, 100);
         assert_eq!(deaths, 1000);
         assert_eq!(sector.people, 0);
@@ -852,11 +850,11 @@ mod event_tests {
             people: 100,
             ..Default::default()
         };
-        
+
         // With 150% mortality rate, more people die than exist
         // The function should handle this gracefully
         let deaths = plague_effect(&mut sector, 150);
-        
+
         // The deaths should exceed the population
         assert!(deaths > 50);
     }
@@ -866,13 +864,13 @@ mod event_tests {
         // High tax, low treasury = revolt likely
         let nation = Nation {
             treasury_gold: 100,
-            total_civ: 10000,  // Needs 1000 gold
+            total_civ: 10000, // Needs 1000 gold
             tax_rate: 50,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(0); // Deterministic
-        
+
         // With very low treasury (<25% needed), revolt is certain
         let revolt = check_tax_revolt(&mut rng, &nation, 100, 10000);
         assert!(revolt);
@@ -887,9 +885,9 @@ mod event_tests {
             tax_rate: 10,
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(0); // Deterministic
-        
+
         // With high treasury, no revolt
         let revolt = check_tax_revolt(&mut rng, &nation, 100000, 1000);
         // Depends on RNG roll but should be unlikely with high treasury
@@ -916,13 +914,13 @@ mod event_tests {
     #[test]
     fn test_barbarian_raid_too_small() {
         let mut sector = Sector {
-            people: 50,  // Too small
+            people: 50, // Too small
             ..Default::default()
         };
-        
+
         let mut rng = ConquerRng::new(42);
         let result = barbarian_raid(&mut rng, &mut sector, 1, 10, 10);
-        
+
         assert!(result.is_none());
     }
 
@@ -932,11 +930,11 @@ mod event_tests {
             people: 1000,
             ..Default::default()
         };
-        
+
         // Use a seed that triggers the raid
         let mut rng = ConquerRng::new(0); // 10% chance, seed 0 should trigger
         let result = barbarian_raid(&mut rng, &mut sector, 1, 10, 10);
-        
+
         // Either some raids happen or not, but no crash
         if let Some(event) = result {
             assert_eq!(event.event_type, EventType::Raid);
@@ -951,14 +949,14 @@ mod event_tests {
     fn test_random_discovery_chance() {
         // Very low chance (1%), most calls return None
         let mut rng = ConquerRng::new(9999); // Unlikely to trigger 1%
-        
+
         let sector = Sector {
             altitude: Altitude::Mountain as u8,
             vegetation: Vegetation::Good as u8,
             trade_good: 1,
             ..Default::default()
         };
-        
+
         // Most should be None due to 1% chance
         let mut found_count = 0;
         for _ in 0..100 {
@@ -966,7 +964,7 @@ mod event_tests {
                 found_count += 1;
             }
         }
-        
+
         // Should be very few or none
         assert!(found_count <= 2);
     }
@@ -978,9 +976,9 @@ mod event_tests {
             name: "Test Nation".to_string(),
             ..Default::default()
         };
-        
+
         let result = process_revolt(&mut nation, 1, 5000);
-        
+
         assert_eq!(result.event_type, EventType::Revolt);
         assert_eq!(nation.treasury_gold, 5000);
     }
@@ -993,9 +991,9 @@ mod event_tests {
             y: 10,
             ..Default::default()
         };
-        
+
         let result = process_storm(&mut navy, true);
-        
+
         assert_eq!(result.event_type, EventType::Storm);
         assert!(result.message.contains("harbor"));
     }
@@ -1008,9 +1006,9 @@ mod event_tests {
             y: 10,
             ..Default::default()
         };
-        
+
         let result = process_storm(&mut navy, false);
-        
+
         assert_eq!(result.event_type, EventType::Storm);
         // Should have damage message
     }
@@ -1032,7 +1030,7 @@ mod event_tests {
             cap_y: 10,
             ..Default::default()
         };
-        
+
         let report = wdisaster(
             &nation,
             1,
@@ -1044,7 +1042,7 @@ mod event_tests {
             Season::Summer,
             100,
         );
-        
+
         assert!(report.is_pc);
         assert!(report.console_output.contains("volcano erupted"));
         assert!(report.console_output.contains("Test Kingdom"));
@@ -1066,7 +1064,7 @@ mod event_tests {
             cap_y: 5,
             ..Default::default()
         };
-        
+
         let report = wdisaster(
             &nation,
             2,
@@ -1078,7 +1076,7 @@ mod event_tests {
             Season::Spring,
             50,
         );
-        
+
         assert!(!report.is_pc);
         assert!(report.console_output.contains("peasant revolt"));
         assert!(report.console_output.contains("NPC Empire"));
@@ -1093,7 +1091,7 @@ mod event_tests {
             active: 2, // PC_NEUTRAL
             ..Default::default()
         };
-        
+
         let report = wdisaster(
             &nation,
             1,
@@ -1105,7 +1103,7 @@ mod event_tests {
             Season::Fall,
             25,
         );
-        
+
         assert!(report.is_pc);
         assert!(report.mail_message.is_some());
         let mail = report.mail_message.unwrap();
@@ -1120,7 +1118,7 @@ mod event_tests {
             active: 3, // PC_EVIL
             ..Default::default()
         };
-        
+
         let report = wdisaster(
             &nation,
             1,
@@ -1132,7 +1130,7 @@ mod event_tests {
             Season::Winter,
             75,
         );
-        
+
         assert!(report.is_pc);
         let mail = report.mail_message.unwrap();
         // When damage_percent is 0, should not mention damage
@@ -1145,12 +1143,12 @@ mod event_tests {
         assert!(is_pc_nation(1)); // PC_GOOD
         assert!(is_pc_nation(2)); // PC_NEUTRAL
         assert!(is_pc_nation(3)); // PC_EVIL
-        
+
         // NPC nations
-        assert!(!is_pc_nation(0));   // Inactive
-        assert!(!is_pc_nation(4));   // Good0Free
-        assert!(!is_pc_nation(17));  // NpcPeasant
-        assert!(!is_pc_nation(20));  // NpcSavage
+        assert!(!is_pc_nation(0)); // Inactive
+        assert!(!is_pc_nation(4)); // Good0Free
+        assert!(!is_pc_nation(17)); // NpcPeasant
+        assert!(!is_pc_nation(20)); // NpcSavage
     }
 
     #[test]

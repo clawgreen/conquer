@@ -5,10 +5,10 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use conquer_core::*;
 use crate::app::AppState;
 use crate::errors::ApiError;
 use crate::jwt::Claims;
+use conquer_core::*;
 
 // ============================================================
 // Response types
@@ -49,11 +49,7 @@ pub struct NavyInfo {
 // Helper: resolve nation_id from claims
 // ============================================================
 
-async fn resolve_nation(
-    state: &AppState,
-    claims: &Claims,
-    game_id: Uuid,
-) -> Result<u8, ApiError> {
+async fn resolve_nation(state: &AppState, claims: &Claims, game_id: Uuid) -> Result<u8, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
     let player = state.store.get_player(game_id, user_id).await?;
@@ -111,7 +107,10 @@ pub async fn get_armies(
     let nation_id = resolve_nation(&state, &claims, game_id).await?;
     let nation = state.store.get_nation(game_id, nation_id).await?;
 
-    let armies: Vec<ArmyInfo> = nation.armies.iter().enumerate()
+    let armies: Vec<ArmyInfo> = nation
+        .armies
+        .iter()
+        .enumerate()
         .filter(|(_, a)| a.soldiers > 0)
         .map(|(i, a)| ArmyInfo {
             index: i as u8,
@@ -136,7 +135,10 @@ pub async fn get_navies(
     let nation_id = resolve_nation(&state, &claims, game_id).await?;
     let nation = state.store.get_nation(game_id, nation_id).await?;
 
-    let navies: Vec<NavyInfo> = nation.navies.iter().enumerate()
+    let navies: Vec<NavyInfo> = nation
+        .navies
+        .iter()
+        .enumerate()
         .filter(|(_, n)| n.has_ships())
         .map(|(i, n)| NavyInfo {
             index: i as u8,
@@ -177,7 +179,10 @@ pub async fn get_news(
     Path(game_id): Path<Uuid>,
 ) -> Result<Json<Vec<conquer_db::models::NewsEntry>>, ApiError> {
     let game_info = state.store.get_game_info(game_id).await?;
-    let news = state.store.get_news(game_id, Some(game_info.current_turn)).await?;
+    let news = state
+        .store
+        .get_news(game_id, Some(game_info.current_turn))
+        .await?;
     Ok(Json(news))
 }
 
@@ -218,8 +223,12 @@ pub struct ChatQuery {
     pub limit: Option<usize>,
 }
 
-fn default_channel() -> String { "public".to_string() }
-fn default_chat_limit() -> Option<usize> { Some(50) }
+fn default_channel() -> String {
+    "public".to_string()
+}
+fn default_chat_limit() -> Option<usize> {
+    Some(50)
+}
 
 #[derive(Debug, Serialize)]
 pub struct ChatResponse {
@@ -247,23 +256,28 @@ pub async fn get_chat(
 ) -> Result<Json<ChatResponse>, ApiError> {
     let nation_id = resolve_nation(&state, &claims, game_id).await?;
     let limit = query.limit.unwrap_or(50).min(100);
-    let before = query.before
+    let before = query
+        .before
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
         .map(|d| d.with_timezone(&chrono::Utc));
 
-    let msgs = state.store.get_chat_for_nation(
-        game_id, nation_id, &query.channel, limit, before,
-    ).await?;
+    let msgs = state
+        .store
+        .get_chat_for_nation(game_id, nation_id, &query.channel, limit, before)
+        .await?;
 
-    let messages: Vec<ChatMessageResponse> = msgs.into_iter().map(|m| ChatMessageResponse {
-        id: m.id.to_string(),
-        sender_nation_id: m.sender_nation_id,
-        sender_name: m.sender_name,
-        channel: m.channel,
-        content: m.content,
-        timestamp: m.created_at.to_rfc3339(),
-        is_system: m.is_system,
-    }).collect();
+    let messages: Vec<ChatMessageResponse> = msgs
+        .into_iter()
+        .map(|m| ChatMessageResponse {
+            id: m.id.to_string(),
+            sender_nation_id: m.sender_nation_id,
+            sender_name: m.sender_name,
+            channel: m.channel,
+            content: m.content,
+            timestamp: m.created_at.to_rfc3339(),
+            is_system: m.is_system,
+        })
+        .collect();
 
     Ok(Json(ChatResponse {
         channel: query.channel,
@@ -278,7 +292,10 @@ pub async fn get_chat_channels(
     Path(game_id): Path<Uuid>,
 ) -> Result<Json<Vec<String>>, ApiError> {
     let nation_id = resolve_nation(&state, &claims, game_id).await?;
-    let channels = state.store.list_channels_for_nation(game_id, nation_id).await?;
+    let channels = state
+        .store
+        .list_channels_for_nation(game_id, nation_id)
+        .await?;
     Ok(Json(channels))
 }
 

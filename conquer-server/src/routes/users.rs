@@ -4,10 +4,10 @@ use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use conquer_db::models::*;
 use crate::app::AppState;
 use crate::errors::ApiError;
 use crate::jwt::Claims;
+use conquer_db::models::*;
 
 // ============================================================
 // Request/Response types
@@ -48,11 +48,10 @@ pub async fn update_profile(
 ) -> Result<Json<User>, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    let user = state.store.update_user_profile(
-        user_id,
-        req.display_name.as_deref(),
-        req.email.as_deref(),
-    ).await?;
+    let user = state
+        .store
+        .update_user_profile(user_id, req.display_name.as_deref(), req.email.as_deref())
+        .await?;
     Ok(Json(user))
 }
 
@@ -66,10 +65,15 @@ pub async fn change_password(
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
 
     if req.new_password.len() < 6 {
-        return Err(ApiError::BadRequest("New password must be at least 6 characters".to_string()));
+        return Err(ApiError::BadRequest(
+            "New password must be at least 6 characters".to_string(),
+        ));
     }
 
-    state.store.change_password(user_id, &req.old_password, &req.new_password).await?;
+    state
+        .store
+        .change_password(user_id, &req.old_password, &req.new_password)
+        .await?;
     Ok(Json(serde_json::json!({"status": "password_changed"})))
 }
 

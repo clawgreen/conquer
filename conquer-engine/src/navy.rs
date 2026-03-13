@@ -4,9 +4,9 @@
 // T246-T260: fleet management (add/sub ships), fleet hold/speed calculations,
 // loading/unloading, storms, naval movement, civilian attrition.
 
-use conquer_core::*;
 use conquer_core::powers::Power;
 use conquer_core::rng::ConquerRng;
+use conquer_core::*;
 
 /// Add warships to a fleet. Matches C addwships() exactly.
 /// Returns true on success, false if invalid or overflow.
@@ -203,10 +203,7 @@ pub fn can_load_army(status: u8) -> bool {
 }
 
 /// Storm damage to a fleet. Matches C storms logic from update.c.
-pub fn storm_damage(
-    nvy: &mut Navy,
-    rng: &mut ConquerRng,
-) -> bool {
+pub fn storm_damage(nvy: &mut Navy, rng: &mut ConquerRng) -> bool {
     if rng.rand() % 100 >= PSTORM {
         return false;
     }
@@ -243,12 +240,7 @@ pub fn storm_damage(
 
 /// Civilian attrition during long trips.
 /// Matches C move.c mvused calculation exactly.
-pub fn civilian_attrition(
-    nvy: &mut Navy,
-    move_used: i32,
-    has_sailor: bool,
-    rng: &mut ConquerRng,
-) {
+pub fn civilian_attrition(nvy: &mut Navy, move_used: i32, has_sailor: bool, rng: &mut ConquerRng) {
     let mut mvused = move_used;
     if mvused > LONGTRIP {
         mvused = LONGTRIP;
@@ -299,8 +291,7 @@ pub fn load_army(
     nation.navies[navy_idx].army_num = army_idx as u8;
 
     // City/harbor cost
-    if (sct.designation == Designation::City as u8
-        || sct.designation == Designation::Capitol as u8)
+    if (sct.designation == Designation::City as u8 || sct.designation == Designation::Capitol as u8)
         && sct.owner as usize == nation_idx
     {
         if nation.navies[navy_idx].movement >= N_CITYCOST {
@@ -330,16 +321,10 @@ pub fn unload_army(
     let atype = nation.armies[army_idx].unit_type;
 
     // Check disembarkation rules
-    if sct.owner == 0
-        && atype != UnitType::MARINES.0
-        && atype != UnitType::SAILOR.0
-    {
+    if sct.owner == 0 && atype != UnitType::MARINES.0 && atype != UnitType::SAILOR.0 {
         return Err("Only sailors or marines may disembark in unowned land");
     }
-    if sct.owner as usize != nation_idx
-        && sct.owner != 0
-        && atype != UnitType::MARINES.0
-    {
+    if sct.owner as usize != nation_idx && sct.owner != 0 && atype != UnitType::MARINES.0 {
         return Err("Only marines may disembark in someone else's land");
     }
 
@@ -347,8 +332,7 @@ pub fn unload_army(
     nation.navies[navy_idx].army_num = MAXARM as u8;
 
     // Movement cost
-    if (sct.designation == Designation::City as u8
-        || sct.designation == Designation::Capitol as u8)
+    if (sct.designation == Designation::City as u8 || sct.designation == Designation::Capitol as u8)
         && sct.owner as usize == nation_idx
         && nation.navies[navy_idx].movement >= N_CITYCOST
     {
@@ -389,8 +373,7 @@ pub fn load_people(
     nation.navies[navy_idx].people += (amount / mhold as i64) as u8;
 
     // Movement cost
-    if (sct.designation == Designation::City as u8
-        || sct.designation == Designation::Capitol as u8)
+    if (sct.designation == Designation::City as u8 || sct.designation == Designation::Capitol as u8)
         && sct.owner as usize == nation_idx
         && nation.navies[navy_idx].movement >= N_CITYCOST
     {
@@ -420,19 +403,14 @@ pub fn unload_people(
     }
 
     sct.people += amount;
-    nation.navies[navy_idx].people =
-        ((on_board - amount) / mhold as i64) as u8;
+    nation.navies[navy_idx].people = ((on_board - amount) / mhold as i64) as u8;
 
     Ok(amount)
 }
 
 /// NPC fleet update — move fleets and handle maintenance.
 /// Matches the navy-related portion of nationrun() in npc.c.
-pub fn npc_fleet_update(
-    state: &mut GameState,
-    nation_idx: usize,
-    rng: &mut ConquerRng,
-) {
+pub fn npc_fleet_update(state: &mut GameState, nation_idx: usize, rng: &mut ConquerRng) {
     // Set fleet speeds
     for nvynum in 0..MAXNAVY {
         let nvy = &state.nations[nation_idx].navies[nvynum];

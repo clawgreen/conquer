@@ -81,47 +81,73 @@ impl Power {
 
 /// The `powers[]` array from C — maps index to power bitmask
 pub const POWERS_ARRAY: [Power; 31] = [
-    Power::WARRIOR,    // 0
-    Power::CAPTAIN,    // 1
-    Power::WARLORD,    // 2
-    Power::ARCHER,     // 3
-    Power::CAVALRY,    // 4
-    Power::SAPPER,     // 5
-    Power::ARMOR,      // 6
-    Power::AVIAN,      // 7
-    Power::MI_MONST,   // 8
-    Power::AV_MONST,   // 9
-    Power::MA_MONST,   // 10
-    Power::SLAVER,     // 11
-    Power::DERVISH,    // 12
-    Power::HIDDEN,     // 13
-    Power::ARCHITECT,  // 14
-    Power::RELIGION,   // 15
-    Power::MINER,      // 16
-    Power::BREEDER,    // 17
-    Power::URBAN,      // 18
-    Power::STEEL,      // 19
-    Power::NINJA,      // 20
-    Power::SAILOR,     // 21
-    Power::DEMOCRACY,  // 22
-    Power::ROADS,      // 23
-    Power::THE_VOID,   // 24
-    Power::KNOWALL,    // 25
-    Power::DESTROYER,  // 26
-    Power::VAMPIRE,    // 27
-    Power::SUMMON,     // 28
-    Power::WYZARD,     // 29
-    Power::SORCERER,   // 30
+    Power::WARRIOR,   // 0
+    Power::CAPTAIN,   // 1
+    Power::WARLORD,   // 2
+    Power::ARCHER,    // 3
+    Power::CAVALRY,   // 4
+    Power::SAPPER,    // 5
+    Power::ARMOR,     // 6
+    Power::AVIAN,     // 7
+    Power::MI_MONST,  // 8
+    Power::AV_MONST,  // 9
+    Power::MA_MONST,  // 10
+    Power::SLAVER,    // 11
+    Power::DERVISH,   // 12
+    Power::HIDDEN,    // 13
+    Power::ARCHITECT, // 14
+    Power::RELIGION,  // 15
+    Power::MINER,     // 16
+    Power::BREEDER,   // 17
+    Power::URBAN,     // 18
+    Power::STEEL,     // 19
+    Power::NINJA,     // 20
+    Power::SAILOR,    // 21
+    Power::DEMOCRACY, // 22
+    Power::ROADS,     // 23
+    Power::THE_VOID,  // 24
+    Power::KNOWALL,   // 25
+    Power::DESTROYER, // 26
+    Power::VAMPIRE,   // 27
+    Power::SUMMON,    // 28
+    Power::WYZARD,    // 29
+    Power::SORCERER,  // 30
 ];
 
 /// Power names matching C `pwrname[]` array
 pub const POWER_NAMES: [&str; 32] = [
-    "WARRIOR", "CAPTAIN", "WARLORD", "ARCHER", "CAVALRY", "SAPPER",
-    "ARMOR", "AVIAN", "MI_MONST", "AV_MONST", "MA_MONST",
-    "SLAVER", "DERVISH", "HIDDEN", "ARCHITECT", "RELIGION", "MINER",
-    "BREEDER", "URBAN", "STEEL", "NINJA", "SAILOR", "DEMOCRACY", "ROADS",
-    "THE_VOID", "KNOWALL", "DESTROYER", "VAMPIRE",
-    "SUMMON", "WYZARD", "SORCERER", "ERROR",
+    "WARRIOR",
+    "CAPTAIN",
+    "WARLORD",
+    "ARCHER",
+    "CAVALRY",
+    "SAPPER",
+    "ARMOR",
+    "AVIAN",
+    "MI_MONST",
+    "AV_MONST",
+    "MA_MONST",
+    "SLAVER",
+    "DERVISH",
+    "HIDDEN",
+    "ARCHITECT",
+    "RELIGION",
+    "MINER",
+    "BREEDER",
+    "URBAN",
+    "STEEL",
+    "NINJA",
+    "SAILOR",
+    "DEMOCRACY",
+    "ROADS",
+    "THE_VOID",
+    "KNOWALL",
+    "DESTROYER",
+    "VAMPIRE",
+    "SUMMON",
+    "WYZARD",
+    "SORCERER",
+    "ERROR",
 ];
 
 #[cfg(test)]

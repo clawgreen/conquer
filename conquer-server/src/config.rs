@@ -67,19 +67,19 @@ impl ServerConfig {
             .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
             .unwrap_or_else(|_| vec!["http://localhost:5173".to_string()]);
 
-        let static_dir = std::env::var("STATIC_DIR").ok()
-            .or_else(|| {
-                // Default: look for web/dist relative to binary
-                let candidates = ["./web/dist", "./dist", "/app/dist"];
-                candidates.iter()
-                    .find(|p| std::path::Path::new(p).is_dir())
-                    .map(|p| p.to_string())
-            });
+        let static_dir = std::env::var("STATIC_DIR").ok().or_else(|| {
+            // Default: look for web/dist relative to binary
+            let candidates = ["./web/dist", "./dist", "/app/dist"];
+            candidates
+                .iter()
+                .find(|p| std::path::Path::new(p).is_dir())
+                .map(|p| p.to_string())
+        });
 
         let database_url = std::env::var("DATABASE_URL").ok();
 
-        let log_level = std::env::var("RUST_LOG")
-            .unwrap_or_else(|_| "info,conquer_server=debug".to_string());
+        let log_level =
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,conquer_server=debug".to_string());
 
         let rate_limit_max: u64 = std::env::var("RATE_LIMIT_MAX")
             .ok()

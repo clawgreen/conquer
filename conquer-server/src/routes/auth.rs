@@ -45,23 +45,32 @@ pub async fn register(
 ) -> Result<Json<AuthResponse>, ApiError> {
     // Validate
     if req.username.len() < 3 {
-        return Err(ApiError::BadRequest("Username must be at least 3 characters".to_string()));
+        return Err(ApiError::BadRequest(
+            "Username must be at least 3 characters".to_string(),
+        ));
     }
     if req.password.len() < 6 {
-        return Err(ApiError::BadRequest("Password must be at least 6 characters".to_string()));
+        return Err(ApiError::BadRequest(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
     if !req.email.contains('@') {
         return Err(ApiError::BadRequest("Invalid email".to_string()));
     }
 
-    let user = state.store.create_user(
-        &req.username,
-        &req.email,
-        &req.password,
-        req.display_name.as_deref(),
-    ).await?;
+    let user = state
+        .store
+        .create_user(
+            &req.username,
+            &req.email,
+            &req.password,
+            req.display_name.as_deref(),
+        )
+        .await?;
 
-    let token = state.jwt.create_token(user.id, &user.username, user.is_admin)
+    let token = state
+        .jwt
+        .create_token(user.id, &user.username, user.is_admin)
         .map_err(|e| ApiError::Internal(format!("Token creation failed: {}", e)))?;
 
     Ok(Json(AuthResponse {
@@ -78,9 +87,14 @@ pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
-    let user = state.store.authenticate_user(&req.username, &req.password).await?;
+    let user = state
+        .store
+        .authenticate_user(&req.username, &req.password)
+        .await?;
 
-    let token = state.jwt.create_token(user.id, &user.username, user.is_admin)
+    let token = state
+        .jwt
+        .create_token(user.id, &user.username, user.is_admin)
         .map_err(|e| ApiError::Internal(format!("Token creation failed: {}", e)))?;
 
     Ok(Json(AuthResponse {

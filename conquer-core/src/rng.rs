@@ -62,16 +62,16 @@ mod tests {
         // Verify first few values with seed 42
         let mut rng = ConquerRng::new(42);
         let first_5: Vec<i32> = (0..5).map(|_| rng.rand()).collect();
-        
+
         // Compute manually:
         // seed = 42
-        // step 1: 42_u32.wrapping_mul(1103515245).wrapping_add(12345) 
+        // step 1: 42_u32.wrapping_mul(1103515245).wrapping_add(12345)
         //   = 46347640335 → u32 = 0xCCA19A4F (since 46347640335 & 0xFFFFFFFF)
         //   Wait let me just trust the output. The Rust code produces 19081.
-        // Verify the sequence is deterministic (not checking against C here — 
+        // Verify the sequence is deterministic (not checking against C here —
         // that's in conquer-oracle cross-validation tests)
         assert_eq!(first_5[0], 19081);
-        
+
         // Verify re-seeding produces same sequence
         let mut rng2 = ConquerRng::new(42);
         assert_eq!(rng2.rand(), 19081);
@@ -81,7 +81,7 @@ mod tests {
     fn test_rng_different_seeds() {
         let mut rng1 = ConquerRng::new(42);
         let mut rng2 = ConquerRng::new(43);
-        
+
         // Different seeds should produce different sequences
         let v1 = rng1.rand();
         let v2 = rng2.rand();

@@ -4,11 +4,11 @@
 // T176-T199: getmagic, exenewmgk, removemgk, spell casting, unit validation,
 // orc takeover, all 31 powers with acquisition rules and stat effects.
 
-use conquer_core::*;
+use crate::utils::*;
 use conquer_core::powers::*;
 use conquer_core::rng::ConquerRng;
 use conquer_core::tables::*;
-use crate::utils::*;
+use conquer_core::*;
 
 /// Result of attempting to acquire a new power
 #[derive(Debug, Clone)]
@@ -239,11 +239,7 @@ pub fn get_magic(
 
 /// exenewmgk(newpower) — apply the stat effects of a newly acquired power.
 /// Matches C exenewmgk() exactly.
-pub fn execute_new_magic(
-    state: &mut GameState,
-    nation_idx: usize,
-    newpower: Power,
-) {
+pub fn execute_new_magic(state: &mut GameState, nation_idx: usize, newpower: Power) {
     let nation = &mut state.nations[nation_idx];
 
     if newpower == Power::WARRIOR {
@@ -387,17 +383,10 @@ pub fn execute_new_magic(
 
 /// removemgk(oldpower) — remove stat effects of a power being lost.
 /// Matches C removemgk() exactly.
-pub fn remove_magic(
-    state: &mut GameState,
-    nation_idx: usize,
-    oldpower: Power,
-) {
+pub fn remove_magic(state: &mut GameState, nation_idx: usize, oldpower: Power) {
     let nation = &mut state.nations[nation_idx];
 
-    if oldpower == Power::WARRIOR
-        || oldpower == Power::CAPTAIN
-        || oldpower == Power::WARLORD
-    {
+    if oldpower == Power::WARRIOR || oldpower == Power::CAPTAIN || oldpower == Power::WARLORD {
         nation.attack_plus -= 10;
         nation.defense_plus -= 10;
         return;
@@ -549,7 +538,7 @@ pub fn unit_valid(unit_type: u8, nation: &Nation, _nation_idx: usize) -> bool {
             Power::has_power(powers, Power::MA_MONST) && Power::has_power(powers, Power::WYZARD)
         }
         UnitType::SPY | UnitType::SCOUT => false, // handled elsewhere
-        _ => true, // unrestricted types
+        _ => true,                                // unrestricted types
     }
 }
 
@@ -591,11 +580,7 @@ pub fn orc_takeover(
 
 /// NPC magic acquisition — NPCs try to buy powers during their turn.
 /// Matches the magic buying section of nationrun() in npc.c.
-pub fn npc_buy_magic(
-    state: &mut GameState,
-    nation_idx: usize,
-    rng: &mut ConquerRng,
-) -> Vec<Power> {
+pub fn npc_buy_magic(state: &mut GameState, nation_idx: usize, rng: &mut ConquerRng) -> Vec<Power> {
     let mut acquired = Vec::new();
     let nation = &state.nations[nation_idx];
 
@@ -611,8 +596,7 @@ pub fn npc_buy_magic(
                 acquired.push(power);
             } else {
                 // Second try
-                if let Some(power) = get_magic(M_MIL, &state.nations[nation_idx], nation_idx, rng)
-                {
+                if let Some(power) = get_magic(M_MIL, &state.nations[nation_idx], nation_idx, rng) {
                     state.nations[nation_idx].powers |= power.bits();
                     execute_new_magic(state, nation_idx, power);
                     acquired.push(power);
@@ -645,11 +629,7 @@ pub fn npc_buy_magic(
 
 /// NPC weapon upgrade — buy attack/defense improvements with metals.
 /// Matches the weapon buying section of nationrun() in npc.c.
-pub fn npc_buy_weapons(
-    state: &mut GameState,
-    nation_idx: usize,
-    rng: &mut ConquerRng,
-) {
+pub fn npc_buy_weapons(state: &mut GameState, nation_idx: usize, rng: &mut ConquerRng) {
     let nation = &state.nations[nation_idx];
     if Power::has_power(nation.powers, Power::VAMPIRE) {
         return;

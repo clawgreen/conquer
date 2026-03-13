@@ -9,11 +9,11 @@
 
 use conquer_core::*;
 
-use conquer_core::rng::ConquerRng;
-use conquer_core::tables::*;
-use crate::utils::*;
 use crate::magic;
 use crate::movement;
+use crate::utils::*;
+use conquer_core::rng::ConquerRng;
+use conquer_core::tables::*;
 
 /// NPC operating range
 #[derive(Debug, Clone, Copy)]
@@ -43,21 +43,32 @@ pub fn npc_range(nation: &Nation, map_x: i32, map_y: i32) -> NpcRange {
     let cap_y = nation.cap_y as i32;
 
     NpcRange {
-        stx: if cap_x > NPCTOOFAR { cap_x - NPCTOOFAR } else { 0 },
-        sty: if cap_y > NPCTOOFAR { cap_y - NPCTOOFAR } else { 0 },
-        endx: if cap_x + NPCTOOFAR < map_x { cap_x + NPCTOOFAR } else { map_x },
-        endy: if cap_y + NPCTOOFAR < map_y { cap_y + NPCTOOFAR } else { map_y },
+        stx: if cap_x > NPCTOOFAR {
+            cap_x - NPCTOOFAR
+        } else {
+            0
+        },
+        sty: if cap_y > NPCTOOFAR {
+            cap_y - NPCTOOFAR
+        } else {
+            0
+        },
+        endx: if cap_x + NPCTOOFAR < map_x {
+            cap_x + NPCTOOFAR
+        } else {
+            map_x
+        },
+        endy: if cap_y + NPCTOOFAR < map_y {
+            cap_y + NPCTOOFAR
+        } else {
+            map_y
+        },
     }
 }
 
 /// newdip(ntn1, ntn2) — set initial diplomacy when nations first meet.
 /// Matches C newdip() exactly.
-pub fn new_diplomacy(
-    state: &mut GameState,
-    ntn1: usize,
-    ntn2: usize,
-    rng: &mut ConquerRng,
-) {
+pub fn new_diplomacy(state: &mut GameState, ntn1: usize, ntn2: usize, rng: &mut ConquerRng) {
     let strat1 = NationStrategy::from_value(state.nations[ntn1].active);
     let strat2 = NationStrategy::from_value(state.nations[ntn2].active);
 
@@ -144,7 +155,11 @@ pub fn get_diplomatic_status(
 
     let mut old_stats = vec![0u8; NTOTAL];
 
-    let range = npc_range(&state.nations[nation_idx], state.world.map_x as i32, state.world.map_y as i32);
+    let range = npc_range(
+        &state.nations[nation_idx],
+        state.world.map_x as i32,
+        state.world.map_y as i32,
+    );
 
     for x in 1..NTOTAL {
         let x_strat = NationStrategy::from_value(state.nations[x].active);
@@ -155,8 +170,8 @@ pub fn get_diplomatic_status(
         let mut hostile = svhostile;
         let npc_type_cur = NationStrategy::from_value(state.nations[nation_idx].active)
             .map_or(0, |s| s.npc_type());
-        let npc_type_x = NationStrategy::from_value(state.nations[x].active)
-            .map_or(0, |s| s.npc_type());
+        let npc_type_x =
+            NationStrategy::from_value(state.nations[x].active).map_or(0, |s| s.npc_type());
 
         if npc_type_cur != npc_type_x {
             hostile += 20;
@@ -238,17 +253,13 @@ pub fn get_diplomatic_status(
         let our_status = state.nations[nation_idx].diplomacy[x];
         let their_status = state.nations[x].diplomacy[nation_idx];
 
-        if our_status == DiplomaticStatus::War as u8
-            && their_status < DiplomaticStatus::War as u8
-        {
+        if our_status == DiplomaticStatus::War as u8 && their_status < DiplomaticStatus::War as u8 {
             if (rng.rand() % 100) as i32 <= friendly {
                 state.nations[nation_idx].diplomacy[x] -= 1;
             }
         }
 
-        if our_status < DiplomaticStatus::War as u8
-            && our_status > DiplomaticStatus::Allied as u8
-        {
+        if our_status < DiplomaticStatus::War as u8 && our_status > DiplomaticStatus::Allied as u8 {
             if their_status > 1 + our_status {
                 if (rng.rand() % 100) as i32 <= hostile {
                     state.nations[nation_idx].diplomacy[x] += 1;
@@ -353,9 +364,7 @@ pub fn npc_redesignate_sector(
     }
 
     // Town with not enough food -> farm
-    if des == Designation::Town as u8
-        && hunger < eat_rate
-        && tofood(sct, Some(nation)) > citythresh
+    if des == Designation::Town as u8 && hunger < eat_rate && tofood(sct, Some(nation)) > citythresh
     {
         sct.designation = Designation::Farm as u8;
         return;
@@ -513,8 +522,7 @@ pub fn redo_military(
         let cap_y = state.nations[nation_idx].cap_y as usize;
         diff = std::cmp::min(diff, state.sectors[cap_x][cap_y].people / 2);
 
-        if (state.nations[nation_idx].treasury_gold < 0
-            || state.nations[nation_idx].metals < 0)
+        if (state.nations[nation_idx].treasury_gold < 0 || state.nations[nation_idx].metals < 0)
             && diff > 0
         {
             diff = 0;
@@ -573,11 +581,21 @@ pub fn redo_military(
     let ts = crate::combat::takesector(state.nations[nation_idx].total_civ);
     for armynum in 1..MAXARM {
         let a = &state.nations[nation_idx].armies[armynum];
-        if a.soldiers <= 0 { continue; }
-        if a.unit_type == UnitType::MILITIA.0 { continue; }
-        if a.unit_type >= UnitType::MIN_LEADER { continue; }
-        if a.soldiers >= ts { continue; }
-        if state.nations[nation_idx].treasury_gold <= 0 { continue; }
+        if a.soldiers <= 0 {
+            continue;
+        }
+        if a.unit_type == UnitType::MILITIA.0 {
+            continue;
+        }
+        if a.unit_type >= UnitType::MIN_LEADER {
+            continue;
+        }
+        if a.soldiers >= ts {
+            continue;
+        }
+        if state.nations[nation_idx].treasury_gold <= 0 {
+            continue;
+        }
 
         let ax = a.x as usize;
         let ay = a.y as usize;
@@ -587,10 +605,18 @@ pub fn redo_military(
         let en_cost = UNIT_ENLIST_COST.get(unit_idx).copied().unwrap_or(0) as i64;
         let needed = ts + 20 - a.soldiers;
 
-        if state.nations[nation_idx].metals < needed * en_metal { continue; }
-        if !state.on_map(ax as i32, ay as i32) { continue; }
-        if state.sectors[ax][ay].fortress == 0 { continue; }
-        if state.sectors[ax][ay].owner as usize != nation_idx { continue; }
+        if state.nations[nation_idx].metals < needed * en_metal {
+            continue;
+        }
+        if !state.on_map(ax as i32, ay as i32) {
+            continue;
+        }
+        if state.sectors[ax][ay].fortress == 0 {
+            continue;
+        }
+        if state.sectors[ax][ay].owner as usize != nation_idx {
+            continue;
+        }
 
         let has_warrior = Power::has_power(state.nations[nation_idx].powers, Power::WARRIOR);
         if has_warrior {
@@ -624,10 +650,8 @@ pub fn redo_military(
                 let cap_y = state.nations[nation_idx].cap_y as usize;
                 new_sold = std::cmp::min(new_sold, state.sectors[cap_x][cap_y].people / 2);
                 if en_cost > 0 {
-                    new_sold = std::cmp::min(
-                        new_sold,
-                        state.nations[nation_idx].treasury_gold / en_cost,
-                    );
+                    new_sold =
+                        std::cmp::min(new_sold, state.nations[nation_idx].treasury_gold / en_cost);
                 }
 
                 if new_sold > 0 {
@@ -659,14 +683,28 @@ pub fn redo_military(
         // C: original/npc.c:691-729
         let mut diff = state.nations[nation_idx].total_mil - 6 * ideal_total / 5;
         for armynum in 1..MAXARM {
-            if diff <= 0 { break; }
+            if diff <= 0 {
+                break;
+            }
             let a = &state.nations[nation_idx].armies[armynum];
-            if a.soldiers <= 0 { continue; }
-            if a.unit_type == UnitType::ZOMBIE.0 { continue; }
-            if a.unit_type == UnitType::MILITIA.0 { continue; }
-            if a.unit_type >= UnitType::MIN_LEADER { continue; }
-            if a.status == ArmyStatus::OnBoard.to_value() { continue; }
-            if a.status == ArmyStatus::Traded.to_value() { continue; }
+            if a.soldiers <= 0 {
+                continue;
+            }
+            if a.unit_type == UnitType::ZOMBIE.0 {
+                continue;
+            }
+            if a.unit_type == UnitType::MILITIA.0 {
+                continue;
+            }
+            if a.unit_type >= UnitType::MIN_LEADER {
+                continue;
+            }
+            if a.status == ArmyStatus::OnBoard.to_value() {
+                continue;
+            }
+            if a.status == ArmyStatus::Traded.to_value() {
+                continue;
+            }
 
             let ax = a.x as usize;
             let ay = a.y as usize;
@@ -684,7 +722,8 @@ pub fn redo_military(
                 let en_metal = UNIT_ENLIST_METAL.get(unit_idx).copied().unwrap_or(0) as i64;
                 let en_cost = UNIT_ENLIST_COST.get(unit_idx).copied().unwrap_or(0) as i64;
                 state.nations[nation_idx].metals += sold * en_metal;
-                let has_warrior = Power::has_power(state.nations[nation_idx].powers, Power::WARRIOR);
+                let has_warrior =
+                    Power::has_power(state.nations[nation_idx].powers, Power::WARRIOR);
                 if has_warrior {
                     state.nations[nation_idx].treasury_gold += sold * en_cost / 2;
                 } else {
@@ -726,7 +765,8 @@ pub fn redo_military(
                         && army.y as i32 == y
                         && army.unit_type == UnitType::MILITIA.0
                     {
-                        let _ = has_militia; has_militia = true;
+                        let _ = has_militia;
+                        has_militia = true;
                         militia_idx = Some(armynum);
                         break;
                     }
@@ -741,7 +781,8 @@ pub fn redo_military(
                             state.nations[nation_idx].armies[armynum].unit_type =
                                 UnitType::MILITIA.0;
                             militia_idx = Some(armynum);
-                            let _ = has_militia; has_militia = true;
+                            let _ = has_militia;
+                            has_militia = true;
                             break;
                         }
                     }
@@ -779,11 +820,7 @@ pub fn redo_military(
 }
 
 /// Main NPC nation turn execution. Matches C nationrun() structure.
-pub fn nation_run(
-    state: &mut GameState,
-    nation_idx: usize,
-    rng: &mut ConquerRng,
-) -> Vec<String> {
+pub fn nation_run(state: &mut GameState, nation_idx: usize, rng: &mut ConquerRng) -> Vec<String> {
     let mut news = Vec::new();
 
     let range = npc_range(
@@ -920,8 +957,7 @@ pub fn nation_run(
         if state.nations[nation_idx].armies[armynum].soldiers > 0
             && state.nations[nation_idx].armies[armynum].unit_type < UnitType::MIN_LEADER
         {
-            loop_count +=
-                movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
+            loop_count += movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
         }
     }
 
@@ -931,8 +967,7 @@ pub fn nation_run(
         if state.nations[nation_idx].armies[armynum].soldiers > 0
             && state.nations[nation_idx].armies[armynum].unit_type >= UnitType::MIN_LEADER
         {
-            loop_count +=
-                movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
+            loop_count += movement::npc_army_move(state, nation_idx, armynum, &mut attr, rng);
         }
     }
 
@@ -942,20 +977,35 @@ pub fn nation_run(
         && active_strat != Some(NationStrategy::Isolationist)
     {
         let new_active = if active_strat.map_or(false, |s| s.is_good()) {
-            if loop_count <= 1 { NationStrategy::Good0Free as u8 }
-            else if loop_count >= 6 { NationStrategy::Good6Free as u8 }
-            else if loop_count >= 4 { NationStrategy::Good4Free as u8 }
-            else { NationStrategy::Good2Free as u8 }
+            if loop_count <= 1 {
+                NationStrategy::Good0Free as u8
+            } else if loop_count >= 6 {
+                NationStrategy::Good6Free as u8
+            } else if loop_count >= 4 {
+                NationStrategy::Good4Free as u8
+            } else {
+                NationStrategy::Good2Free as u8
+            }
         } else if active_strat.map_or(false, |s| s.is_neutral()) {
-            if loop_count <= 1 { NationStrategy::Neutral0Free as u8 }
-            else if loop_count >= 6 { NationStrategy::Neutral6Free as u8 }
-            else if loop_count >= 4 { NationStrategy::Neutral4Free as u8 }
-            else { NationStrategy::Neutral2Free as u8 }
+            if loop_count <= 1 {
+                NationStrategy::Neutral0Free as u8
+            } else if loop_count >= 6 {
+                NationStrategy::Neutral6Free as u8
+            } else if loop_count >= 4 {
+                NationStrategy::Neutral4Free as u8
+            } else {
+                NationStrategy::Neutral2Free as u8
+            }
         } else if active_strat.map_or(false, |s| s.is_evil()) {
-            if loop_count <= 1 { NationStrategy::Evil0Free as u8 }
-            else if loop_count >= 6 { NationStrategy::Evil6Free as u8 }
-            else if loop_count >= 4 { NationStrategy::Evil4Free as u8 }
-            else { NationStrategy::Evil2Free as u8 }
+            if loop_count <= 1 {
+                NationStrategy::Evil0Free as u8
+            } else if loop_count >= 6 {
+                NationStrategy::Evil6Free as u8
+            } else if loop_count >= 4 {
+                NationStrategy::Evil4Free as u8
+            } else {
+                NationStrategy::Evil2Free as u8
+            }
         } else {
             state.nations[nation_idx].active // unchanged for monsters/etc
         };
@@ -972,9 +1022,7 @@ pub fn nation_run(
     // Tax rate
     let strat = NationStrategy::from_value(state.nations[nation_idx].active);
     if strat.map_or(false, |s| s.is_not_pc()) {
-        if state.nations[nation_idx].total_sectors < 20
-            || state.nations[nation_idx].score < 20
-        {
+        if state.nations[nation_idx].total_sectors < 20 || state.nations[nation_idx].score < 20 {
             if state.nations[nation_idx].tax_rate < 10 {
                 state.nations[nation_idx].tax_rate = 10;
             }
@@ -1161,7 +1209,11 @@ pub fn find_avg_sector(state: &GameState, nation_idx: usize) -> NpcAverages {
         }
     }
 
-    NpcAverages { avg_food, avg_tradegood, avg_soldiers }
+    NpcAverages {
+        avg_food,
+        avg_tradegood,
+        avg_soldiers,
+    }
 }
 
 // ============================================================
@@ -1237,12 +1289,7 @@ fn n_unowned(
 
 /// n_trespass() — set attr=1 for foreign non-allied sectors we're not at war with.
 /// C: original/npc.c:1327
-fn n_trespass(
-    state: &GameState,
-    nation_idx: usize,
-    range: &NpcRange,
-    attr: &mut Vec<Vec<i32>>,
-) {
+fn n_trespass(state: &GameState, nation_idx: usize, range: &NpcRange, attr: &mut Vec<Vec<i32>>) {
     let cap_x = state.nations[nation_idx].cap_x as i32;
     let cap_y = state.nations[nation_idx].cap_y as i32;
 
@@ -1282,11 +1329,7 @@ fn n_trespass(
 
 /// n_toofar() — set attr=1 for all sectors outside NPC operating range.
 /// C: original/npc.c:1344
-fn n_toofar(
-    state: &GameState,
-    range: &NpcRange,
-    attr: &mut Vec<Vec<i32>>,
-) {
+fn n_toofar(state: &GameState, range: &NpcRange, attr: &mut Vec<Vec<i32>>) {
     let map_x = state.world.map_x as i32;
     let map_y = state.world.map_y as i32;
     for x in 0..map_x {
@@ -1336,12 +1379,7 @@ fn n_people(
 
 /// n_survive() — add urgency to defend capitol if under threat.
 /// C: original/npc.c:1579
-fn n_survive(
-    state: &GameState,
-    nation_idx: usize,
-    avg: &NpcAverages,
-    attr: &mut Vec<Vec<i32>>,
-) {
+fn n_survive(state: &GameState, nation_idx: usize, avg: &NpcAverages, attr: &mut Vec<Vec<i32>>) {
     let cap_x = state.nations[nation_idx].cap_x as usize;
     let cap_y = state.nations[nation_idx].cap_y as usize;
 
@@ -1358,9 +1396,7 @@ fn n_survive(
         }
         let our_status = state.nations[nation].diplomacy[nation_idx];
         let their_status = state.nations[nation_idx].diplomacy[nation];
-        if our_status < DiplomaticStatus::War as u8
-            && their_status < DiplomaticStatus::War as u8
-        {
+        if our_status < DiplomaticStatus::War as u8 && their_status < DiplomaticStatus::War as u8 {
             continue;
         }
 
@@ -1459,8 +1495,7 @@ fn n_defend(
                     attr[x as usize][y as usize] += 50;
                 }
                 if total_civ > 0 {
-                    attr[x as usize][y as usize] +=
-                        (3000 * sct.people / total_civ) as i32;
+                    attr[x as usize][y as usize] += (3000 * sct.people / total_civ) as i32;
                 }
             }
         }
@@ -1561,12 +1596,7 @@ fn n_undefended(
 
 /// n_between() — +60 for sectors in bounding box between two capitols.
 /// C: original/npc.c:1544
-fn n_between(
-    state: &GameState,
-    nation_idx: usize,
-    enemy: usize,
-    attr: &mut Vec<Vec<i32>>,
-) {
+fn n_between(state: &GameState, nation_idx: usize, enemy: usize, attr: &mut Vec<Vec<i32>>) {
     // Always visible in simplified version
     let my_cap_x = state.nations[nation_idx].cap_x as i32;
     let my_cap_y = state.nations[nation_idx].cap_y as i32;

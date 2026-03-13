@@ -71,9 +71,15 @@ pub struct GameSettings {
     pub public_game: bool,
 }
 
-fn default_mountain_pct() -> u8 { 25 }
-fn default_min_players() -> usize { 2 }
-fn default_true() -> bool { true }
+fn default_mountain_pct() -> u8 {
+    25
+}
+fn default_min_players() -> usize {
+    2
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for GameSettings {
     fn default() -> Self {

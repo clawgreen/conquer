@@ -111,7 +111,10 @@ const DES_CHARS: &[u8] = b"tcmfx$!&sC?lb+*g=u-P";
 
 impl Designation {
     pub fn from_char(c: char) -> Option<Self> {
-        DES_CHARS.iter().position(|&ch| ch == c as u8).and_then(|i| Self::from_index(i as u8))
+        DES_CHARS
+            .iter()
+            .position(|&ch| ch == c as u8)
+            .and_then(|i| Self::from_index(i as u8))
     }
 
     pub fn to_char(self) -> char {
@@ -171,7 +174,10 @@ impl Designation {
 
     /// Returns true if this designation is a city-like structure (for defense bonuses etc.)
     pub fn is_city(self) -> bool {
-        matches!(self, Designation::City | Designation::Capitol | Designation::Fort | Designation::Town)
+        matches!(
+            self,
+            Designation::City | Designation::Capitol | Designation::Fort | Designation::Town
+        )
     }
 }
 
@@ -201,7 +207,10 @@ const VEG_CHARS: &[u8] = b"vdtblgwfjsi~";
 
 impl Vegetation {
     pub fn from_char(c: char) -> Option<Self> {
-        VEG_CHARS.iter().position(|&ch| ch == c as u8).and_then(|i| Self::from_index(i as u8))
+        VEG_CHARS
+            .iter()
+            .position(|&ch| ch == c as u8)
+            .and_then(|i| Self::from_index(i as u8))
     }
 
     pub fn to_char(self) -> char {
@@ -269,7 +278,10 @@ const ELE_CHARS: &[u8] = b"~#^%-";
 
 impl Altitude {
     pub fn from_char(c: char) -> Option<Self> {
-        ELE_CHARS.iter().position(|&ch| ch == c as u8).and_then(|i| Self::from_index(i as u8))
+        ELE_CHARS
+            .iter()
+            .position(|&ch| ch == c as u8)
+            .and_then(|i| Self::from_index(i as u8))
     }
 
     pub fn to_char(self) -> char {
@@ -735,7 +747,10 @@ impl NationStrategy {
     /// Is this a player-controlled nation?
     /// `ispc(x) = (x==PC_GOOD || x==PC_EVIL || x==PC_NEUTRAL)`
     pub fn is_pc(self) -> bool {
-        matches!(self, NationStrategy::PcGood | NationStrategy::PcNeutral | NationStrategy::PcEvil)
+        matches!(
+            self,
+            NationStrategy::PcGood | NationStrategy::PcNeutral | NationStrategy::PcEvil
+        )
     }
 
     /// Is this a regular NPC nation (not monster, not PC)?
@@ -1092,7 +1107,13 @@ mod tests {
         for i in 0..20u8 {
             let d = Designation::from_index(i).unwrap();
             let ch = d.to_char();
-            assert_eq!(Designation::from_char(ch), Some(d), "index {} char {}", i, ch);
+            assert_eq!(
+                Designation::from_char(ch),
+                Some(d),
+                "index {} char {}",
+                i,
+                ch
+            );
         }
     }
 

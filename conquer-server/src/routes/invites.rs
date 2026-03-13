@@ -36,13 +36,16 @@ pub async fn list_invites(
     let invites = state.store.list_invites(game_id).await?;
     let game = state.store.get_game_info(game_id).await?;
 
-    let result: Vec<InviteResponse> = invites.into_iter().map(|i| InviteResponse {
-        invite_code: i.invite_code,
-        game_id: game_id.to_string(),
-        game_name: game.name.clone(),
-        max_uses: i.max_uses,
-        uses: i.uses,
-    }).collect();
+    let result: Vec<InviteResponse> = invites
+        .into_iter()
+        .map(|i| InviteResponse {
+            invite_code: i.invite_code,
+            game_id: game_id.to_string(),
+            game_name: game.name.clone(),
+            max_uses: i.max_uses,
+            uses: i.uses,
+        })
+        .collect();
 
     Ok(Json(result))
 }
@@ -70,9 +73,10 @@ pub async fn create_invite(
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
 
-    let invite = state.store.create_invite(
-        game_id, user_id, req.max_uses, req.expires_hours,
-    ).await?;
+    let invite = state
+        .store
+        .create_invite(game_id, user_id, req.max_uses, req.expires_hours)
+        .await?;
 
     let game = state.store.get_game_info(game_id).await?;
 
@@ -113,24 +117,33 @@ pub async fn accept_invite(
 
     let (invite, _game) = state.store.get_invite(&code).await?;
 
-    let player = state.store.join_game(
-        invite.game_id,
-        user_id,
-        &req.nation_name,
-        &req.leader_name,
-        req.race,
-        req.class,
-        req.mark,
-    ).await?;
+    let player = state
+        .store
+        .join_game(
+            invite.game_id,
+            user_id,
+            &req.nation_name,
+            &req.leader_name,
+            req.race,
+            req.class,
+            req.mark,
+        )
+        .await?;
 
     state.store.use_invite(&code).await?;
 
     // Broadcast
-    state.ws_manager.broadcast(invite.game_id, crate::ws::ServerMessage::PlayerJoined {
-        nation_id: player.nation_id,
-        nation_name: req.nation_name.clone(),
-        race: req.race,
-    }).await;
+    state
+        .ws_manager
+        .broadcast(
+            invite.game_id,
+            crate::ws::ServerMessage::PlayerJoined {
+                nation_id: player.nation_id,
+                nation_name: req.nation_name.clone(),
+                race: req.race,
+            },
+        )
+        .await;
 
     Ok(Json(super::games::JoinGameResponse {
         nation_id: player.nation_id,

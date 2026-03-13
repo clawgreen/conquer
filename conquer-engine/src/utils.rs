@@ -3,9 +3,9 @@
 // T115-T134: is_habitable, tofood, solds_in_sector, units_in_sector,
 // fort_val, avian, defaultunit, flightcost, num_powers, etc.
 
-use conquer_core::*;
 use conquer_core::powers::*;
 use conquer_core::tables::*;
+use conquer_core::*;
 
 /// is_habitable(x, y) — returns true if sector is habitable land.
 /// Matches C: altitude not WATER/PEAK, vegetation is BARREN/LT_VEG/GOOD/WOOD/FOREST.
@@ -189,7 +189,9 @@ pub fn flightcost(sct: &Sector) -> i32 {
     let ele_cost = if alt_idx < f_ele.len() - 1 {
         // '/' means impassable
         let c = f_ele[alt_idx];
-        if c == b'/' { return -1; }
+        if c == b'/' {
+            return -1;
+        }
         (c as i32) - ('0' as i32)
     } else {
         return -1;
@@ -198,7 +200,9 @@ pub fn flightcost(sct: &Sector) -> i32 {
     // Find vegetation cost
     let veg_cost = if veg_idx < f_veg.len() - 1 {
         let c = f_veg[veg_idx];
-        if c == b'/' { return -1; }
+        if c == b'/' {
+            return -1;
+        }
         (c as i32) - ('0' as i32)
     } else {
         return -1;
@@ -218,7 +222,7 @@ pub fn num_powers(nation_powers: i64, power_type: u8) -> i32 {
         M_MIL => (S_MIL, E_MIL),
         M_CIV => (S_CIV, E_CIV),
         M_MGK => (S_MGK, E_MGK),
-        M_ALL => (S_MIL, E_MIL + E_CIV + E_MGK), // BUG-COMPAT: C loops S_MIL to E_MGK 
+        M_ALL => (S_MIL, E_MIL + E_CIV + E_MGK), // BUG-COMPAT: C loops S_MIL to E_MGK
         _ => return 0,
     };
 
@@ -242,9 +246,13 @@ pub fn getmgkcost(power_type: u8, nation: &Nation) -> i64 {
 
     match power_type {
         M_MGK => {
-            if race == 'D' { base = DWFMAGIC; }
-            else if race == 'H' { base = HUMMAGIC; }
-            else if race == 'O' { base = ORCMAGIC; }
+            if race == 'D' {
+                base = DWFMAGIC;
+            } else if race == 'H' {
+                base = HUMMAGIC;
+            } else if race == 'O' {
+                base = ORCMAGIC;
+            }
             let raw = num_powers(nation.powers, M_CIV)
                 + num_powers(nation.powers, M_MIL)
                 + 1
@@ -252,9 +260,13 @@ pub fn getmgkcost(power_type: u8, nation: &Nation) -> i64 {
             npowers = raw / 2;
         }
         M_CIV => {
-            if race == 'D' { base = DWFCIVIL; }
-            else if race == 'H' { base = HUMCIVIL; }
-            else if race == 'O' { base = ORCCIVIL; }
+            if race == 'D' {
+                base = DWFCIVIL;
+            } else if race == 'H' {
+                base = HUMCIVIL;
+            } else if race == 'O' {
+                base = ORCCIVIL;
+            }
             let raw = num_powers(nation.powers, M_MGK)
                 + num_powers(nation.powers, M_MIL)
                 + 1
@@ -262,8 +274,11 @@ pub fn getmgkcost(power_type: u8, nation: &Nation) -> i64 {
             npowers = raw / 2;
         }
         M_MIL => {
-            if race == 'D' { base = DWFMILIT; }
-            else if race == 'O' { base = ORCMILIT; }
+            if race == 'D' {
+                base = DWFMILIT;
+            } else if race == 'O' {
+                base = ORCMILIT;
+            }
             let raw = num_powers(nation.powers, M_CIV)
                 + num_powers(nation.powers, M_MGK)
                 + 1
@@ -295,15 +310,15 @@ pub fn is_city(des: u8) -> bool {
 /// Matches C exactly. Returns the unit type value.
 pub fn getleader(class: i16) -> u8 {
     match class {
-        0 | 1 | 6 => UnitType::L_BARON.0,  // NPC, King, Trader
-        2 => UnitType::L_PRINCE.0,          // Emperor
-        3 => UnitType::L_MAGI.0,            // Wizard
-        4 => UnitType::L_BISHOP.0,          // Priest
-        5 => UnitType::L_CAPTAIN.0,         // Pirate
-        7 => UnitType::L_LORD.0,            // Warlord
-        8 => UnitType::L_DEVIL.0,           // Demon
-        9 => UnitType::L_WYRM.0,            // Dragon
-        10 => UnitType::L_NAZGUL.0,         // Shadow
+        0 | 1 | 6 => UnitType::L_BARON.0, // NPC, King, Trader
+        2 => UnitType::L_PRINCE.0,        // Emperor
+        3 => UnitType::L_MAGI.0,          // Wizard
+        4 => UnitType::L_BISHOP.0,        // Priest
+        5 => UnitType::L_CAPTAIN.0,       // Pirate
+        7 => UnitType::L_LORD.0,          // Warlord
+        8 => UnitType::L_DEVIL.0,         // Demon
+        9 => UnitType::L_WYRM.0,          // Dragon
+        10 => UnitType::L_NAZGUL.0,       // Shadow
         _ => UnitType::L_BARON.0,
     }
 }
@@ -387,23 +402,79 @@ pub fn getjewel(sct: &mut Sector, rng: &mut conquer_core::rng::ConquerRng) {
 pub fn tg_ok(nation: &Nation, sct: &Sector) -> bool {
     let tg = sct.trade_good;
     match tg {
-        x if x == TradeGood::Lead as u8 => { if nation.mine_ability < 8 { return false; } }
-        x if x == TradeGood::Tin as u8 => { if nation.mine_ability < 11 { return false; } }
-        x if x == TradeGood::Bronze as u8 => { if nation.mine_ability < 15 { return false; } }
-        x if x == TradeGood::Iron as u8 => { if nation.mine_ability < 25 { return false; } }
-        x if x == TradeGood::Steel as u8 => { if nation.mine_ability < 30 { return false; } }
-        x if x == TradeGood::Mithral as u8 => { if nation.mine_ability < 30 { return false; } }
-        x if x == TradeGood::Adamantine as u8 => { if nation.mine_ability < 40 { return false; } }
+        x if x == TradeGood::Lead as u8 => {
+            if nation.mine_ability < 8 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Tin as u8 => {
+            if nation.mine_ability < 11 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Bronze as u8 => {
+            if nation.mine_ability < 15 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Iron as u8 => {
+            if nation.mine_ability < 25 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Steel as u8 => {
+            if nation.mine_ability < 30 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Mithral as u8 => {
+            if nation.mine_ability < 30 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Adamantine as u8 => {
+            if nation.mine_ability < 40 {
+                return false;
+            }
+        }
         x if x == TradeGood::Spice as u8 => {}
         x if x == TradeGood::Silver as u8 => {}
         x if x == TradeGood::Pearls as u8 => {}
-        x if x == TradeGood::Dye as u8 => { if nation.wealth < 5 { return false; } }
-        x if x == TradeGood::Silk as u8 => { if nation.wealth < 5 { return false; } }
-        x if x == TradeGood::Gold as u8 => { if nation.wealth < 8 { return false; } }
-        x if x == TradeGood::Rubys as u8 => { if nation.wealth < 8 { return false; } }
-        x if x == TradeGood::Ivory as u8 => { if nation.wealth < 15 { return false; } }
-        x if x == TradeGood::Diamonds as u8 => { if nation.wealth < 20 { return false; } }
-        x if x == TradeGood::Platinum as u8 => { if nation.wealth < 25 { return false; } }
+        x if x == TradeGood::Dye as u8 => {
+            if nation.wealth < 5 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Silk as u8 => {
+            if nation.wealth < 5 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Gold as u8 => {
+            if nation.wealth < 8 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Rubys as u8 => {
+            if nation.wealth < 8 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Ivory as u8 => {
+            if nation.wealth < 15 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Diamonds as u8 => {
+            if nation.wealth < 20 {
+                return false;
+            }
+        }
+        x if x == TradeGood::Platinum as u8 => {
+            if nation.wealth < 25 {
+                return false;
+            }
+        }
         _ => {}
     }
 
@@ -412,13 +483,7 @@ pub fn tg_ok(nation: &Nation, sct: &Sector) -> bool {
 
 /// attract(x, y, race, sct, nation) — how attractive is sector to civilians.
 /// Matches C update.c attract() exactly.
-pub fn attract(
-    _x: i32,
-    _y: i32,
-    sct: &Sector,
-    nation: &Nation,
-    move_cost: i16,
-) -> i32 {
+pub fn attract(_x: i32, _y: i32, sct: &Sector, nation: &Nation, move_cost: i16) -> i32 {
     let des = sct.designation;
     let race = nation.race;
     let mut attr = 0i32;
@@ -448,7 +513,8 @@ pub fn attract(
         }
     } else if des == Designation::Farm as u8 {
         // BUG-COMPAT: C uses ntn[sptr->owner] which may differ from `nation`
-        let need_food = nation.total_food * 250 <= (nation.eat_rate as i64) * (nation.total_civ * 11);
+        let need_food =
+            nation.total_food * 250 <= (nation.eat_rate as i64) * (nation.total_civ * 11);
         if need_food {
             attr += 50 * FARMATTR;
         } else {
@@ -486,12 +552,20 @@ pub fn attract(
             } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
                 attr += DCITYATTR;
             }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += DWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += DFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += DMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += DHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += DCLERATTR; }
-            else { attr = 0; }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += DWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += DFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += DMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += DHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += DCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'E' => {
             if des == Designation::GoldMine as u8 && sct.jewels > 3 {
@@ -504,12 +578,20 @@ pub fn attract(
             {
                 attr += ECITYATTR;
             }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += EWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += EFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += EMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += EHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += ECLERATTR; }
-            else { attr = 0; }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += EWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += EFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += EMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += EHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += ECLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'H' => {
             if des == Designation::GoldMine as u8 && sct.jewels > 3 {
@@ -522,12 +604,20 @@ pub fn attract(
             {
                 attr += HCITYATTR;
             }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += HWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += HFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += HMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += HHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += HCLERATTR; }
-            else { attr = 0; }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += HWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += HFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += HMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += HHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += HCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         'O' => {
             if des == Designation::GoldMine as u8 && sct.jewels > 3 {
@@ -539,12 +629,20 @@ pub fn attract(
             } else if des == Designation::City as u8 || des == Designation::Capitol as u8 {
                 attr += OCITYATTR;
             }
-            if sct.vegetation == Vegetation::Wood as u8 { attr += OWOODATTR; }
-            else if sct.vegetation == Vegetation::Forest as u8 { attr += OFOREATTR; }
-            if sct.altitude == Altitude::Mountain as u8 { attr += OMNTNATTR; }
-            else if sct.altitude == Altitude::Hill as u8 { attr += OHILLATTR; }
-            else if sct.altitude == Altitude::Clear as u8 { attr += OCLERATTR; }
-            else { attr = 0; }
+            if sct.vegetation == Vegetation::Wood as u8 {
+                attr += OWOODATTR;
+            } else if sct.vegetation == Vegetation::Forest as u8 {
+                attr += OFOREATTR;
+            }
+            if sct.altitude == Altitude::Mountain as u8 {
+                attr += OMNTNATTR;
+            } else if sct.altitude == Altitude::Hill as u8 {
+                attr += OHILLATTR;
+            } else if sct.altitude == Altitude::Clear as u8 {
+                attr += OCLERATTR;
+            } else {
+                attr = 0;
+            }
         }
         _ => {}
     }
@@ -565,26 +663,42 @@ pub fn markok(mark: char, nations: &[Nation]) -> bool {
 
     // Check altitude chars
     for &c in ELE_CHARS.as_bytes() {
-        if c == b'0' { break; }
-        if mark as u8 == c { return false; }
-    }
-
-    // Check vegetation chars
-    for &c in VEG_CHARS.as_bytes() {
-        if c == b'0' { break; }
-        if mark as u8 == c { return false; }
-    }
-
-    // Check existing nation marks
-    for (i, ntn) in nations.iter().enumerate() {
-        if i == 0 { continue; }
-        if NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_active()) && ntn.mark == mark {
+        if c == b'0' {
+            break;
+        }
+        if mark as u8 == c {
             return false;
         }
     }
 
-    if mark == '*' { return false; }
-    if !mark.is_ascii_alphabetic() { return false; }
+    // Check vegetation chars
+    for &c in VEG_CHARS.as_bytes() {
+        if c == b'0' {
+            break;
+        }
+        if mark as u8 == c {
+            return false;
+        }
+    }
+
+    // Check existing nation marks
+    for (i, ntn) in nations.iter().enumerate() {
+        if i == 0 {
+            continue;
+        }
+        if NationStrategy::from_value(ntn.active).map_or(false, |s| s.is_active())
+            && ntn.mark == mark
+        {
+            return false;
+        }
+    }
+
+    if mark == '*' {
+        return false;
+    }
+    if !mark.is_ascii_alphabetic() {
+        return false;
+    }
 
     true
 }

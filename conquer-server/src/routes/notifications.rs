@@ -5,10 +5,10 @@ use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use conquer_db::models::*;
 use crate::app::AppState;
 use crate::errors::ApiError;
 use crate::jwt::Claims;
+use conquer_db::models::*;
 
 // ============================================================
 // Request types
@@ -32,7 +32,10 @@ pub async fn get_notifications(
 ) -> Result<Json<Vec<Notification>>, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    let notifs = state.store.get_notifications(user_id, query.unread_only).await;
+    let notifs = state
+        .store
+        .get_notifications(user_id, query.unread_only)
+        .await;
     Ok(Json(notifs))
 }
 
@@ -44,7 +47,10 @@ pub async fn mark_read(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    state.store.mark_notification_read(user_id, notif_id).await?;
+    state
+        .store
+        .mark_notification_read(user_id, notif_id)
+        .await?;
     Ok(Json(serde_json::json!({"status": "read"})))
 }
 
@@ -78,6 +84,9 @@ pub async fn set_preferences(
 ) -> Result<Json<NotificationPreferences>, ApiError> {
     let user_id = crate::jwt::JwtManager::user_id_from_claims(&claims)
         .map_err(|_| ApiError::Unauthorized("Invalid user ID".to_string()))?;
-    state.store.set_notification_prefs(user_id, prefs.clone()).await;
+    state
+        .store
+        .set_notification_prefs(user_id, prefs.clone())
+        .await;
     Ok(Json(prefs))
 }

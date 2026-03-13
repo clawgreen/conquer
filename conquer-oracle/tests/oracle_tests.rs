@@ -4,7 +4,10 @@ use std::fs;
 use std::path::PathBuf;
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 // ============================================================
@@ -15,7 +18,10 @@ fn project_root() -> PathBuf {
 fn test_rng_cross_validation_seed42() {
     let c_values_path = project_root().join("oracle/snapshots/rng_seed42_10000.txt");
     if !c_values_path.exists() {
-        eprintln!("Skipping RNG cross-validation: {} not found", c_values_path.display());
+        eprintln!(
+            "Skipping RNG cross-validation: {} not found",
+            c_values_path.display()
+        );
         return;
     }
 
@@ -47,7 +53,10 @@ fn test_rng_cross_validation_seed42() {
 fn test_load_oracle_snapshot() {
     let snap_path = project_root().join("oracle/snapshots/seed42_init.json");
     if !snap_path.exists() {
-        eprintln!("Skipping oracle snapshot test: {} not found", snap_path.display());
+        eprintln!(
+            "Skipping oracle snapshot test: {} not found",
+            snap_path.display()
+        );
         return;
     }
 
@@ -73,9 +82,7 @@ fn test_load_oracle_snapshot() {
     assert!(active_count > 0, "Expected at least one active nation");
 
     // Verify at least some armies exist
-    let total_armies: usize = gs.nations.iter()
-        .map(|n| n.alive_armies())
-        .sum();
+    let total_armies: usize = gs.nations.iter().map(|n| n.alive_armies()).sum();
     assert!(total_armies > 0, "Expected at least one army");
 
     // Verify sectors
@@ -91,7 +98,10 @@ fn test_load_oracle_snapshot() {
 fn test_enum_roundtrips_against_oracle() {
     let snap_path = project_root().join("oracle/snapshots/seed42_init.json");
     if !snap_path.exists() {
-        eprintln!("Skipping enum roundtrip test: {} not found", snap_path.display());
+        eprintln!(
+            "Skipping enum roundtrip test: {} not found",
+            snap_path.display()
+        );
         return;
     }
 
@@ -111,8 +121,12 @@ fn test_enum_roundtrips_against_oracle() {
         for a in &n.armies {
             if a.soldiers > 0 {
                 let status = conquer_core::ArmyStatus::from_value(a.status);
-                assert_eq!(status.to_value(), a.status,
-                    "Army status roundtrip failed: {}", a.status);
+                assert_eq!(
+                    status.to_value(),
+                    a.status,
+                    "Army status roundtrip failed: {}",
+                    a.status
+                );
             }
         }
     }
@@ -122,8 +136,12 @@ fn test_enum_roundtrips_against_oracle() {
         for a in &n.armies {
             if a.soldiers > 0 {
                 let ut = conquer_core::UnitType(a.unit_type);
-                assert!(ut.stats_index().is_some(),
-                    "Invalid unit type: {} for nation {}", a.unit_type, n.name);
+                assert!(
+                    ut.stats_index().is_some(),
+                    "Invalid unit type: {} for nation {}",
+                    a.unit_type,
+                    n.name
+                );
             }
         }
     }
@@ -132,8 +150,13 @@ fn test_enum_roundtrips_against_oracle() {
     for n in &gs.nations {
         if n.is_active() {
             let race = conquer_core::Race::from_char(n.race);
-            assert_eq!(race.to_char(), n.race,
-                "Race roundtrip failed for '{}' in nation {}", n.race, n.name);
+            assert_eq!(
+                race.to_char(),
+                n.race,
+                "Race roundtrip failed for '{}' in nation {}",
+                n.race,
+                n.name
+            );
         }
     }
 }
@@ -148,21 +171,42 @@ fn test_data_tables_match_c() {
     let c_des = "tcmfx$!&sC?lb+*g=u-P";
     for (i, c) in c_des.chars().enumerate() {
         let d = conquer_core::Designation::from_index(i as u8).unwrap();
-        assert_eq!(d.to_char(), c, "Designation char mismatch at index {}: expected '{}' got '{}'", i, c, d.to_char());
+        assert_eq!(
+            d.to_char(),
+            c,
+            "Designation char mismatch at index {}: expected '{}' got '{}'",
+            i,
+            c,
+            d.to_char()
+        );
     }
 
     // Verify vegetation chars match C veg[] = "vdtblgwfjsi~0"
     let c_veg = "vdtblgwfjsi~";
     for (i, c) in c_veg.chars().enumerate() {
         let v = conquer_core::Vegetation::from_index(i as u8).unwrap();
-        assert_eq!(v.to_char(), c, "Vegetation char mismatch at index {}: expected '{}' got '{}'", i, c, v.to_char());
+        assert_eq!(
+            v.to_char(),
+            c,
+            "Vegetation char mismatch at index {}: expected '{}' got '{}'",
+            i,
+            c,
+            v.to_char()
+        );
     }
 
     // Verify altitude chars match C ele[] = "~#^%-0"
     let c_ele = "~#^%-";
     for (i, c) in c_ele.chars().enumerate() {
         let a = conquer_core::Altitude::from_index(i as u8).unwrap();
-        assert_eq!(a.to_char(), c, "Altitude char mismatch at index {}: expected '{}' got '{}'", i, c, a.to_char());
+        assert_eq!(
+            a.to_char(),
+            c,
+            "Altitude char mismatch at index {}: expected '{}' got '{}'",
+            i,
+            c,
+            a.to_char()
+        );
     }
 
     // Verify vegfood matches "0004697400000"
@@ -170,8 +214,14 @@ fn test_data_tables_match_c() {
     for (i, c) in c_vegfood.chars().enumerate().take(12) {
         let expected = c.to_digit(10).unwrap() as i32;
         if let Some(v) = conquer_core::Vegetation::from_index(i as u8) {
-            assert_eq!(v.food_value(), expected,
-                "VegFood mismatch at index {}: expected {} got {}", i, expected, v.food_value());
+            assert_eq!(
+                v.food_value(),
+                expected,
+                "VegFood mismatch at index {}: expected {} got {}",
+                i,
+                expected,
+                v.food_value()
+            );
         }
     }
 

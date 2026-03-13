@@ -4,11 +4,11 @@
 //
 // Main update function and supporting functions.
 // T10: Refactored to use &mut GameState instead of fixed-size arrays.
-use conquer_core::*;
-use conquer_core::tables::*;
-use crate::rng::ConquerRng;
-use crate::economy::*;
 use crate::combat::*;
+use crate::economy::*;
+use crate::rng::ConquerRng;
+use conquer_core::tables::*;
+use conquer_core::*;
 
 /// Navy movement default (based on C: ~4 for armies, navies vary)
 pub const NAVY_MOVE: u8 = 4;
@@ -41,10 +41,7 @@ pub struct NationUpdate {
 ///   updexecs -> monster -> combat -> updcapture -> uptrade -> updmil -> randomevent
 ///   -> updsectors -> move_people -> updcomodities -> updleader -> destroy check
 ///   -> score -> cheat -> att_bonus
-pub fn update_turn(
-    state: &mut GameState,
-    rng: &mut ConquerRng,
-) -> TurnResult {
+pub fn update_turn(state: &mut GameState, rng: &mut ConquerRng) -> TurnResult {
     let mut events = Vec::new();
     let nation_updates = Vec::new();
 
@@ -80,7 +77,9 @@ pub fn update_turn(
         }
 
         let active = state.nations[country].active;
-        if active == 0 { continue; }
+        if active == 0 {
+            continue;
+        }
 
         // Run NPC nations
         let strat = NationStrategy::from_value(active);
@@ -127,7 +126,9 @@ pub fn update_turn(
     // Zero tmil/tships after updexecs (C does this at end of updexecs)
     for country in 1..NTOTAL {
         let strat = NationStrategy::from_value(state.nations[country].active);
-        if !strat.map_or(false, |s| s.is_nation()) { continue; }
+        if !strat.map_or(false, |s| s.is_nation()) {
+            continue;
+        }
         state.nations[country].total_ships = 0;
         state.nations[country].total_mil = 0;
         // Spell point decay (C: rand()%4==0 → halve)
@@ -183,7 +184,10 @@ pub fn update_turn(
             if state.nations[i].total_civ < 100
                 && state.nations[i].total_mil < takesector(state.nations[i].total_civ)
             {
-                events.push(format!("Nation {} has been destroyed!", state.nations[i].name));
+                events.push(format!(
+                    "Nation {} has been destroyed!",
+                    state.nations[i].name
+                ));
                 destroy_nation_gs(state, i);
             }
         }
@@ -221,8 +225,9 @@ pub fn update_turn(
 /// C actually returns the UnitType, and the caller does getleader()-1 to get the king type.
 fn get_leader_type(class: i16) -> u8 {
     let leader = match NationClass::from_value(class) {
-        Some(NationClass::Npc) | Some(NationClass::King)
-        | Some(NationClass::Trader) => UnitType::L_BARON,
+        Some(NationClass::Npc) | Some(NationClass::King) | Some(NationClass::Trader) => {
+            UnitType::L_BARON
+        }
         Some(NationClass::Emperor) => UnitType::L_PRINCE,
         Some(NationClass::Wizard) => UnitType::L_MAGI,
         Some(NationClass::Priest) => UnitType::L_BISHOP,
@@ -274,7 +279,9 @@ fn destroy_nation_gs(state: &mut GameState, nation_idx: usize) {
 /// Score all nations (GameState version)
 pub fn calculate_scores_gs(state: &mut GameState) {
     for i in 1..NTOTAL {
-        if !is_nation_active_gs(&state.nations[i]) { continue; }
+        if !is_nation_active_gs(&state.nations[i]) {
+            continue;
+        }
         state.nations[i].score += calculate_nation_score(&state.nations[i]);
     }
 }
@@ -308,7 +315,9 @@ fn calculate_nation_score(nation: &Nation) -> i64 {
 /// Shuffle usize slice using Fisher-Yates
 fn shuffle_array_usize(rng: &mut ConquerRng, arr: &mut [usize]) {
     let len = arr.len();
-    if len <= 1 { return; }
+    if len <= 1 {
+        return;
+    }
     for i in (1..len).rev() {
         let j = (rng.rand() as usize) % (i + 1);
         arr.swap(i, j);
