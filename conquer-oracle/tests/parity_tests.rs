@@ -228,6 +228,85 @@ fn parity_sector_ownership_turn1_to_turn2() {
     }
 }
 
+/// Count sector ownership changes — how many sectors change owner
+/// in C vs Rust over one turn.
+#[test]
+fn parity_sector_changes_count() {
+    let t1 = match load_snapshot("turn1.json") {
+        Some(s) => s,
+        None => return,
+    };
+    let t2 = match load_snapshot("turn2.json") {
+        Some(s) => s,
+        None => return,
+    };
+
+    let initial = t1.to_game_state();
+    let mut gs = t1.to_game_state();
+    let mut rng = ConquerRng::new(42);
+
+    conquer_engine::turn::update_turn(&mut gs, &mut rng);
+
+    // Count C sector changes
+    let expected_sectors = t2.sectors.as_ref().unwrap();
+    let mut c_changes = 0;
+    let mut c_captures: Vec<String> = Vec::new();
+    for es in expected_sectors {
+        let init_owner = initial.sectors[es.x][es.y].owner;
+        if init_owner != es.owner {
+            c_changes += 1;
+            if c_changes <= 10 {
+                c_captures.push(format!("  ({},{}) {}→{}", es.x, es.y, init_owner, es.owner));
+            }
+        }
+    }
+
+    // Count Rust sector changes
+    let mut rust_changes = 0;
+    let mut rust_captures: Vec<String> = Vec::new();
+    let map_x = gs.world.map_x as usize;
+    let map_y = gs.world.map_y as usize;
+    for x in 0..map_x {
+        for y in 0..map_y {
+            if initial.sectors[x][y].owner != gs.sectors[x][y].owner {
+                rust_changes += 1;
+                if rust_changes <= 10 {
+                    rust_captures.push(format!("  ({},{}) {}→{}",
+                        x, y, initial.sectors[x][y].owner, gs.sectors[x][y].owner));
+                }
+            }
+        }
+    }
+
+    eprintln!("\n=== SECTOR CHANGE COMPARISON ===");
+    eprintln!("C changes: {} sectors changed owner", c_changes);
+    for c in &c_captures { eprintln!("{}", c); }
+    eprintln!("Rust changes: {} sectors changed owner", rust_changes);
+    for r in &rust_captures { eprintln!("{}", r); }
+
+    // Count per-nation sector totals
+    let mut rust_sctrs = vec![0i32; NTOTAL];
+    let mut c_sctrs = vec![0i32; NTOTAL];
+    for x in 0..map_x {
+        for y in 0..map_y {
+            rust_sctrs[gs.sectors[x][y].owner as usize] += 1;
+            if let Some(es) = expected_sectors.iter().find(|s| s.x == x && s.y == y) {
+                c_sctrs[es.owner as usize] += 1;
+            }
+        }
+    }
+    eprintln!("\nPer-nation sector counts (Rust vs C):");
+    for n in 1..16 {
+        if rust_sctrs[n] != 0 || c_sctrs[n] != 0 {
+            let diff = rust_sctrs[n] - c_sctrs[n];
+            let marker = if diff.abs() > 2 { " ⚠️" } else { "" };
+            eprintln!("  Nation {:2} ({}): Rust={:3} C={:3} diff={:+3}{}",
+                n, gs.nations[n].name, rust_sctrs[n], c_sctrs[n], diff, marker);
+        }
+    }
+    eprintln!("=== END SECTOR COMPARISON ===\n");
+}
+
 /// Multi-turn stability test: run 5 turns, verify no panics,
 /// and nations don't all collapse.
 #[test]

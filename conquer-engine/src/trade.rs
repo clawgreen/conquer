@@ -581,37 +581,16 @@ pub fn check_trade(deals: &mut Vec<TradeDeal>, nation: &mut Nation, nation_idx: 
 /// consistency at turn boundary and clears any negative balances.
 /// Called AFTER updcapture, BEFORE updmil.
 pub fn process_trades_gs(state: &mut GameState) -> Vec<String> {
-    let mut news = Vec::new();
+    let news = Vec::new();
 
-    // Collect all pending trades and validate them.
-    // In the current model, trade deals are expressed as nation-to-nation
-    // commodity exchanges; since persistent deal storage is not yet in GameState,
-    // this hook processes any expired or conflicting deals at turn boundary.
-    for nation_idx in 1..NTOTAL {
-        let active = state.nations[nation_idx].active;
-        if active == 0 { continue; }
-
-        // Validate that set-aside resources haven't gone negative
-        // (C checktrade() runs at the start of each nation's exec)
-        let treasury = state.nations[nation_idx].treasury_gold;
-        let food = state.nations[nation_idx].total_food;
-        let metals = state.nations[nation_idx].metals;
-        let jewels = state.nations[nation_idx].jewels;
-
-        if treasury < 0 {
-            state.nations[nation_idx].treasury_gold = 0;
-            news.push(format!("{} treasury went negative - cleared", state.nations[nation_idx].name));
-        }
-        if food < 0 {
-            state.nations[nation_idx].total_food = 0;
-        }
-        if metals < 0 {
-            state.nations[nation_idx].metals = 0;
-        }
-        if jewels < 0 {
-            state.nations[nation_idx].jewels = 0;
-        }
-    }
+    // C uptrade() processes pending trade deals between nations.
+    // In NPC-only games there are no trades to process.
+    // Trade deals will be implemented when player trading is added.
+    //
+    // IMPORTANT: Do NOT zero negative balances here. C allows nations
+    // to carry debt (negative gold/food/metals). Zeroing debt was
+    // causing massive gold drift vs C parity.
+    let _ = state; // suppress unused warning
 
     news
 }

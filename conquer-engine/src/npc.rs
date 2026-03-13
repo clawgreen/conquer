@@ -568,8 +568,46 @@ pub fn redo_military(
         }
     }
 
+    // Add to partial armies — fill weak armies to TAKESECTOR+20
+    // C: original/npc.c:650-666
+    let ts = crate::combat::takesector(state.nations[nation_idx].total_civ);
+    for armynum in 1..MAXARM {
+        let a = &state.nations[nation_idx].armies[armynum];
+        if a.soldiers <= 0 { continue; }
+        if a.unit_type == UnitType::MILITIA.0 { continue; }
+        if a.unit_type >= UnitType::MIN_LEADER { continue; }
+        if a.soldiers >= ts { continue; }
+        if state.nations[nation_idx].treasury_gold <= 0 { continue; }
+
+        let ax = a.x as usize;
+        let ay = a.y as usize;
+        let at = a.unit_type;
+        let unit_idx = UnitType(at).stats_index().unwrap_or(0);
+        let en_metal = UNIT_ENLIST_METAL.get(unit_idx).copied().unwrap_or(0) as i64;
+        let en_cost = UNIT_ENLIST_COST.get(unit_idx).copied().unwrap_or(0) as i64;
+        let needed = ts + 20 - a.soldiers;
+
+        if state.nations[nation_idx].metals < needed * en_metal { continue; }
+        if !state.on_map(ax as i32, ay as i32) { continue; }
+        if state.sectors[ax][ay].fortress == 0 { continue; }
+        if state.sectors[ax][ay].owner as usize != nation_idx { continue; }
+
+        let has_warrior = Power::has_power(state.nations[nation_idx].powers, Power::WARRIOR);
+        if has_warrior {
+            state.nations[nation_idx].treasury_gold -= needed * en_cost / 2;
+        } else {
+            state.nations[nation_idx].treasury_gold -= needed * en_cost;
+        }
+        state.nations[nation_idx].total_mil += needed;
+        state.nations[nation_idx].metals -= needed * en_metal;
+        state.nations[nation_idx].armies[armynum].soldiers = ts + 20;
+    }
+
     // Draft new armies if under ideal
-    let ideal_total = state.nations[nation_idx].total_civ * peace as i64 / (10 * MILRATIO);
+    let mut ideal_total = state.nations[nation_idx].total_civ * peace as i64 / (10 * MILRATIO);
+    if state.nations[nation_idx].treasury_gold < 0 {
+        ideal_total = ideal_total * 4 / 5;
+    }
     if state.nations[nation_idx].total_mil < 4 * ideal_total / 5 {
         for armynum in 1..MAXARM {
             if state.nations[nation_idx].armies[armynum].soldiers == 0 {
@@ -614,6 +652,47 @@ pub fn redo_military(
                     }
                 }
                 break; // Only draft one army per turn
+            }
+        }
+    } else if state.nations[nation_idx].total_mil > 6 * ideal_total / 5 {
+        // Too many soldiers — disband excess armies
+        // C: original/npc.c:691-729
+        let mut diff = state.nations[nation_idx].total_mil - 6 * ideal_total / 5;
+        for armynum in 1..MAXARM {
+            if diff <= 0 { break; }
+            let a = &state.nations[nation_idx].armies[armynum];
+            if a.soldiers <= 0 { continue; }
+            if a.unit_type == UnitType::ZOMBIE.0 { continue; }
+            if a.unit_type == UnitType::MILITIA.0 { continue; }
+            if a.unit_type >= UnitType::MIN_LEADER { continue; }
+            if a.status == ArmyStatus::OnBoard.to_value() { continue; }
+            if a.status == ArmyStatus::Traded.to_value() { continue; }
+
+            let ax = a.x as usize;
+            let ay = a.y as usize;
+            if state.on_map(ax as i32, ay as i32)
+                && state.sectors[ax][ay].owner as usize == nation_idx
+                && (state.sectors[ax][ay].jewels > 4
+                    || state.sectors[ax][ay].metal > 4
+                    || crate::utils::is_city(state.sectors[ax][ay].designation))
+            {
+                let sold = a.soldiers;
+                diff -= sold;
+                state.sectors[ax][ay].people += sold;
+                let at = a.unit_type;
+                let unit_idx = UnitType(at).stats_index().unwrap_or(0);
+                let en_metal = UNIT_ENLIST_METAL.get(unit_idx).copied().unwrap_or(0) as i64;
+                let en_cost = UNIT_ENLIST_COST.get(unit_idx).copied().unwrap_or(0) as i64;
+                state.nations[nation_idx].metals += sold * en_metal;
+                let has_warrior = Power::has_power(state.nations[nation_idx].powers, Power::WARRIOR);
+                if has_warrior {
+                    state.nations[nation_idx].treasury_gold += sold * en_cost / 2;
+                } else {
+                    state.nations[nation_idx].treasury_gold += sold * en_cost;
+                }
+                state.nations[nation_idx].armies[armynum].soldiers = 0;
+                state.nations[nation_idx].total_mil -= sold;
+                state.nations[nation_idx].total_civ += sold;
             }
         }
     }

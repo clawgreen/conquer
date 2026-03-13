@@ -24,27 +24,54 @@ pub fn update_move_costs(
     let map_y = state.world.map_y as usize;
     let nation = &state.nations[nation_idx];
 
-    let (ele_costs, veg_costs) = match race {
-        'O' => (O_ELE_COST.as_bytes(), O_VEG_COST.as_bytes()),
-        'E' => (E_ELE_COST.as_bytes(), E_VEG_COST.as_bytes()),
-        'D' => (D_ELE_COST.as_bytes(), D_VEG_COST.as_bytes()),
-        _ => (H_ELE_COST.as_bytes(), H_VEG_COST.as_bytes()),
+    let (ele_cost_str, veg_cost_str) = match race {
+        'O' => (O_ELE_COST, O_VEG_COST),
+        'E' => (E_ELE_COST, E_VEG_COST),
+        'D' => (D_ELE_COST, D_VEG_COST),
+        _ => (H_ELE_COST, H_VEG_COST),
     };
+
+    // Build 128-element lookup tables indexed by ASCII character code
+    // (matching C's veg_cost[char] and ele_cost[char] arrays)
+    let mut veg_cost = [-1i16; 128];
+    let veg_chars = VEG_CHARS.as_bytes();
+    let veg_costs = veg_cost_str.as_bytes();
+    for (i, &ch) in veg_chars.iter().enumerate() {
+        if ch == b'0' { break; } // sentinel
+        if i < veg_costs.len() {
+            let c = veg_costs[i];
+            veg_cost[ch as usize] = if c == b'/' { -1 } else { (c - b'0') as i16 };
+        }
+    }
+
+    let mut ele_cost = [-1i16; 128];
+    let ele_chars = ELE_CHARS.as_bytes();
+    let ele_costs = ele_cost_str.as_bytes();
+    for (i, &ch) in ele_chars.iter().enumerate() {
+        if ch == b'0' { break; } // sentinel
+        if i < ele_costs.len() {
+            let c = ele_costs[i];
+            ele_cost[ch as usize] = if c == b'/' { -1 } else { (c - b'0') as i16 };
+        }
+    }
 
     // Dervish/destroyer modify costs
     let has_dervish = Power::has_power(nation.powers, Power::DERVISH);
     let has_destroyer = Power::has_power(nation.powers, Power::DESTROYER);
+    if has_dervish || has_destroyer {
+        veg_cost[b'i' as usize] = 0; // ICE
+        veg_cost[b'd' as usize] = 0; // DESERT
+    }
 
     for x in 0..map_x {
         for y in 0..map_y {
             let sct = &state.sectors[x][y];
-            let alt = sct.altitude as usize;
-            let veg = sct.vegetation as usize;
+            let alt = sct.altitude;
+            let veg = sct.vegetation;
 
             // Water
-            if alt == Altitude::Water as usize {
-                // Coastal water = -1, deep water = -3
-                // Check adjacency for coast
+            if alt == Altitude::Water as u8 {
+                // Coastal water = -1, deep water = -4
                 let mut is_coast = false;
                 for dx in -1i32..=1 {
                     for dy in -1i32..=1 {
@@ -58,32 +85,15 @@ pub fn update_move_costs(
                         }
                     }
                 }
-                state.move_cost[x][y] = if is_coast { -1 } else { -3 };
+                state.move_cost[x][y] = if is_coast { -1 } else { -4 };
                 continue;
             }
 
-            // Get base costs from tables
-            let ele_c = if alt < ele_costs.len() {
-                let c = ele_costs[alt];
-                if c == b'/' {
-                    -1i16
-                } else {
-                    (c as i16) - (b'0' as i16)
-                }
-            } else {
-                -1
-            };
-
-            let veg_c = if veg < veg_costs.len() {
-                let c = veg_costs[veg];
-                if c == b'/' {
-                    -1i16
-                } else {
-                    (c as i16) - (b'0' as i16)
-                }
-            } else {
-                -1
-            };
+            // Look up costs by ASCII character code (matching C exactly)
+            let alt_idx = alt as usize;
+            let veg_idx = veg as usize;
+            let ele_c = if alt_idx < 128 { ele_cost[alt_idx] } else { -1 };
+            let veg_c = if veg_idx < 128 { veg_cost[veg_idx] } else { -1 };
 
             if ele_c < 0 || veg_c < 0 {
                 state.move_cost[x][y] = -2; // impassable land
@@ -92,17 +102,9 @@ pub fn update_move_costs(
 
             let mut cost = ele_c + veg_c;
 
-            // Dervish/destroyer: desert/ice costs 1 instead of normal
-            if (has_dervish || has_destroyer)
-                && (sct.vegetation == Vegetation::Desert as u8
-                    || sct.vegetation == Vegetation::Ice as u8)
-            {
-                cost = 1;
-            }
-
-            // Roads reduce cost
-            if sct.designation == Designation::Road as u8 && cost > 1 {
-                cost = 1;
+            // C: if designation==DROAD, movecost = (movecost+1)/2
+            if sct.designation == Designation::Road as u8 {
+                cost = (cost + 1) / 2;
             }
 
             // Minimum cost of 1 for habitable land
@@ -117,27 +119,141 @@ pub fn update_move_costs(
 
 /// land_reachp(x1, y1, x2, y2, max_move, nation_idx) — can an army reach from (x1,y1) to (x2,y2)?
 /// Simplified adjacency check matching C logic: must be adjacent (1 step) and cost <= max_move.
+/// land_reachp() — full pathfinding check: can army reach (gx,gy) from (ax,ay)
+/// within move_points? Matches C misc.c:250 land_reachp()/land_2reachp().
+/// Uses recursive DFS with directional priority (toward target first).
 pub fn land_reachp(
     state: &GameState,
-    x1: i32,
-    y1: i32,
-    x2: i32,
-    y2: i32,
+    ax: i32,
+    ay: i32,
+    gx: i32,
+    gy: i32,
     max_move: u8,
-    _nation_idx: usize,
+    nation_idx: usize,
 ) -> bool {
-    if !state.on_map(x2, y2) {
+    if !state.on_map(gx, gy) || !state.on_map(ax, ay) {
         return false;
     }
-    // Must be adjacent
-    if (x2 - x1).abs() > 1 || (y2 - y1).abs() > 1 {
+    // Starting or ending in water/peak = unreachable
+    if state.sectors[ax as usize][ay as usize].altitude == Altitude::Water as u8
+        || state.sectors[ax as usize][ay as usize].altitude == Altitude::Peak as u8
+    {
         return false;
     }
-    let cost = state.move_cost[x2 as usize][y2 as usize];
-    if cost < 0 {
-        return false; // water or impassable
+    if state.sectors[gx as usize][gy as usize].altitude == Altitude::Water as u8
+        || state.sectors[gx as usize][gy as usize].altitude == Altitude::Peak as u8
+    {
+        return false;
     }
-    cost <= max_move as i16
+
+    let map_x = state.world.map_x as usize;
+    let map_y = state.world.map_y as usize;
+    let mut history = vec![vec![0u8; map_y]; map_x];
+    history[ax as usize][ay as usize] = max_move;
+
+    land_2reachp(state, ax, ay, gx, gy, max_move as i32, nation_idx, &mut history)
+}
+
+fn land_2reachp(
+    state: &GameState,
+    ax: i32,
+    ay: i32,
+    bx: i32,
+    by: i32,
+    move_points: i32,
+    nation_idx: usize,
+    history: &mut Vec<Vec<u8>>,
+) -> bool {
+    let delta_x = bx - ax;
+    let delta_y = by - ay;
+
+    // Arrived?
+    if delta_x == 0 && delta_y == 0 {
+        return true;
+    }
+
+    if move_points <= 0 {
+        return false;
+    }
+
+    let x_abs = delta_x.abs();
+    let y_abs = delta_y.abs();
+
+    // Optimization: can't reach if all moves cost 1
+    if x_abs.max(y_abs) > move_points {
+        return false;
+    }
+
+    let inc_x: i32 = if delta_x < 0 { -1 } else { 1 };
+    let inc_y: i32 = if delta_y < 0 { -1 } else { 1 };
+
+    // Direction priority: try moving toward target first (matches C exactly)
+    let (dx, dy) = if y_abs == 0 {
+        ([inc_x, inc_x, inc_x, 0, 0, -inc_x, -inc_x, -inc_x],
+         [0, inc_y, -inc_y, inc_y, -inc_y, inc_y, 0, -inc_y])
+    } else if x_abs == 0 {
+        ([0, inc_x, -inc_x, inc_x, -inc_x, inc_x, 0, -inc_x],
+         [inc_y, inc_y, inc_y, 0, 0, -inc_y, -inc_y, -inc_y])
+    } else {
+        ([inc_x, 0, inc_x, -inc_x, inc_x, -inc_x, 0, -inc_x],
+         [inc_y, inc_y, 0, inc_y, -inc_y, 0, -inc_y, -inc_y])
+    };
+
+    for i in 0..8 {
+        let x = ax + dx[i];
+        let y = ay + dy[i];
+        if x < 0 || x >= state.world.map_x as i32 { continue; }
+        if y < 0 || y >= state.world.map_y as i32 { continue; }
+
+        let xu = x as usize;
+        let yu = y as usize;
+
+        if state.move_cost[xu][yu] < 0 { continue; }
+        if state.sectors[xu][yu].altitude == Altitude::Peak as u8 { continue; }
+        if state.sectors[xu][yu].altitude == Altitude::Water as u8 { continue; }
+
+        let new_mp = move_points - state.move_cost[xu][yu] as i32;
+        if new_mp < 0 { continue; }
+
+        // Skip if we've been here before with MORE move points (same = skip to avoid loops)
+        // But allow 0-cost arrival at destination
+        if new_mp == 0 && x == bx && y == by {
+            return true; // Arrived with exactly 0 remaining
+        }
+        if history[xu][yu] >= new_mp as u8 {
+            continue;
+        }
+        history[xu][yu] = new_mp as u8;
+
+        // Check for hostile armies blocking passage (not at destination)
+        let own = state.sectors[xu][yu].owner as usize;
+        if own > 0 && !(x == bx && y == by) {
+            // Owner at war with us — can't pass if they have soldiers there
+            if state.nations[own].diplomacy[nation_idx] >= DiplomaticStatus::War as u8 {
+                let mut has_soldiers = false;
+                for anum in 0..MAXARM {
+                    let a = &state.nations[own].armies[anum];
+                    if a.soldiers > 0 && a.x as i32 == x && a.y as i32 == y {
+                        has_soldiers = true;
+                        break;
+                    }
+                }
+                if has_soldiers { continue; }
+            }
+            // We're not at war but owner is neutral+ hostile — no passing
+            if state.nations[nation_idx].diplomacy[own] < DiplomaticStatus::War as u8
+                && state.nations[own].diplomacy[nation_idx] > DiplomaticStatus::Allied as u8
+                && state.nations[own].diplomacy[nation_idx] < DiplomaticStatus::War as u8
+            {
+                continue;
+            }
+        }
+
+        if land_2reachp(state, x, y, bx, by, new_mp, nation_idx, history) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Zone of control calculation.
@@ -823,11 +939,21 @@ mod tests {
 
     #[test]
     fn test_land_reachp_adjacent() {
-        let state = GameState::new(16, 16);
-        // Default movecost is 0, so everything is reachable
+        let mut state = GameState::new(16, 16);
+        // Default altitude is Water (0) — set all sectors to Clear so land movement works
+        for x in 0..16 {
+            for y in 0..16 {
+                state.sectors[x][y].altitude = Altitude::Clear as u8;
+                state.move_cost[x][y] = 1; // 1 move point per step
+            }
+        }
         assert!(land_reachp(&state, 5, 5, 6, 5, 10, 0));
         assert!(land_reachp(&state, 5, 5, 6, 6, 10, 0));
-        assert!(!land_reachp(&state, 5, 5, 7, 5, 10, 0)); // too far
+        // With move_cost=1, need move_points > path_cost due to history pruning
+        // (matches C behavior — history[dest]=0 blocks new_mp=0)
+        assert!(land_reachp(&state, 5, 5, 7, 5, 3, 0));
+        // With only 1 move point, 2 steps away is unreachable
+        assert!(!land_reachp(&state, 5, 5, 7, 5, 1, 0));
     }
 
     #[test]

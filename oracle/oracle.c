@@ -85,7 +85,7 @@ static void dump_world_meta(FILE *out) {
 }
 
 static void dump_nations(FILE *out) {
-    int i;
+    int i, j;
     fprintf(out, "\"nations\": [\n");
     for (i = 0; i < NTOTAL; i++) {
         if (i > 0) fprintf(out, ",\n");
@@ -105,7 +105,39 @@ static void dump_nations(FILE *out) {
         fprintf(out, "    \"metals\": %ld,\n", ntn[i].metals);
         fprintf(out, "    \"jewels\": %ld,\n", ntn[i].jewels);
         fprintf(out, "    \"capx\": %d,\n", (int)ntn[i].capx);
-        fprintf(out, "    \"capy\": %d\n", (int)ntn[i].capy);
+        fprintf(out, "    \"capy\": %d,\n", (int)ntn[i].capy);
+        /* Extended fields for full parity */
+        fprintf(out, "    \"class\": %d,\n", (int)ntn[i].class);
+        fprintf(out, "    \"maxmove\": %d,\n", (int)ntn[i].maxmove);
+        fprintf(out, "    \"repro\": %d,\n", (int)ntn[i].repro);
+        fprintf(out, "    \"powers\": %ld,\n", ntn[i].powers);
+        fprintf(out, "    \"aplus\": %d,\n", (int)ntn[i].aplus);
+        fprintf(out, "    \"dplus\": %d,\n", (int)ntn[i].dplus);
+        fprintf(out, "    \"spellpts\": %d,\n", (int)ntn[i].spellpts);
+        fprintf(out, "    \"tships\": %d,\n", (int)ntn[i].tships);
+        fprintf(out, "    \"inflation\": %d,\n", (int)ntn[i].inflation);
+        fprintf(out, "    \"charity\": %d,\n", (int)ntn[i].charity);
+        fprintf(out, "    \"tax_rate\": %d,\n", (int)ntn[i].tax_rate);
+        fprintf(out, "    \"prestige\": %d,\n", (int)ntn[i].prestige);
+        fprintf(out, "    \"popularity\": %d,\n", (int)ntn[i].popularity);
+        fprintf(out, "    \"power\": %d,\n", (int)ntn[i].power);
+        fprintf(out, "    \"communications\": %d,\n", (int)ntn[i].communications);
+        fprintf(out, "    \"wealth\": %d,\n", (int)ntn[i].wealth);
+        fprintf(out, "    \"eatrate\": %d,\n", (int)ntn[i].eatrate);
+        fprintf(out, "    \"spoilrate\": %d,\n", (int)ntn[i].spoilrate);
+        fprintf(out, "    \"knowledge\": %d,\n", (int)ntn[i].knowledge);
+        fprintf(out, "    \"farm_ability\": %d,\n", (int)ntn[i].farm_ability);
+        fprintf(out, "    \"mine_ability\": %d,\n", (int)ntn[i].mine_ability);
+        fprintf(out, "    \"poverty\": %d,\n", (int)ntn[i].poverty);
+        fprintf(out, "    \"terror\": %d,\n", (int)ntn[i].terror);
+        fprintf(out, "    \"reputation\": %d,\n", (int)ntn[i].reputation);
+        /* Diplomacy array */
+        fprintf(out, "    \"dstatus\": [");
+        for (j = 0; j < NTOTAL; j++) {
+            if (j > 0) fprintf(out, ",");
+            fprintf(out, "%d", (int)(unsigned char)ntn[i].dstatus[j]);
+        }
+        fprintf(out, "]\n");
         fprintf(out, "  }");
     }
     fprintf(out, "\n]");
@@ -122,9 +154,32 @@ static void dump_armies(FILE *out) {
             first = 0;
             fprintf(out, "  {\"nation\": %d, \"army\": %d, \"xloc\": %d, \"yloc\": %d, ",
                     i, j, (int)ntn[i].arm[j].xloc, (int)ntn[i].arm[j].yloc);
-            fprintf(out, "\"sold\": %d, \"type\": %d, \"stat\": %d}",
+            fprintf(out, "\"sold\": %d, \"type\": %d, \"stat\": %d, \"smove\": %d}",
                     (int)ntn[i].arm[j].sold, (int)ntn[i].arm[j].unittyp,
-                    (int)ntn[i].arm[j].stat);
+                    (int)ntn[i].arm[j].stat, (int)ntn[i].arm[j].smove);
+        }
+    }
+    fprintf(out, "\n]");
+}
+
+static void dump_navies(FILE *out) {
+    int i, j;
+    int first = 1;
+    fprintf(out, "\"navies\": [\n");
+    for (i = 0; i < NTOTAL; i++) {
+        for (j = 0; j < MAXNAVY; j++) {
+            if (ntn[i].nvy[j].warships == 0 && ntn[i].nvy[j].merchant == 0 && ntn[i].nvy[j].galleys == 0)
+                continue;
+            if (!first) fprintf(out, ",\n");
+            first = 0;
+            fprintf(out, "  {\"nation\": %d, \"navy\": %d, \"xloc\": %d, \"yloc\": %d, ",
+                    i, j, (int)ntn[i].nvy[j].xloc, (int)ntn[i].nvy[j].yloc);
+            fprintf(out, "\"warships\": %d, \"merchant\": %d, \"galleys\": %d, ",
+                    (int)ntn[i].nvy[j].warships, (int)ntn[i].nvy[j].merchant,
+                    (int)ntn[i].nvy[j].galleys);
+            fprintf(out, "\"crew\": %d, \"people\": %d, \"smove\": %d}",
+                    (int)ntn[i].nvy[j].crew, (int)ntn[i].nvy[j].people,
+                    (int)ntn[i].nvy[j].smove);
         }
     }
     fprintf(out, "\n]");
@@ -138,9 +193,11 @@ static void dump_sectors(FILE *out) {
             if (x > 0 || y > 0) fprintf(out, ",\n");
             fprintf(out, "  {\"x\": %d, \"y\": %d, \"owner\": %d, \"des\": \"%c\", ",
                     x, y, (int)sct[x][y].owner, sct[x][y].designation);
-            fprintf(out, "\"alt\": %d, \"veg\": %d, \"people\": %d, \"metal\": %d, \"jewels\": %d}",
+            fprintf(out, "\"alt\": %d, \"veg\": %d, \"people\": %d, \"metal\": %d, \"jewels\": %d, ",
                     (int)sct[x][y].altitude, (int)sct[x][y].vegetation,
                     (int)sct[x][y].people, (int)sct[x][y].metal, (int)sct[x][y].jewels);
+            fprintf(out, "\"fortress\": %d, \"tradegood\": %d}",
+                    (int)sct[x][y].fortress, (int)sct[x][y].tradegood);
         }
     }
     fprintf(out, "\n]");
@@ -212,6 +269,12 @@ int main(int argc, char **argv) {
     if (do_sectors) {
         if (!first) printf(",\n");
         dump_sectors(stdout);
+        first = 0;
+    }
+    /* Always dump navies when dumping armies */
+    if (do_armies) {
+        if (!first) printf(",\n");
+        dump_navies(stdout);
         first = 0;
     }
     printf("\n}\n");
